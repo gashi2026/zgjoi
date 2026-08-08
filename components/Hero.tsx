@@ -1,8 +1,6 @@
-import Link from "next/link";
 import SearchBar from "./SearchBar";
 import { Bee, FlightPath } from "./Brand";
 import Honeycomb from "./Honeycomb";
-import { popularSearches } from "@/lib/data";
 
 export default function Hero() {
   return (
@@ -24,18 +22,7 @@ export default function Hero() {
             <SearchBar />
           </div>
 
-          <div className="mt-5 flex items-center gap-3 overflow-x-auto no-scrollbar">
-            <span className="shrink-0 text-sm font-bold text-ink">Popullore:</span>
-            {popularSearches.slice(0, 6).map((s) => (
-              <Link
-                key={s}
-                href={`/kerko?q=${encodeURIComponent(s)}`}
-                className="shrink-0 rounded-full border border-line bg-white px-4 py-2 text-sm text-muted transition-colors hover:border-gold hover:text-gold-dark"
-              >
-                {s}
-              </Link>
-            ))}
-          </div>
+        </div>
         </div>
 
         {/* Right: the comb. Anchored bottom-right and wider than its
