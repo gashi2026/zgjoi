@@ -1,7 +1,5 @@
 import type { Metadata } from "next";
 import { MapPin, Quote, ShieldCheck, Star, Users, Zap } from "lucide-react";
-import Header from "@/components/Header";
-import Footer from "@/components/Footer";
 
 export const metadata: Metadata = {
   title: "Rreth nesh — Zgjoi",
@@ -34,7 +32,6 @@ const values = [
 export default function RrethNeshPage() {
   return (
     <>
-      <Header />
       <main>
         {/* Hero */}
         <section className="bg-cream">
@@ -133,7 +130,6 @@ export default function RrethNeshPage() {
           </div>
         </section>
       </main>
-      <Footer />
     </>
   );
 }
