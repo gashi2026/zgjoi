@@ -1,0 +1,135 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html {
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+body {
+  @apply bg-white text-ink antialiased;
+}
+
+::selection {
+  background: #fff3cf;
+  color: #111111;
+}
+
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
+input:focus-visible,
+button:focus-visible,
+a:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid #ffb800;
+  outline-offset: 2px;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Bee swarm: fly in from the left, gather into a heart, then leave   */
+/* ------------------------------------------------------------------ */
+
+.swarm-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  pointer-events: none;
+  overflow: hidden;
+  /* a single soft beat while the heart is held */
+  animation: heart-beat 0.9s ease-in-out 1.8s 1;
+  transform-origin: center;
+}
+
+.swarm-bee {
+  position: absolute;
+  left: 0;
+  top: 0;
+  animation: swarm-heart var(--dur, 4.6s) both;
+  animation-delay: var(--delay, 0s);
+  will-change: transform, opacity;
+}
+
+.swarm-bee > span {
+  display: block;
+  animation: swarm-bob var(--bob, 0.6s) ease-in-out infinite;
+  animation-delay: var(--bob-delay, 0s);
+}
+
+@keyframes swarm-heart {
+  0% {
+    transform: translate3d(var(--x0), var(--y0), 0) scale(0.75);
+    opacity: 0;
+    animation-timing-function: cubic-bezier(0.16, 0.72, 0.28, 1);
+  }
+  10% {
+    opacity: 1;
+  }
+  /* arrive on the heart outline */
+  36%,
+  70% {
+    transform: translate3d(var(--hx), var(--hy), 0) scale(1);
+    opacity: 1;
+  }
+  70.001% {
+    animation-timing-function: cubic-bezier(0.55, 0, 0.9, 0.45);
+  }
+  92% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate3d(var(--x1), var(--y1), 0) scale(0.8);
+    opacity: 0;
+  }
+}
+
+/* gentle wing bob — small enough to keep the heart readable */
+@keyframes swarm-bob {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-6deg);
+  }
+  50% {
+    transform: translateY(-5px) rotate(6deg);
+  }
+}
+
+@keyframes heart-beat {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  30% {
+    transform: scale(1.055);
+  }
+  60% {
+    transform: scale(0.985);
+  }
+}
+
+/* pointy-top hexagon used by the honeycomb belts — vertical side edges
+   mean a straight row of them packs together with no gaps */
+.hexframe {
+  clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+}
