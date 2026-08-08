@@ -8,12 +8,12 @@ export default function Hero() {
   return (
     <section className="relative overflow-hidden bg-cream">
       <div className="mx-auto grid max-w-7xl items-center gap-12 px-4 pb-16 pt-12 sm:px-6 lg:grid-cols-2 lg:gap-8 lg:px-8 lg:pb-24 lg:pt-20">
-        {/* Left: copy + search */}
-        <div className="animate-fade-up">
+        {/* Left: copy + search — sits above the comb's tail */}
+        <div className="relative z-10 animate-fade-up">
           <h1 className="text-4xl font-extrabold leading-[1.1] tracking-tight text-ink sm:text-5xl lg:text-[3.4rem]">
-            Gjej profesionistin
+            Gjej profesionist për
             <br />
-            e duhur. <span className="text-gold">Lehtë.</span>
+            çdo shërbim. <span className="text-gold">Lehtë.</span>
           </h1>
           <p className="mt-5 max-w-md text-base leading-relaxed text-muted sm:text-lg">
             Zgjoi është platforma më e besuar në Kosovë për të gjetur dhe
@@ -38,13 +38,18 @@ export default function Hero() {
           </div>
         </div>
 
-        {/* Right: honeycomb composition — bottom-left to top-right */}
-        <div className="relative mx-auto hidden w-full max-w-[560px] justify-center sm:flex">
-          <div className="absolute -top-4 right-2 z-10">
-            <FlightPath className="absolute -left-[120px] top-6 rotate-180" />
-            <Bee size={50} className="animate-bee-hover" />
+        {/* Right: the comb. Anchored bottom-right and wider than its
+            column, so its lower tail slides in under the search bar and
+            the band climbs away toward the top right. */}
+        <div className="relative hidden min-h-[560px] sm:block">
+          <div className="absolute -right-16 bottom-0 z-0 lg:-right-24">
+            <Honeycomb />
+            {/* a bee setting off from beside the search bar, up into the comb */}
+            <div className="pointer-events-none absolute -bottom-2 -left-10 z-20">
+              <Bee size={44} className="animate-bee-hover" />
+              <FlightPath className="absolute -top-8 left-10" />
+            </div>
           </div>
-          <Honeycomb />
         </div>
       </div>
     </section>
