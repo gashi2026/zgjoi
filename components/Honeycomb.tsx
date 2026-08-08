@@ -35,7 +35,11 @@ const bandCentre = (row: number) => 5.2 - 0.62 * row;
 
 /* Which cells carry a service. Key is "col,row" using the offset column. */
 const SERVICES: Record<string, string> = {
+  "4.5,0": "shofer-personal",
   "5.5,0": "internet",
+  "3,1": "balet",
+  "2.5,2": "postier",
+  "4.5,2": "fotograf",
   "4,1": "siguria",
   "6,1": "klima",
   "3.5,2": "mobilje",
@@ -72,6 +76,27 @@ const CELLS: Cell[] = ROWS.flatMap(({ row, offset, cols }) =>
     };
   })
 );
+
+
+/* Ballerina silhouette — bun, arms out, wide tutu, legs crossing en pointe.
+   Filled with currentColor so it takes the same gold as the other icons. */
+function Ballerina({ size = 30 }: { size?: number }) {
+  return (
+    <svg width={size} height={size * 1.3} viewBox="0 0 100 130" fill="currentColor" aria-hidden="true">
+      <ellipse cx="53" cy="6" rx="6" ry="5" />
+      <circle cx="50" cy="16" r="9" />
+      <path d="M47 24 L53 24 L52 31 L48 31 Z" />
+      <path d="M44 30 C42 38 41 46 42 52 L58 52 C59 46 58 38 56 30 C53 32 47 32 44 30 Z" />
+      <path d="M44 33 C34 36 22 42 8 52 C6.5 53 7 55.5 9 55 C23 50 35 44 45 40 Z" />
+      <path d="M56 33 C66 36 78 42 92 52 C93.5 53 93 55.5 91 55 C77 50 65 44 55 40 Z" />
+      <path d="M42 51 C28 54 18 60 14 66 C24 71 38 73 50 73 C62 73 76 71 86 66 C82 60 72 54 58 51 Z" />
+      <path d="M46 72 C45 88 44 102 43 114 L48 114 C49 102 49.5 88 50 73 Z" />
+      <path d="M54 72 C55 86 55 98 52 108 C51 113 49 118 47 122 L52 123 C55 117 57 110 58 102 C59 92 59 82 58 73 Z" />
+      <path d="M43 114 L41 123 C41 125 43 126 44 124 L48 115 Z" />
+      <path d="M47 122 L45 128 C45 130 47 130.5 48 129 L52 123 Z" />
+    </svg>
+  );
+}
 
 /* Hover label: a pill with a short gold line connecting it to the cell. */
 function Label({ name, below }: { name: string; below?: boolean }) {
@@ -205,12 +230,16 @@ export default function Honeycomb({ size = 70 }: { size?: number }) {
           >
             {shape}
             <span className="absolute inset-0 flex items-center justify-center text-gold-dark transition-transform duration-200 group-hover:scale-110">
-              <CategoryIcon
-                name={category!.icon}
-                size={30}
-                className="text-gold-dark"
-                strokeWidth={1.7}
-              />
+              {category!.slug === "balet" ? (
+                <Ballerina size={26} />
+              ) : (
+                <CategoryIcon
+                  name={category!.icon}
+                  size={30}
+                  className="text-gold-dark"
+                  strokeWidth={1.7}
+                />
+              )}
             </span>
             <Label name={category!.name} below={c.below} />
           </Link>

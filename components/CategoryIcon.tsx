@@ -3,7 +3,7 @@ import {
   Hammer, Wind, Shield, Wifi, BookOpen, Globe, Music, Code,
   Calculator, Heart, Dumbbell, Apple, Camera, Palette, Headphones,
   Video, Car, Star, Scissors, Briefcase, Scale, Megaphone,
-  Languages, Baby, LayoutGrid, type LucideIcon,
+  Languages, Baby, LayoutGrid, Mail, type LucideIcon,
 } from "lucide-react";
 
 const icons: Record<string, LucideIcon> = {
@@ -16,7 +16,7 @@ const icons: Record<string, LucideIcon> = {
   headphones: Headphones, video: Video, car: Car, star: Star,
   scissors: Scissors, briefcase: Briefcase, scale: Scale,
   megaphone: Megaphone, languages: Languages, baby: Baby,
-  grid: LayoutGrid, sparkles2: Sparkles,
+  grid: LayoutGrid, sparkles2: Sparkles, mail: Mail,
   // aliases
   flower: Leaf, drama: Music, shirt: Palette,
 };
