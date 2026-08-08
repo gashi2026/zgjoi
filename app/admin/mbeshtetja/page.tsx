@@ -5,14 +5,17 @@ import { Card, StatCard, SectionTitle } from "@/components/account/Bits";
 import SupportInbox from "@/components/SupportInbox";
 import { adminNav } from "@/lib/nav";
 import { supportStatus, SUPPORT_HOURS_LABEL } from "@/lib/support-hours";
+import { redirect } from "next/navigation";
+import { currentUser } from "@/lib/server/auth";
 
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = { title: "Mbështetja — Admin Zgjoi" };
 
-const admin = { name: "Rrustem Gashi", initials: "RG", hue: 38, caption: "Administrator" };
-
 export default async function SupportAdminPage() {
+  const me = await currentUser();
+  if (!me || (me.role !== "ADMIN" && me.role !== "SUPPORT")) redirect("/hyr?next=/admin/mbeshtetja");
+  const admin = { name: me.name, initials: me.name.slice(0, 2).toUpperCase(), hue: 38, caption: "Administrator" };
   const status = supportStatus();
 
   return (
