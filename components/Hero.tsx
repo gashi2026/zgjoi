@@ -42,7 +42,7 @@ export default function Hero() {
             column, so its lower tail slides in under the search bar and
             the band climbs away toward the top right. */}
         <div className="relative hidden min-h-[560px] sm:block">
-          <div className="absolute -right-16 bottom-0 z-0 lg:-right-24">
+          <div className="absolute -right-8 bottom-0 z-0 lg:-right-10">
             <Honeycomb />
             {/* a bee setting off from beside the search bar, up into the comb */}
             <div className="pointer-events-none absolute -bottom-2 -left-10 z-20">
