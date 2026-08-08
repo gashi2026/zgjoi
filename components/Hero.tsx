@@ -21,15 +21,13 @@ export default function Hero() {
           <div className="mt-8 max-w-xl">
             <SearchBar />
           </div>
-
-        </div>
         </div>
 
         {/* Right: the comb. Anchored bottom-right and wider than its
             column, so its lower tail slides in under the search bar and
             the band climbs away toward the top right. */}
         <div className="relative hidden min-h-[520px] sm:block">
-          <div className="absolute right-0 bottom-0 z-0">
+          <div className="absolute bottom-0 right-0 z-0">
             <Honeycomb />
             {/* a bee setting off from beside the search bar, up into the comb */}
             <div className="pointer-events-none absolute -bottom-2 -left-10 z-20">
