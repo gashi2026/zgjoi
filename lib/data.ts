@@ -53,7 +53,7 @@ export const categories: Category[] = [
   { slug: "siguria", name: "Siguri & alarme", icon: "shield", count: 120, group: "Shtëpia" },
   { slug: "internet", name: "Rrjete & internet", icon: "wifi", count: 140, group: "Shtëpia" },
   // Arsimi & mësimi
-  { slug: "tutor", name: "Tutor", icon: "bookOpen", count: 380, group: "Arsimi" },
+  { slug: "tutor", name: "Kurse", icon: "bookOpen", count: 380, group: "Arsimi" },
   { slug: "gjuhe-te-huaja", name: "Gjuhë të huaja", icon: "globe", count: 290, group: "Arsimi" },
   { slug: "muzike", name: "Mësues muzike", icon: "music", count: 160, group: "Arsimi" },
   { slug: "programim", name: "Programim & IT", icon: "code", count: 210, group: "Arsimi" },
@@ -83,6 +83,7 @@ export const categories: Category[] = [
   { slug: "marketing", name: "Marketing & media", icon: "megaphone", count: 225, group: "Biznesi" },
   { slug: "perkthyes", name: "Përkthyes", icon: "languages", count: 170, group: "Biznesi" },
   { slug: "postier", name: "Postier", icon: "mail", count: 85, group: "Biznesi" },
+  { slug: "evente", name: "Organizues eventesh", icon: "calendar", count: 120, group: "Arte" },
 ];
 
 export const cities = [
