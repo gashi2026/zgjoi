@@ -1,17 +1,19 @@
+import Link from "next/link";
 import SearchBar from "./SearchBar";
 import { Bee, FlightPath } from "./Brand";
 import Honeycomb from "./Honeycomb";
+import { popularSearches } from "@/lib/data";
 
 export default function Hero() {
   return (
     <section className="relative overflow-hidden bg-cream">
       <div className="mx-auto grid max-w-7xl items-center gap-12 px-4 pb-16 pt-12 sm:px-6 lg:grid-cols-2 lg:gap-8 lg:px-8 lg:pb-24 lg:pt-20">
-        {/* Left: copy + search — sits above the comb */}
-        <div className="relative z-10 animate-fade-up">
+        {/* Left: copy + search */}
+        <div className="animate-fade-up">
           <h1 className="text-4xl font-extrabold leading-[1.1] tracking-tight text-ink sm:text-5xl lg:text-[3.4rem]">
-            Gjej profesionist për
+            Gjej profesionistin
             <br />
-            çdo shërbim. <span className="text-gold">Lehtë.</span>
+            e duhur. <span className="text-gold">Lehtë.</span>
           </h1>
           <p className="mt-5 max-w-md text-base leading-relaxed text-muted sm:text-lg">
             Zgjoi është platforma më e besuar në Kosovë për të gjetur dhe
@@ -22,20 +24,27 @@ export default function Hero() {
             <SearchBar />
           </div>
 
+          <div className="mt-5 flex items-center gap-3 overflow-x-auto no-scrollbar">
+            <span className="shrink-0 text-sm font-bold text-ink">Popullore:</span>
+            {popularSearches.slice(0, 6).map((s) => (
+              <Link
+                key={s}
+                href={`/kerko?q=${encodeURIComponent(s)}`}
+                className="shrink-0 rounded-full border border-line bg-white px-4 py-2 text-sm text-muted transition-colors hover:border-gold hover:text-gold-dark"
+              >
+                {s}
+              </Link>
+            ))}
+          </div>
         </div>
 
-        {/* Right: the comb. It is anchored to the bottom right and is wider
-            than its column, so its lower tail slides in under the search bar
-            and the band climbs away to the top right. */}
-        <div className="relative hidden min-h-[510px] sm:block">
-          <div className="absolute bottom-0 right-0 z-0">
-            <Honeycomb />
-            {/* a bee setting off from beside the search bar, up into the comb */}
-            <div className="pointer-events-none absolute -bottom-4 left-2 z-20">
-              <Bee size={44} className="animate-bee-hover" />
-              <FlightPath className="absolute -top-6 left-10" />
-            </div>
+        {/* Right: honeycomb composition — bottom-left to top-right */}
+        <div className="relative mx-auto hidden w-full max-w-[560px] justify-center sm:flex">
+          <div className="absolute -top-4 right-2 z-10">
+            <FlightPath className="absolute -left-[120px] top-6 rotate-180" />
+            <Bee size={50} className="animate-bee-hover" />
           </div>
+          <Honeycomb />
         </div>
       </div>
     </section>
