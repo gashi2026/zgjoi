@@ -82,6 +82,7 @@ export const categories: Category[] = [
   { slug: "avokat", name: "Avokat", icon: "scale", count: 190, group: "Biznesi" },
   { slug: "marketing", name: "Marketing & media", icon: "megaphone", count: 225, group: "Biznesi" },
   { slug: "perkthyes", name: "Përkthyes", icon: "languages", count: 170, group: "Biznesi" },
+  { slug: "postier", name: "Postier", icon: "mail", count: 85, group: "Biznesi" },
 ];
 
 export const cities = [
