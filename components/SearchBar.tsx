@@ -28,7 +28,7 @@ export default function SearchBar({
     if (query.trim().length < 1) { setQuerySuggestions([]); return; }
     const q = query.toLowerCase();
     const matches = categories
-      .filter((c) => c.name.toLowerCase().includes(q))
+      .filter((c) => c.name.toLowerCase().startsWith(q))
       .slice(0, 6)
       .map((c) => c.name);
     setQuerySuggestions(matches);

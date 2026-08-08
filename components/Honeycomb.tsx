@@ -51,10 +51,12 @@ const SERVICES: Record<string, string> = {
   "2.5,4": "elektricist",
   "1,5": "hidraulik",
   "3,5": "ndertim",
-  "-1.5,4": "tutor",
   "0,5": "nane",
   "0.5,6": "parukeri",
+  "1.5,6": "makeup",
   "2.5,6": "kujdes-pleq",
+  "0,7": "tutor",
+  "2,7": "evente",
 };
 
 const BEE_AT = "3,3";
