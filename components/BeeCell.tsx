@@ -7,22 +7,39 @@ import { HEX_D } from "@/lib/hex";
 
 type Flyer = {
   id: number;
-  top: number;
+  x: number;   // % of viewport width — heart point
+  y: number;   // % of viewport height — heart point
   size: number;
-  duration: number;
   delay: number;
-  bob: number;
+  duration: number;
 };
 
+/* Parametric heart — returns normalised (x,y) in [0,1] */
+function heartPoint(t: number): [number, number] {
+  const a = t * 2 * Math.PI;
+  const hx = 16 * Math.pow(Math.sin(a), 3);
+  const hy = -(13 * Math.cos(a) - 5 * Math.cos(2 * a) - 2 * Math.cos(3 * a) - Math.cos(4 * a));
+  // hx in [-16,16], hy in [-13,18] → normalise to [0,1]
+  return [(hx + 16) / 32, (hy + 13) / 31];
+}
+
 function makeSwarm(seed: number): Flyer[] {
-  return Array.from({ length: 14 }, (_, i) => ({
-    id: seed * 100 + i,
-    top: 6 + Math.random() * 78,
-    size: 26 + Math.random() * 30,
-    duration: 2.1 + Math.random() * 1.6,
-    delay: Math.random() * 0.9,
-    bob: 0.45 + Math.random() * 0.4,
-  }));
+  const count = 22;
+  return Array.from({ length: count }, (_, i) => {
+    const t = i / count;
+    const [hx, hy] = heartPoint(t + seed * 0.07);
+    // centre the heart in the viewport with some margin
+    const cx = 30 + hx * 40; // 30%–70% of width
+    const cy = 20 + hy * 55; // 20%–75% of height
+    return {
+      id: seed * 100 + i,
+      x: cx,
+      y: cy,
+      size: 20 + Math.random() * 18,
+      delay: i * 0.07,
+      duration: 1.2 + Math.random() * 0.4,
+    };
+  });
 }
 
 export default function BeeCell({ size, height }: { size: number; height: number }) {
@@ -41,7 +58,8 @@ export default function BeeCell({ size, height }: { size: number; height: number
     seed.current += 1;
     setSwarm(makeSwarm(seed.current));
     if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => setSwarm([]), 4200);
+    // stay visible for 2.4 s then fade out
+    timer.current = setTimeout(() => setSwarm([]), 3200);
   };
 
   return (
@@ -74,21 +92,47 @@ export default function BeeCell({ size, height }: { size: number; height: number
         </span>
         <span className="pointer-events-none absolute bottom-full left-1/2 z-30 -mb-1.5 -translate-x-1/2 opacity-0 transition-all duration-200 group-hover:mb-0.5 group-hover:opacity-100">
           <span className="block whitespace-nowrap rounded-full border border-gold bg-white px-3 py-1 text-xs font-bold text-ink shadow-lift">
-            Kliko mua
+            Kliko mua 🐝
           </span>
           <span className="mx-auto block h-3.5 w-[2px] bg-gold" />
         </span>
       </button>
 
       {mounted && swarm.length > 0 && createPortal(
-        <div className="pointer-events-none fixed inset-0 z-[100] overflow-hidden" aria-hidden="true">
+        <div
+          className="pointer-events-none fixed inset-0 z-[100] overflow-hidden"
+          aria-hidden="true"
+          style={{ animation: "bee-heart-fade 3.2s ease-out forwards" }}
+        >
+          <style>{`
+            @keyframes bee-heart-fade {
+              0%   { opacity: 0 }
+              15%  { opacity: 1 }
+              70%  { opacity: 1 }
+              100% { opacity: 0 }
+            }
+            @keyframes bee-to-heart {
+              0%   { transform: translate(-50vw, 60vh) scale(0.3); opacity: 0 }
+              40%  { opacity: 1 }
+              80%  { opacity: 1 }
+              100% { transform: translate(0, 0) scale(1); opacity: 1 }
+            }
+            @keyframes bee-bob-small {
+              0%, 100% { transform: translateY(0) rotate(-5deg); }
+              50%       { transform: translateY(-6px) rotate(5deg); }
+            }
+          `}</style>
           {swarm.map((f) => (
             <span
               key={f.id}
-              className="absolute left-0 animate-swarm-fly"
-              style={{ top: `${f.top}vh`, animationDuration: `${f.duration}s`, animationDelay: `${f.delay}s` }}
+              className="absolute"
+              style={{
+                left: `${f.x}vw`,
+                top: `${f.y}vh`,
+                animation: `bee-to-heart ${f.duration}s ease-out ${f.delay}s both`,
+              }}
             >
-              <span className="block animate-swarm-bob" style={{ animationDuration: `${f.bob}s` }}>
+              <span style={{ display: "block", animation: `bee-bob-small 0.6s ease-in-out infinite` }}>
                 <Bee size={f.size} />
               </span>
             </span>
