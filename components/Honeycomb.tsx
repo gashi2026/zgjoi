@@ -48,60 +48,67 @@ type Cell = {
    to the top-right, with faint ghost cells trailing off both ends —
    same composition as the live site, now with more categories. */
 const CELLS: Cell[] = [
-  // row 6 — small fading tail bottom
-  { col: 1, row: 6, faint: 2 },
-  { col: 2, row: 6, faint: 3 },
+  /* Reverse-S band: empty ghosts start under the search bar (bottom-left),
+     the band sweeps right, pulls back left through the middle, then sweeps
+     right again to the top-right tip. Only barely-visible ghosts sit near
+     the right edge so nothing ever crops into a half button. */
 
-  // row 5 — bottom of the band
-  { col: 0, row: 5, faint: 2 },
+  // row 6 — ghost tail under the search bar
+  { col: -1.5, row: 6, faint: 3 },
+  { col: -0.5, row: 6, faint: 2 },
+  { col: 0.5, row: 6, faint: 3 },
+
+  // row 5 — band begins, sweeping right
+  { col: -1, row: 5, faint: 2 },
+  { col: 0, row: 5, faint: 1 },
   { col: 1, row: 5, fill: "#FFF3CF", icon: <CategoryIcon name="home" size={30} strokeWidth={1.7} />, label: "Ndërtim", href: "/kerko?kategoria=ndertim" },
   { col: 2, row: 5, fill: "#FFFFFF", icon: <CategoryIcon name="droplets" size={28} strokeWidth={1.7} />, label: "Hidraulik", href: "/kerko?kategoria=hidraulik" },
-  { col: 3, row: 5, faint: 1 },
-  { col: 4, row: 5, faint: 3 },
+  { col: 3, row: 5, faint: 2 },
 
-  // row 4
+  // row 4 — still sweeping right
+  { col: -0.5, row: 4, faint: 3 },
   { col: 0.5, row: 4, faint: 1 },
   { col: 1.5, row: 4, fill: "#FFF3CF", icon: <CategoryIcon name="paintbrush" size={28} strokeWidth={1.7} />, label: "Piktor", href: "/kerko?kategoria=piktor" },
   { col: 2.5, row: 4, fill: "#FFFFFF", icon: <CategoryIcon name="zap" size={28} strokeWidth={1.7} />, label: "Elektricist", href: "/kerko?kategoria=elektricist" },
   { col: 3.5, row: 4, fill: "#FFF3CF", icon: <CategoryIcon name="sparkles" size={28} strokeWidth={1.7} />, label: "Pastrim", href: "/kerko?kategoria=pastrim" },
   { col: 4.5, row: 4, faint: 2 },
 
-  // row 3 — bee in the middle
-  { col: 0, row: 3, faint: 3 },
-  { col: 1, row: 3, faint: 1 },
+  // row 3 — rightmost bulge of the lower curve, bee at heart
+  { col: 1, row: 3, faint: 2 },
   { col: 2, row: 3, fill: "#FFFFFF", icon: <CategoryIcon name="truck" size={26} strokeWidth={1.7} />, label: "Transport", href: "/kerko?kategoria=transport" },
   { col: 3, row: 3, bee: true },
   { col: 4, row: 3, fill: "#FFFFFF", icon: <CategoryIcon name="leaf" size={28} strokeWidth={1.7} />, label: "Kopsht", href: "/kerko?kategoria=kopsht" },
-  { col: 5, row: 3, faint: 1 },
+  { col: 5, row: 3, faint: 2 },
   { col: 6, row: 3, faint: 3 },
 
-  // row 2
-  { col: 1.5, row: 2, faint: 2 },
-  { col: 2.5, row: 2, fill: "#FFFFFF", icon: <CategoryIcon name="hammer" size={26} strokeWidth={1.7} />, label: "Mobilje", href: "/kerko?kategoria=mobilje" },
-  { col: 3.5, row: 2, fill: "#FFF3CF", icon: <Ballerina size={23} />, label: "Balet", href: "/kerko?kategoria=balet" },
-  { col: 4.5, row: 2, fill: "#FFFFFF", icon: <CategoryIcon name="baby" size={26} strokeWidth={1.7} />, label: "Dado", href: "/kerko?kategoria=nane" },
-  { col: 5.5, row: 2, faint: 1 },
-  { col: 6.5, row: 2, faint: 3 },
+  // row 2 — the S pulls back left
+  { col: 0.5, row: 2, faint: 2 },
+  { col: 1.5, row: 2, fill: "#FFFFFF", icon: <CategoryIcon name="hammer" size={26} strokeWidth={1.7} />, label: "Mobilje", href: "/kerko?kategoria=mobilje" },
+  { col: 2.5, row: 2, fill: "#FFF3CF", icon: <Ballerina size={23} />, label: "Balet", href: "/kerko?kategoria=balet" },
+  { col: 3.5, row: 2, fill: "#FFFFFF", icon: <CategoryIcon name="baby" size={26} strokeWidth={1.7} />, label: "Dado", href: "/kerko?kategoria=nane" },
+  { col: 4.5, row: 2, faint: 1 },
+  { col: 5.5, row: 2, faint: 3 },
 
-  // row 1
+  // row 1 — sweeping right again
   { col: 2, row: 1, faint: 1 },
   { col: 3, row: 1, fill: "#FFF3CF", icon: <CategoryIcon name="heart" size={25} strokeWidth={1.7} />, label: "Kujdesi", href: "/kerko?kategoria=kujdes-pleq" },
   { col: 4, row: 1, fill: "#FFFFFF", icon: <CategoryIcon name="camera" size={26} strokeWidth={1.7} />, label: "Fotograf", href: "/kerko?kategoria=fotograf" },
-  { col: 5, row: 1, fill: "#FFF3CF", icon: <CategoryIcon name="bookOpen" size={26} strokeWidth={1.7} />, label: "Tutor", href: "/kerko?kategoria=tutor" },
-  { col: 6, row: 1, faint: 2 },
+  { col: 5, row: 1, faint: 2 },
+  { col: 6, row: 1, faint: 3 },
 
   // row 0 — top-right tip
-  { col: 3.5, row: 0, faint: 1 },
+  { col: 2.5, row: 0, faint: 2 },
+  { col: 3.5, row: 0, fill: "#FFF3CF", icon: <CategoryIcon name="bookOpen" size={26} strokeWidth={1.7} />, label: "Tutor", href: "/kerko?kategoria=tutor" },
   { col: 4.5, row: 0, fill: "#FFFFFF", icon: <CategoryIcon name="car" size={26} strokeWidth={1.7} />, label: "Shofer", href: "/kerko?kategoria=shofer-personal" },
-  { col: 5.5, row: 0, faint: 1 },
-  { col: 6.5, row: 0, faint: 3 },
+  { col: 5.5, row: 0, faint: 3 },
 
-  // row -1 — escaping off the top
+  // row -1 — ghosts escaping off the top right
+  { col: 3, row: -1, faint: 3 },
   { col: 4, row: -1, faint: 2 },
   { col: 5, row: -1, faint: 3 },
 ];
 
-export default function Honeycomb({ size = 78 }: { size?: number }) {
+export default function Honeycomb({ size = 74 }: { size?: number }) {
   const h = size * RATIO;
   const dx = size;
   const dy = h * 0.75;
