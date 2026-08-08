@@ -29,6 +29,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, redirect });
   } catch (err) {
     console.error("Login error:", err);
-    return NextResponse.json({ ok: false, message: "Ndodhi një gabim. Provo sërish." });
+    const detail = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ ok: false, message: `Gabim teknik: ${detail.slice(0, 180)}` });
   }
 }
