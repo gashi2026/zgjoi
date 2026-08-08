@@ -1,48 +1,30 @@
-import {
-  LayoutGrid,
-  Inbox,
-  Briefcase,
-  Wallet,
-  UserRound,
-  MessageSquare,
-  Heart,
-  Settings,
-  CalendarDays,
-  FileText,
-  Users,
-  Receipt,
-  ShieldAlert,
-  Headset,
-  Layers,
-  Target,
-} from "lucide-react";
 import type { NavItem } from "@/components/AccountShell";
 
 export const proNav: NavItem[] = [
-  { href: "/pro/paneli", label: "Paneli", icon: LayoutGrid },
-  { href: "/pro/kerkesat", label: "Kërkesat", icon: Inbox },
-  { href: "/pro/punet", label: "Punët", icon: Briefcase },
-  { href: "/pro/kalendari", label: "Kalendari", icon: CalendarDays },
-  { href: "/pro/mesazhet", label: "Mesazhet", icon: MessageSquare },
-  { href: "/pro/te-ardhurat", label: "Të ardhurat", icon: Wallet },
-  { href: "/pro/buxheti", label: "Buxheti i lead-eve", icon: Target },
-  { href: "/pro/profili", label: "Profili im", icon: UserRound },
+  { href: "/pro/paneli", label: "Paneli", icon: "layoutGrid" },
+  { href: "/pro/kerkesat", label: "Kërkesat", icon: "inbox" },
+  { href: "/pro/punet", label: "Punët", icon: "briefcase" },
+  { href: "/pro/kalendari", label: "Kalendari", icon: "calendarDays" },
+  { href: "/pro/mesazhet", label: "Mesazhet", icon: "messageSquare" },
+  { href: "/pro/te-ardhurat", label: "Të ardhurat", icon: "wallet" },
+  { href: "/pro/buxheti", label: "Buxheti i lead-eve", icon: "target" },
+  { href: "/pro/profili", label: "Profili im", icon: "userRound" },
 ];
 
 export const clientNav: NavItem[] = [
-  { href: "/llogaria", label: "Paneli", icon: LayoutGrid },
-  { href: "/llogaria/kerkesat", label: "Kërkesat e mia", icon: Briefcase },
-  { href: "/llogaria/ofertat", label: "Ofertat", icon: FileText },
-  { href: "/llogaria/mesazhet", label: "Mesazhet", icon: MessageSquare },
-  { href: "/llogaria/te-preferuarit", label: "Të preferuarit", icon: Heart },
-  { href: "/llogaria/cilesimet", label: "Cilësimet", icon: Settings },
+  { href: "/llogaria", label: "Paneli", icon: "layoutGrid" },
+  { href: "/llogaria/kerkesat", label: "Kërkesat e mia", icon: "briefcase" },
+  { href: "/llogaria/ofertat", label: "Ofertat", icon: "fileText" },
+  { href: "/llogaria/mesazhet", label: "Mesazhet", icon: "messageSquare" },
+  { href: "/llogaria/te-preferuarit", label: "Të preferuarit", icon: "heart" },
+  { href: "/llogaria/cilesimet", label: "Cilësimet", icon: "settings" },
 ];
 
 export const adminNav: NavItem[] = [
-  { href: "/admin", label: "Paneli", icon: LayoutGrid },
-  { href: "/admin/perdoruesit", label: "Përdoruesit", icon: Users },
-  { href: "/admin/kategorite", label: "Kategoritë", icon: Layers },
-  { href: "/admin/transaksionet", label: "Transaksionet", icon: Receipt },
-  { href: "/admin/vleresimet", label: "Vlerësimet", icon: ShieldAlert },
-  { href: "/admin/mbeshtetja", label: "Mbështetja", icon: Headset },
+  { href: "/admin", label: "Paneli", icon: "layoutGrid" },
+  { href: "/admin/perdoruesit", label: "Përdoruesit", icon: "users" },
+  { href: "/admin/kategorite", label: "Kategoritë", icon: "layers" },
+  { href: "/admin/transaksionet", label: "Transaksionet", icon: "receipt" },
+  { href: "/admin/vleresimet", label: "Vlerësimet", icon: "shieldAlert" },
+  { href: "/admin/mbeshtetja", label: "Mbështetja", icon: "headset" },
 ];
