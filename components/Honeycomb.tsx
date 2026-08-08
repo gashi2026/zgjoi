@@ -40,7 +40,7 @@ type Cell = {
   icon?: React.ReactNode;
   label?: string;
   href?: string;
-  faint?: boolean;
+  faint?: 1 | 2 | 3;
   bee?: boolean;
 };
 
@@ -48,48 +48,71 @@ type Cell = {
    to the top-right, with faint ghost cells trailing off both ends —
    same composition as the live site, now with more categories. */
 const CELLS: Cell[] = [
+  // row 6 — far bottom tail, fading away
+  { col: 0, row: 6, faint: 3 },
+  { col: 1, row: 6, faint: 2 },
+  { col: 2, row: 6, faint: 3 },
+
   // row 5 — bottom tail (ghosts slide under the search bar)
-  { col: -1, row: 5, faint: true },
-  { col: 0, row: 5, faint: true },
+  { col: -2, row: 5, faint: 3 },
+  { col: -1, row: 5, faint: 2 },
+  { col: 0, row: 5, faint: 1 },
   { col: 1, row: 5, fill: "#FFF3CF", icon: <CategoryIcon name="home" size={34} strokeWidth={1.7} />, label: "Ndërtim", href: "/kerko?kategoria=ndertim" },
   { col: 2, row: 5, fill: "#FFFFFF", icon: <CategoryIcon name="droplets" size={32} strokeWidth={1.7} />, label: "Hidraulik", href: "/kerko?kategoria=hidraulik" },
-  { col: 3, row: 5, faint: true },
+  { col: 3, row: 5, faint: 1 },
+  { col: 4, row: 5, faint: 3 },
 
   // row 4
-  { col: -0.5, row: 4, faint: true },
-  { col: 0.5, row: 4, faint: true },
+  { col: -1.5, row: 4, faint: 3 },
+  { col: -0.5, row: 4, faint: 2 },
+  { col: 0.5, row: 4, faint: 1 },
   { col: 1.5, row: 4, fill: "#FFF3CF", icon: <CategoryIcon name="paintbrush" size={32} strokeWidth={1.7} />, label: "Piktor", href: "/kerko?kategoria=piktor" },
   { col: 2.5, row: 4, fill: "#FFFFFF", icon: <CategoryIcon name="zap" size={32} strokeWidth={1.7} />, label: "Elektricist", href: "/kerko?kategoria=elektricist" },
   { col: 3.5, row: 4, fill: "#FFF3CF", icon: <CategoryIcon name="sparkles" size={32} strokeWidth={1.7} />, label: "Pastrim", href: "/kerko?kategoria=pastrim" },
-  { col: 4.5, row: 4, faint: true },
+  { col: 4.5, row: 4, faint: 1 },
+  { col: 5.5, row: 4, faint: 3 },
 
   // row 3 — bee in the middle of the band
-  { col: 0, row: 3, faint: true },
-  { col: 1, row: 3, faint: true },
+  { col: -1, row: 3, faint: 3 },
+  { col: 0, row: 3, faint: 2 },
+  { col: 1, row: 3, faint: 1 },
   { col: 2, row: 3, fill: "#FFFFFF", icon: <CategoryIcon name="truck" size={30} strokeWidth={1.7} />, label: "Transport", href: "/kerko?kategoria=transport" },
   { col: 3, row: 3, bee: true },
   { col: 4, row: 3, fill: "#FFFFFF", icon: <CategoryIcon name="leaf" size={32} strokeWidth={1.7} />, label: "Kopsht", href: "/kerko?kategoria=kopsht" },
-  { col: 5, row: 3, faint: true },
+  { col: 5, row: 3, faint: 1 },
+  { col: 6, row: 3, faint: 2 },
+  { col: 7, row: 3, faint: 3 },
 
   // row 2
-  { col: 1.5, row: 2, faint: true },
+  { col: 0.5, row: 2, faint: 3 },
+  { col: 1.5, row: 2, faint: 2 },
   { col: 2.5, row: 2, fill: "#FFFFFF", icon: <CategoryIcon name="hammer" size={30} strokeWidth={1.7} />, label: "Mobilje", href: "/kerko?kategoria=mobilje" },
   { col: 3.5, row: 2, fill: "#FFF3CF", icon: <Ballerina size={26} />, label: "Balet", href: "/kerko?kategoria=balet" },
   { col: 4.5, row: 2, fill: "#FFFFFF", icon: <CategoryIcon name="baby" size={30} strokeWidth={1.7} />, label: "Dado", href: "/kerko?kategoria=nane" },
-  { col: 5.5, row: 2, faint: true },
+  { col: 5.5, row: 2, faint: 1 },
+  { col: 6.5, row: 2, faint: 3 },
 
   // row 1
-  { col: 2, row: 1, faint: true },
+  { col: 1, row: 1, faint: 3 },
+  { col: 2, row: 1, faint: 1 },
   { col: 3, row: 1, fill: "#FFF3CF", icon: <CategoryIcon name="heart" size={28} strokeWidth={1.7} />, label: "Kujdesi", href: "/kerko?kategoria=kujdes-pleq" },
   { col: 4, row: 1, fill: "#FFFFFF", icon: <CategoryIcon name="camera" size={30} strokeWidth={1.7} />, label: "Fotograf", href: "/kerko?kategoria=fotograf" },
   { col: 5, row: 1, fill: "#FFF3CF", icon: <CategoryIcon name="bookOpen" size={30} strokeWidth={1.7} />, label: "Tutor", href: "/kerko?kategoria=tutor" },
-  { col: 6, row: 1, faint: true },
+  { col: 6, row: 1, faint: 2 },
+  { col: 7, row: 1, faint: 3 },
 
   // row 0 — top-right tip ends with Shofer, ghosts trail off
-  { col: 3.5, row: 0, faint: true },
+  { col: 2.5, row: 0, faint: 3 },
+  { col: 3.5, row: 0, faint: 1 },
   { col: 4.5, row: 0, fill: "#FFFFFF", icon: <CategoryIcon name="car" size={30} strokeWidth={1.7} />, label: "Shofer", href: "/kerko?kategoria=shofer-personal" },
-  { col: 5.5, row: 0, faint: true },
-  { col: 6.5, row: 0, faint: true },
+  { col: 5.5, row: 0, faint: 1 },
+  { col: 6.5, row: 0, faint: 2 },
+  { col: 7.5, row: 0, faint: 3 },
+
+  // row -1 — hexes escaping off the top right
+  { col: 4, row: -1, faint: 2 },
+  { col: 5, row: -1, faint: 3 },
+  { col: 6, row: -1, faint: 3 },
 ];
 
 export default function Honeycomb({ size = 96 }: { size?: number }) {
@@ -112,7 +135,7 @@ export default function Honeycomb({ size = 96 }: { size?: number }) {
       {CELLS.map((c, i) => {
         const left = (c.col - minCol) * dx;
         const top = c.row * dy;
-        const stroke = c.faint ? "#F0E6CE" : "#FFB800";
+        const stroke = "#FFB800";
 
         if (c.bee) {
           return (
@@ -123,10 +146,16 @@ export default function Honeycomb({ size = 96 }: { size?: number }) {
         }
 
         if (c.faint) {
+          const tone =
+            c.faint === 1
+              ? { stroke: "#EFE3C8", width: 2 }
+              : c.faint === 2
+                ? { stroke: "#F4ECD9", width: 1.8 }
+                : { stroke: "#F9F3E6", width: 1.6 };
           return (
             <div key={i} className="absolute" style={{ left, top, width: size, height: h }}>
               <svg viewBox="0 0 100 115.47" width={size} height={h} aria-hidden="true">
-                <path d={HEX_D} fill="transparent" stroke={stroke} strokeWidth={2} strokeLinejoin="round" />
+                <path d={HEX_D} fill="transparent" stroke={tone.stroke} strokeWidth={tone.width} strokeLinejoin="round" />
               </svg>
             </div>
           );
