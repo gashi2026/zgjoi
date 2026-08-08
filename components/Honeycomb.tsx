@@ -1,135 +1,114 @@
-"use client";
+import {
+  Home,
+  Zap,
+  Droplets,
+  Paintbrush,
+  Wrench,
+  Sparkles,
+  Truck,
+  Leaf,
+  Camera,
+  Music,
+  Baby,
+  BookOpen,
+  Car,
+  Heart,
+} from "lucide-react";
+import { Bee } from "./Brand";
 
-import { useRef, useState } from "react";
+const HEX_D = "M50 0 L100 28.87 L100 86.6 L50 115.47 L0 86.6 L0 28.87 Z";
+const RATIO = 1.1547;
 
-const HEX_R = 38;
-const HEX_W = HEX_R * 2;
-const HEX_H = Math.sqrt(3) * HEX_R;
-const COLS = 7;
-const ROWS = 5;
+type Cell = {
+  col: number;
+  row: number;
+  fill?: string;
+  stroke?: string;
+  icon?: React.ReactNode;
+  faint?: boolean;
+};
 
-const CATEGORY_LABELS = [
-  "Elektricist", "Hidraulik", "Pastrim", "Piktor", "Ndërtim",
-  "Transport", "Tutor", "Fotograf", "Kopsht", "Balet",
-  "Nënë", "Florist", "Shofer", "Dekorues", "Muzikë",
-  "Avokat", "Riparime", "Klimatizim", "Marketing", "IT",
+const CELLS: Cell[] = [
+  // row 0
+  { col: 0.5, row: 0, fill: "#FFFFFF", icon: <Zap size={34} strokeWidth={1.7} /> },
+  { col: 1.5, row: 0, fill: "#FFF3CF", icon: <Home size={38} strokeWidth={1.7} /> },
+  { col: 2.5, row: 0, fill: "#FFFFFF", icon: <Camera size={32} strokeWidth={1.7} /> },
+  { col: 3.5, row: 0, faint: true },
+  // row 1
+  { col: 0, row: 1, fill: "#FFFFFF", icon: <Paintbrush size={34} strokeWidth={1.7} /> },
+  { col: 1, row: 1, fill: "#FFF3CF", icon: <Bee size={46} /> },
+  { col: 2, row: 1, fill: "#FFFFFF", icon: <Droplets size={34} strokeWidth={1.7} /> },
+  { col: 3, row: 1, fill: "#FFF3CF", icon: <Music size={30} strokeWidth={1.7} /> },
+  { col: 4, row: 1, faint: true },
+  // row 2
+  { col: -0.5, row: 2, faint: true },
+  { col: 0.5, row: 2, fill: "#FFF3CF", icon: <Wrench size={34} strokeWidth={1.7} /> },
+  { col: 1.5, row: 2, fill: "#FFFFFF", icon: <Sparkles size={34} strokeWidth={1.7} /> },
+  { col: 2.5, row: 2, fill: "#FFF3CF", icon: <Leaf size={34} strokeWidth={1.7} /> },
+  { col: 3.5, row: 2, fill: "#FFFFFF", icon: <Baby size={30} strokeWidth={1.7} /> },
+  // row 3
+  { col: 0, row: 3, faint: true },
+  { col: 1, row: 3, fill: "#FFFFFF", icon: <Truck size={30} strokeWidth={1.7} /> },
+  { col: 2, row: 3, fill: "#FFF3CF", icon: <BookOpen size={30} strokeWidth={1.7} /> },
+  { col: 3, row: 3, fill: "#FFFFFF", icon: <Car size={30} strokeWidth={1.7} /> },
+  { col: 4, row: 3, faint: true },
+  // row 4 — trailing edge
+  { col: 1.5, row: 4, faint: true },
+  { col: 2.5, row: 4, fill: "#FFF3CF", icon: <Heart size={28} strokeWidth={1.7} /> },
+  { col: 3.5, row: 4, faint: true },
 ];
 
-function hexCenter(col: number, row: number) {
-  const x = col * HEX_W * 0.75 + HEX_R;
-  const y = row * HEX_H + (col % 2 === 1 ? HEX_H / 2 : 0) + HEX_H / 2;
-  return { x, y };
-}
+export default function Honeycomb({ size = 104 }: { size?: number }) {
+  const h = size * RATIO;
+  const dx = size;
+  const dy = h * 0.75;
 
-function hexPoints(cx: number, cy: number, r: number) {
-  return Array.from({ length: 6 }, (_, i) => {
-    const a = (Math.PI / 180) * (60 * i - 30);
-    return `${cx + r * Math.cos(a)},${cy + r * Math.sin(a)}`;
-  }).join(" ");
-}
-
-const GRID_W = COLS * HEX_W * 0.75 + HEX_R * 0.5;
-const GRID_H = ROWS * HEX_H + HEX_H;
-
-type Cell = { col: number; row: number; x: number; y: number; label?: string; variant: "gold" | "honey" | "white" };
-
-function buildCells(): Cell[] {
-  const cells: Cell[] = [];
-  let labelIdx = 0;
-  for (let col = 0; col < COLS; col++) {
-    for (let row = 0; row < ROWS; row++) {
-      const { x, y } = hexCenter(col, row);
-      const hasCat = (col + row) % 3 === 0 && labelIdx < CATEGORY_LABELS.length;
-      const variant: Cell["variant"] =
-        hasCat ? "gold" : (col + row) % 4 === 0 ? "honey" : "white";
-      cells.push({ col, row, x, y, label: hasCat ? CATEGORY_LABELS[labelIdx++] : undefined, variant });
-    }
-  }
-  return cells;
-}
-
-const CELLS = buildCells();
-
-export default function Honeycomb() {
-  const [active, setActive] = useState<number | null>(null);
-  const [bees, setBees] = useState<{ id: number; x: number; y: number }[]>([]);
-  const nextBee = useRef(0);
-
-  function handleClick(idx: number, x: number, y: number) {
-    setActive(idx === active ? null : idx);
-    const id = nextBee.current++;
-    setBees((b) => [...b, { id, x, y }]);
-    setTimeout(() => setBees((b) => b.filter((bee) => bee.id !== id)), 900);
-  }
+  const cols = CELLS.map((c) => c.col);
+  const rows = CELLS.map((c) => c.row);
+  const minCol = Math.min(...cols);
+  const width = (Math.max(...cols) - minCol) * dx + size;
+  const height = (Math.max(...rows) - Math.min(...rows)) * dy + h;
 
   return (
-    <div className="w-full">
-      <svg
-        viewBox={`0 0 ${GRID_W} ${GRID_H}`}
-        className="w-full h-auto"
-        aria-hidden="true"
-      >
-        {CELLS.map((cell, idx) => {
-          const isActive = active === idx;
-          const fill =
-            isActive ? "#FFB800" :
-            cell.variant === "gold" ? "#FFF3CF" :
-            cell.variant === "honey" ? "#FFFCF5" : "#FFFFFF";
-          const stroke = isActive ? "#FFB800" : cell.variant === "gold" ? "#FFD966" : "#EDE8E1";
-
-          return (
-            <g
-              key={idx}
-              onClick={() => handleClick(idx, cell.x, cell.y)}
-              className="cursor-pointer"
-            >
-              <polygon
-                points={hexPoints(cell.x, cell.y, HEX_R - 2)}
-                fill={fill}
-                stroke={stroke}
-                strokeWidth={isActive ? 2 : 1}
-                style={{ transition: "all 0.2s" }}
-              />
-              {cell.label && (
-                <text
-                  x={cell.x}
-                  y={cell.y + 5}
-                  textAnchor="middle"
-                  fontSize={9}
-                  fontWeight={700}
-                  fill={isActive ? "#5A3800" : "#8C8278"}
-                  style={{ pointerEvents: "none", userSelect: "none" }}
-                >
-                  {cell.label}
-                </text>
-              )}
-            </g>
-          );
-        })}
-
-        {bees.map((bee) => (
-          <text
-            key={bee.id}
-            x={bee.x}
-            y={bee.y}
-            fontSize={20}
-            textAnchor="middle"
-            style={{
-              animation: "bee-float 0.9s ease-out forwards",
-              pointerEvents: "none",
-            }}
+    <div
+      className="relative select-none"
+      style={{ width, height }}
+      aria-hidden="true"
+    >
+      {CELLS.map((c, i) => {
+        const left = (c.col - minCol) * dx;
+        const top = c.row * dy;
+        const stroke = c.faint ? "#F0E6CE" : c.stroke ?? "#FFB800";
+        return (
+          <div
+            key={i}
+            className="absolute"
+            style={{ left, top, width: size, height: h }}
           >
-            🐝
-          </text>
-        ))}
-      </svg>
-
-      <style>{`
-        @keyframes bee-float {
-          0% { opacity: 1; transform: translateY(0); }
-          100% { opacity: 0; transform: translateY(-60px); }
-        }
-      `}</style>
+            <svg
+              viewBox="0 0 100 115.47"
+              width={size}
+              height={h}
+              className={
+                c.faint ? "" : "drop-shadow-[0_6px_14px_rgba(232,157,0,0.12)]"
+              }
+            >
+              <path
+                d={HEX_D}
+                fill={c.faint ? "transparent" : c.fill ?? "#FFFFFF"}
+                stroke={stroke}
+                strokeWidth={c.faint ? 2 : 2.5}
+                strokeLinejoin="round"
+              />
+            </svg>
+            {c.icon && (
+              <div className="absolute inset-0 flex items-center justify-center text-gold-dark">
+                {c.icon}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
