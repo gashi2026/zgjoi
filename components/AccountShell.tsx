@@ -2,10 +2,22 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { LucideIcon } from "lucide-react";
+import {
+  LayoutGrid, Inbox, Briefcase, Wallet, UserRound, MessageSquare,
+  Heart, Settings, CalendarDays, FileText, Users, Receipt,
+  ShieldAlert, Headset, Layers, Target, type LucideIcon,
+} from "lucide-react";
 import { Avatar } from "./Brand";
 
-export type NavItem = { href: string; label: string; icon: LucideIcon };
+const navIcons: Record<string, LucideIcon> = {
+  layoutGrid: LayoutGrid, inbox: Inbox, briefcase: Briefcase,
+  wallet: Wallet, userRound: UserRound, messageSquare: MessageSquare,
+  heart: Heart, settings: Settings, calendarDays: CalendarDays,
+  fileText: FileText, users: Users, receipt: Receipt,
+  shieldAlert: ShieldAlert, headset: Headset, layers: Layers, target: Target,
+};
+
+export type NavItem = { href: string; label: string; icon: string };
 
 export default function AccountShell({
   title,
@@ -42,7 +54,8 @@ export default function AccountShell({
               className="mt-4 flex gap-2 overflow-x-auto no-scrollbar lg:flex-col"
               aria-label="Llogaria"
             >
-              {nav.map(({ href, label, icon: Icon }) => {
+              {nav.map(({ href, label, icon }) => {
+                const Icon = navIcons[icon];
                 const active = pathname === href;
                 return (
                   <Link
