@@ -1,0 +1,476 @@
+// Zgjoi — database schema
+// Postgres (Supabase / Neon / Railway all work).
+// After editing: npx prisma migrate dev --name <emri>
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum Role {
+  CLIENT
+  PRO
+  ADMIN
+  SUPPORT
+}
+
+enum VerificationState {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum RequestState {
+  OPEN        // published, collecting quotes
+  QUOTED      // has at least one quote
+  BOOKED      // a quote was accepted
+  IN_PROGRESS
+  COMPLETED   // client confirmed
+  CANCELLED
+  DISPUTED
+}
+
+enum QuoteState {
+  SENT
+  ACCEPTED
+  DECLINED
+  WITHDRAWN
+}
+
+enum EscrowStrategy {
+  AUTH_HOLD           // short jobs: authorise now, capture on completion
+  DESTINATION_CHARGE  // long jobs: charge now, hold in the pro's locked ledger
+}
+
+enum PaymentState {
+  PENDING       // intent created, nothing charged yet
+  AUTHORISED    // AUTH_HOLD: card authorised, funds frozen but not taken
+  HELD          // funds are with us / locked in the connected account
+  RELEASED      // paid out to the professional
+  REFUNDED
+  DISPUTED
+  EXPIRED       // authorisation lapsed before the job finished
+}
+
+enum PayoutState {
+  SCHEDULED
+  PAID
+  FAILED
+}
+
+enum ReviewState {
+  PUBLISHED
+  FLAGGED
+  REMOVED
+}
+
+enum SupportState {
+  OPEN
+  WAITING       // waiting on the customer
+  RESOLVED
+}
+
+// ---------------------------------------------------------------- users
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  passwordHash  String
+  name          String
+  phone         String?
+  // National ID (Numri personal). Stored encrypted — see lib/server/crypto.ts.
+  // Never selected into client components.
+  personalNoEnc String?
+  personalNoLast4 String?
+  role          Role      @default(CLIENT)
+  city          String?
+  emailVerified DateTime?
+  suspendedAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  proProfile    ProProfile?
+  requests      ServiceRequest[] @relation("ClientRequests")
+  reviewsWritten Review[]        @relation("ReviewAuthor")
+  messages      Message[]
+  supportTickets SupportTicket[]
+  supportMessages SupportMessage[]
+  sessions      Session[]
+  auditLogs     AuditLog[]
+
+  @@index([role])
+  @@index([email])
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// ------------------------------------------------------ professionals
+
+model ProProfile {
+  id             String            @id @default(cuid())
+  userId         String            @unique
+  slug           String            @unique
+  categorySlug   String
+  about          String            @db.Text
+  priceFrom      Int               // in cents
+  experience     String?
+  serviceCities  String[]
+  radiusKm       Int               @default(25)
+  verification   VerificationState @default(PENDING)
+  verifiedAt     DateTime?
+  ibanEnc        String?           // encrypted at rest
+  ibanLast4      String?
+  /// Stripe Connect (Express) account. Payouts are set to manual so funds
+  /// stay locked in the ledger until we release them.
+  stripeAccountId    String?       @unique
+  stripeOnboarded    Boolean       @default(false)
+  stripePayoutsManual Boolean      @default(false)
+  ratingAvg      Float             @default(0)
+  ratingCount    Int               @default(0)
+  responseRate   Int               @default(0)
+  // lead budget (monetisation)
+  weeklyBudget   Int               @default(4000) // cents
+  weeklySpent    Int               @default(0)
+  autoBid        Boolean           @default(true)
+  budgetResetAt  DateTime          @default(now())
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  services  ProService[]
+  documents ProDocument[]
+  quotes    Quote[]
+  jobs      ServiceRequest[] @relation("ProJobs")
+  reviews   Review[]
+  payouts   Payout[]
+  leadCharges LeadCharge[]
+  availability Availability[]
+
+  @@index([categorySlug])
+  @@index([verification])
+}
+
+model ProService {
+  id        String @id @default(cuid())
+  profileId String
+  name      String
+  price     Int    // cents
+  profile   ProProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@index([profileId])
+}
+
+model ProDocument {
+  id        String   @id @default(cuid())
+  profileId String
+  kind      String   // "ID" | "CERTIFICATE" | "INSURANCE"
+  url       String
+  reviewed  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  profile   ProProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@index([profileId])
+}
+
+model Availability {
+  id        String @id @default(cuid())
+  profileId String
+  weekday   Int    // 0 = Monday
+  startMin  Int    // minutes from midnight
+  endMin    Int
+  profile   ProProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@unique([profileId, weekday])
+}
+
+// --------------------------------------------------------- categories
+
+model Category {
+  id        String   @id @default(cuid())
+  slug      String   @unique
+  name      String
+  icon      String
+  position  Int      @default(0)
+  active    Boolean  @default(true)
+  questions Question[]
+}
+
+model Question {
+  id         String  @id @default(cuid())
+  categoryId String
+  key        String
+  label      String
+  type       String  // "single" | "multi" | "number" | "text"
+  options    String[]
+  required   Boolean @default(true)
+  position   Int     @default(0)
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([categoryId, key])
+}
+
+// ------------------------------------------------------------ requests
+
+model ServiceRequest {
+  id           String       @id @default(cuid())
+  clientId     String
+  categorySlug String
+  title        String
+  answers      Json         // wizard answers, keyed by question.key
+  city         String
+  address      String?
+  accessNote   String?
+  timing       String
+  budgetBand   String?
+  detail       String?      @db.Text
+  state        RequestState @default(OPEN)
+  acceptedProfileId String?
+  scheduledAt  DateTime?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  client        User        @relation("ClientRequests", fields: [clientId], references: [id])
+  acceptedPro   ProProfile? @relation("ProJobs", fields: [acceptedProfileId], references: [id])
+  quotes        Quote[]
+  payment       Payment?
+  review        Review?
+  conversation  Conversation?
+  leadCharges   LeadCharge[]
+
+  @@index([clientId])
+  @@index([categorySlug, city, state])
+  @@index([state])
+}
+
+model Quote {
+  id         String     @id @default(cuid())
+  requestId  String
+  profileId  String
+  amount     Int        // cents, total
+  lines      Json       // [{label, qty, price}]
+  message    String     @db.Text
+  availableAt String?
+  duration   String?
+  warranty   String?
+  /// Working days the professional expects to need. Decides which escrow
+  /// strategy the payment uses when this quote is accepted.
+  expectedDays Int      @default(1)
+  state      QuoteState @default(SENT)
+  createdAt  DateTime   @default(now())
+
+  request ServiceRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  profile ProProfile     @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@unique([requestId, profileId])
+  @@index([profileId])
+}
+
+// ------------------------------------------------------------ payments
+
+model Payment {
+  id                    String         @id @default(cuid())
+  requestId             String         @unique
+  amount                Int            // cents, what the client pays
+  commissionBps         Int            // snapshotted when the money moves
+  commissionAmount      Int
+  proAmount             Int
+  currency              String         @default("EUR")
+
+  strategy              EscrowStrategy
+  state                 PaymentState   @default(PENDING)
+
+  stripePaymentIntentId String?        @unique
+  stripeChargeId        String?
+  stripeTransferId      String?
+  stripePayoutId        String?
+
+  authorisedAt          DateTime?
+  /// AUTH_HOLD only: the hold lapses at this moment (Stripe: 7 days).
+  authExpiresAt         DateTime?
+  heldAt                DateTime?
+  /// DESTINATION_CHARGE only: Stripe requires release or refund by this date.
+  releaseDeadline       DateTime?
+  releasedAt            DateTime?
+  refundedAt            DateTime?
+  /// Set when we have warned about an approaching deadline, so we warn once.
+  expiryWarnedAt        DateTime?
+  createdAt             DateTime       @default(now())
+
+  request ServiceRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  dispute Dispute?
+
+  @@index([state])
+  @@index([state, authExpiresAt])
+  @@index([state, releaseDeadline])
+}
+
+model Payout {
+  id         String      @id @default(cuid())
+  profileId  String
+  paymentId  String?
+  amount     Int
+  state      PayoutState @default(SCHEDULED)
+  reference  String?
+  stripePayoutId String?
+  scheduledFor DateTime
+  paidAt     DateTime?
+  createdAt  DateTime    @default(now())
+
+  profile ProProfile @relation(fields: [profileId], references: [id])
+
+  @@index([profileId, state])
+}
+
+model LeadCharge {
+  id        String   @id @default(cuid())
+  profileId String
+  requestId String
+  amount    Int      // cents
+  refunded  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  profile ProProfile     @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  request ServiceRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@unique([profileId, requestId])
+}
+
+model Dispute {
+  id         String    @id @default(cuid())
+  paymentId  String    @unique
+  openedById String
+  reason     String    @db.Text
+  resolution String?   @db.Text
+  resolvedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+}
+
+// ------------------------------------------------------------- reviews
+
+model Review {
+  id        String      @id @default(cuid())
+  requestId String      @unique
+  authorId  String
+  profileId String
+  rating    Int
+  text      String      @db.Text
+  tags      String[]
+  state     ReviewState @default(PUBLISHED)
+  flagReason String?
+  createdAt DateTime    @default(now())
+
+  request ServiceRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  author  User           @relation("ReviewAuthor", fields: [authorId], references: [id])
+  profile ProProfile     @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@index([profileId, state])
+  @@index([state])
+}
+
+model Coupon {
+  id        String    @id @default(cuid())
+  code      String    @unique
+  userId    String
+  percent   Int       @default(10)
+  usedAt    DateTime?
+  expiresAt DateTime
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+// ------------------------------------------------- messaging (job chat)
+
+model Conversation {
+  id        String   @id @default(cuid())
+  requestId String   @unique
+  createdAt DateTime @default(now())
+
+  request  ServiceRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  messages Message[]
+}
+
+model Message {
+  id             String   @id @default(cuid())
+  conversationId String
+  senderId       String
+  body           String   @db.Text
+  readAt         DateTime?
+  createdAt      DateTime @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User         @relation(fields: [senderId], references: [id])
+
+  @@index([conversationId, createdAt])
+}
+
+// ------------------------------------------------------- support chat
+
+model SupportTicket {
+  id        String       @id @default(cuid())
+  userId    String?
+  guestName String?
+  guestEmail String?
+  subject   String?
+  state     SupportState @default(OPEN)
+  // true when it arrived outside 09:00–17:00 Europe/Belgrade
+  offline   Boolean      @default(false)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  user     User?            @relation(fields: [userId], references: [id])
+  messages SupportMessage[]
+
+  @@index([state, createdAt])
+}
+
+model SupportMessage {
+  id        String   @id @default(cuid())
+  ticketId  String
+  senderId  String?  // null = guest
+  fromAgent Boolean  @default(false)
+  body      String   @db.Text
+  createdAt DateTime @default(now())
+
+  ticket SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  sender User?         @relation(fields: [senderId], references: [id])
+
+  @@index([ticketId, createdAt])
+}
+
+// --------------------------------------------------------------- misc
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  actorId   String?
+  action    String
+  target    String
+  meta      Json?
+  createdAt DateTime @default(now())
+
+  actor User? @relation(fields: [actorId], references: [id])
+
+  @@index([createdAt])
+}
+
+model Setting {
+  key   String @id
+  value Json
+}
