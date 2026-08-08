@@ -1,199 +1,219 @@
 import Link from "next/link";
 import CategoryIcon from "./CategoryIcon";
 import BeeCell from "./BeeCell";
+import { categories } from "@/lib/data";
 import { HEX_D, HEX_RATIO as RATIO } from "@/lib/hex";
 
-/* Ballerina silhouette — traced from the classic pose: bun, arms out,
-   wide tutu, crossed legs en pointe. Filled in the brand gold. */
-export function Ballerina({ size = 40 }: { size?: number }) {
+type Cell = {
+  col: number; // horizontal step (odd rows are offset by half a step)
+  row: number; // vertical step
+  slug?: string; // links to a service category
+  bee?: boolean;
+  honey?: boolean; // honey fill instead of white
+  below?: boolean; // show the hover label below instead of above
+  fade?: number; // opacity for filler cells, 0–1
+};
+
+/* The comb climbs from beside the search bar at the lower left up to the
+   top right. Even rows sit on whole steps, odd rows are offset by half a
+   step so every cell locks against its neighbours. Gold cells are the
+   services; the filler around them thins out toward the edges. */
+const ROWS: { row: number; offset: number; cols: number[] }[] = [
+  { row: 0, offset: 0.5, cols: [3, 4, 5, 6] },
+  { row: 1, offset: 0, cols: [2, 3, 4, 5, 6] },
+  { row: 2, offset: 0.5, cols: [2, 3, 4, 5, 6] },
+  { row: 3, offset: 0, cols: [1, 2, 3, 4, 5] },
+  { row: 4, offset: 0.5, cols: [-2, -1, 0, 1, 2, 3, 4, 5] },
+  { row: 5, offset: 0, cols: [-3, -2, -1, 0, 1, 2, 3, 4] },
+  { row: 6, offset: 0.5, cols: [-3, -2, -1, 0, 1, 2, 3] },
+  { row: 7, offset: 0, cols: [-3, -2, -1, 0, 1, 2] },
+];
+
+/* Centre of the band on each row — used to fade the filler cells out
+   toward the fringes so the sheet climbs rather than sitting in a block. */
+const bandCentre = (row: number) => 5.2 - 0.62 * row;
+
+/* Which cells carry a service. Key is "col,row" using the offset column. */
+const SERVICES: Record<string, string> = {
+  "5.5,0": "internet",
+  "4,1": "siguria",
+  "6,1": "klima",
+  "3.5,2": "mobilje",
+  "5.5,2": "riparime",
+  "2,3": "transport",
+  "4,3": "kopsht",
+  "1.5,4": "piktor",
+  "3.5,4": "pastrim",
+  "2.5,4": "elektricist",
+  "1,5": "hidraulik",
+  "3,5": "ndertim",
+};
+
+const BEE_AT = "3,3";
+
+const CELLS: Cell[] = ROWS.flatMap(({ row, offset, cols }) =>
+  cols.map((c) => {
+    const col = c + offset;
+    const key = `${col},${row}`;
+    const slug = SERVICES[key];
+    const fade = Math.max(
+      0.28,
+      Math.min(1, 1 - Math.abs(col - bandCentre(row)) * 0.21)
+    );
+    return {
+      col,
+      row,
+      slug,
+      bee: key === BEE_AT,
+      /* alternate the fill so the comb has some texture */
+      honey: (c * 2 + row) % 3 === 0,
+      below: row === 0,
+      fade,
+    };
+  })
+);
+
+/* Hover label: a pill with a short gold line connecting it to the cell. */
+function Label({ name, below }: { name: string; below?: boolean }) {
+  const pill = (
+    <span className="block whitespace-nowrap rounded-full border border-gold bg-white px-3 py-1 text-xs font-bold text-ink shadow-lift">
+      {name}
+    </span>
+  );
+  const line = <span className="mx-auto block h-3.5 w-[2px] bg-gold" />;
+
   return (
-    <svg width={size} height={size * 1.35} viewBox="0 0 100 135" fill="currentColor" aria-hidden="true">
-      {/* bun */}
-      <ellipse cx="53" cy="6" rx="6" ry="5" />
-      {/* head */}
-      <circle cx="50" cy="16" r="9" />
-      {/* neck */}
-      <path d="M47 24 L53 24 L52 31 L48 31 Z" />
-      {/* torso / bodice */}
-      <path d="M44 30 C42 38 41 46 42 52 L58 52 C59 46 58 38 56 30 C53 32 47 32 44 30 Z" />
-      {/* left arm — out and slightly down */}
-      <path d="M44 33 C34 36 22 42 8 52 C6.5 53 7 55.5 9 55 C23 50 35 44 45 40 Z" />
-      {/* right arm — out and slightly down */}
-      <path d="M56 33 C66 36 78 42 92 52 C93.5 53 93 55.5 91 55 C77 50 65 44 55 40 Z" />
-      {/* tutu — wide layered skirt */}
-      <path d="M42 51 C28 54 18 60 14 66 C24 71 38 73 50 73 C62 73 76 71 86 66 C82 60 72 54 58 51 Z" />
-      {/* left leg — straight down */}
-      <path d="M46 72 C45 88 44 104 43 118 L48 118 C49 104 49.5 88 50 73 Z" />
-      {/* right leg — crossing behind to pointe */}
-      <path d="M54 72 C55 86 55 100 52 112 C51 117 49 122 47 126 L52 127 C55 121 57 114 58 106 C59 95 59 84 58 73 Z" />
-      {/* pointe feet */}
-      <path d="M43 118 L41 127 C41 129 43 130 44 128 L48 119 Z" />
-      <path d="M47 126 L45 133 C45 135 47 135.5 48 134 L52 127 Z" />
-    </svg>
+    <span
+      className={`pointer-events-none absolute left-1/2 z-30 -translate-x-1/2 opacity-0 transition-all duration-200 group-hover:opacity-100 group-focus-visible:opacity-100 ${
+        below
+          ? "bottom-1 translate-y-full group-hover:translate-y-[calc(100%+10px)] group-focus-visible:translate-y-[calc(100%+10px)]"
+          : "top-1 -translate-y-full group-hover:-translate-y-[calc(100%+10px)] group-focus-visible:-translate-y-[calc(100%+10px)]"
+      }`}
+    >
+      {below ? (
+        <>
+          {line}
+          {pill}
+        </>
+      ) : (
+        <>
+          {pill}
+          {line}
+        </>
+      )}
+    </span>
   );
 }
 
-type Cell = {
-  col: number;
-  row: number;
-  fill?: string;
-  icon?: React.ReactNode;
-  label?: string;
-  href?: string;
-  faint?: 1 | 2 | 3;
-  bee?: boolean;
-};
-
-/* Diagonal band: starts bottom-left (under the search bar) and climbs
-   to the top-right, with faint ghost cells trailing off both ends —
-   same composition as the live site, now with more categories. */
-const CELLS: Cell[] = [
-  /* Reverse-S band: empty ghosts start under the search bar (bottom-left),
-     the band sweeps right, pulls back left through the middle, then sweeps
-     right again to the top-right tip. Only barely-visible ghosts sit near
-     the right edge so nothing ever crops into a half button. */
-
-  // row 6 — ghost tail under the search bar
-  { col: -1.5, row: 6, faint: 3 },
-  { col: -0.5, row: 6, faint: 2 },
-  { col: 0.5, row: 6, faint: 3 },
-
-  // row 5 — band begins, sweeping right
-  { col: -1, row: 5, faint: 2 },
-  { col: 0, row: 5, faint: 1 },
-  { col: 1, row: 5, fill: "#FFF3CF", icon: <CategoryIcon name="home" size={30} strokeWidth={1.7} />, label: "Ndërtim", href: "/kerko?kategoria=ndertim" },
-  { col: 2, row: 5, fill: "#FFFFFF", icon: <CategoryIcon name="droplets" size={28} strokeWidth={1.7} />, label: "Hidraulik", href: "/kerko?kategoria=hidraulik" },
-  { col: 3, row: 5, faint: 2 },
-
-  // row 4 — still sweeping right
-  { col: -0.5, row: 4, faint: 3 },
-  { col: 0.5, row: 4, faint: 1 },
-  { col: 1.5, row: 4, fill: "#FFF3CF", icon: <CategoryIcon name="paintbrush" size={28} strokeWidth={1.7} />, label: "Piktor", href: "/kerko?kategoria=piktor" },
-  { col: 2.5, row: 4, fill: "#FFFFFF", icon: <CategoryIcon name="zap" size={28} strokeWidth={1.7} />, label: "Elektricist", href: "/kerko?kategoria=elektricist" },
-  { col: 3.5, row: 4, fill: "#FFF3CF", icon: <CategoryIcon name="sparkles" size={28} strokeWidth={1.7} />, label: "Pastrim", href: "/kerko?kategoria=pastrim" },
-  { col: 4.5, row: 4, faint: 2 },
-
-  // row 3 — rightmost bulge of the lower curve, bee at heart
-  { col: 1, row: 3, faint: 2 },
-  { col: 2, row: 3, fill: "#FFFFFF", icon: <CategoryIcon name="truck" size={26} strokeWidth={1.7} />, label: "Transport", href: "/kerko?kategoria=transport" },
-  { col: 3, row: 3, bee: true },
-  { col: 4, row: 3, fill: "#FFFFFF", icon: <CategoryIcon name="leaf" size={28} strokeWidth={1.7} />, label: "Kopsht", href: "/kerko?kategoria=kopsht" },
-  { col: 5, row: 3, faint: 2 },
-  { col: 6, row: 3, faint: 3 },
-
-  // row 2 — the S pulls back left
-  { col: 0.5, row: 2, faint: 2 },
-  { col: 1.5, row: 2, fill: "#FFFFFF", icon: <CategoryIcon name="hammer" size={26} strokeWidth={1.7} />, label: "Mobilje", href: "/kerko?kategoria=mobilje" },
-  { col: 2.5, row: 2, fill: "#FFF3CF", icon: <Ballerina size={23} />, label: "Balet", href: "/kerko?kategoria=balet" },
-  { col: 3.5, row: 2, fill: "#FFFFFF", icon: <CategoryIcon name="baby" size={26} strokeWidth={1.7} />, label: "Dado", href: "/kerko?kategoria=nane" },
-  { col: 4.5, row: 2, faint: 1 },
-  { col: 5.5, row: 2, faint: 3 },
-
-  // row 1 — sweeping right again
-  { col: 2, row: 1, faint: 1 },
-  { col: 3, row: 1, fill: "#FFF3CF", icon: <CategoryIcon name="heart" size={25} strokeWidth={1.7} />, label: "Kujdesi", href: "/kerko?kategoria=kujdes-pleq" },
-  { col: 4, row: 1, fill: "#FFFFFF", icon: <CategoryIcon name="camera" size={26} strokeWidth={1.7} />, label: "Fotograf", href: "/kerko?kategoria=fotograf" },
-  { col: 5, row: 1, faint: 2 },
-  { col: 6, row: 1, faint: 3 },
-
-  // row 0 — top-right tip
-  { col: 2.5, row: 0, faint: 2 },
-  { col: 3.5, row: 0, fill: "#FFF3CF", icon: <CategoryIcon name="bookOpen" size={26} strokeWidth={1.7} />, label: "Tutor", href: "/kerko?kategoria=tutor" },
-  { col: 4.5, row: 0, fill: "#FFFFFF", icon: <CategoryIcon name="car" size={26} strokeWidth={1.7} />, label: "Shofer", href: "/kerko?kategoria=shofer-personal" },
-  { col: 5.5, row: 0, faint: 3 },
-
-  // row -1 — ghosts escaping off the top right
-  { col: 3, row: -1, faint: 3 },
-  { col: 4, row: -1, faint: 2 },
-  { col: 5, row: -1, faint: 3 },
-];
-
-export default function Honeycomb({ size = 74 }: { size?: number }) {
+export default function Honeycomb({ size = 70 }: { size?: number }) {
   const h = size * RATIO;
-  const dx = size;
-  const dy = h * 0.75;
+  const dx = size; // horizontal distance between hex centres
+  const dy = h * 0.75; // vertical distance between rows
 
   const cols = CELLS.map((c) => c.col);
-  const rows = CELLS.map((c) => c.row);
   const minCol = Math.min(...cols);
   const width = (Math.max(...cols) - minCol) * dx + size;
-  const height = (Math.max(...rows) - Math.min(...rows)) * dy + h;
+  const height = Math.max(...CELLS.map((c) => c.row)) * dy + h;
 
   return (
-    <div
-      className="relative select-none"
-      style={{ width, height }}
-      aria-label="Kategoritë e shërbimeve"
-    >
+    <div className="relative select-none" style={{ width, height }}>
       {CELLS.map((c, i) => {
         const left = (c.col - minCol) * dx;
         const top = c.row * dy;
-        const stroke = "#FFB800";
+        const category = c.slug
+          ? categories.find((cat) => cat.slug === c.slug)
+          : undefined;
+        const decorative = !category && !c.bee;
 
+        const shape = (
+          <svg
+            viewBox="0 0 100 115.47"
+            width={size}
+            height={h}
+            className={
+              decorative
+                ? ""
+                : "drop-shadow-[0_6px_14px_rgba(232,157,0,0.12)] transition-transform duration-200 group-hover:scale-[1.06]"
+            }
+            aria-hidden="true"
+          >
+            <path
+              d={HEX_D}
+              fill={
+                decorative
+                  ? c.honey
+                    ? "#FFFAEC"
+                    : "transparent"
+                  : c.honey
+                  ? "#FFF3CF"
+                  : "#FFFFFF"
+              }
+              stroke={decorative ? "#F2E9D4" : "#FFB800"}
+              strokeWidth={decorative ? 2 : 2.5}
+              strokeLinejoin="round"
+              className={
+                decorative
+                  ? ""
+                  : "transition-colors duration-200 group-hover:fill-[#FFE9A8] group-hover:stroke-[#E89D00]"
+              }
+            />
+          </svg>
+        );
+
+        /* faint decorative cell */
+        if (decorative) {
+          return (
+            <div
+              key={i}
+              className="absolute"
+              style={{
+                left,
+                top,
+                width: size,
+                height: h,
+                opacity: c.fade ?? 1,
+              }}
+              aria-hidden="true"
+            >
+              {shape}
+            </div>
+          );
+        }
+
+        /* the bee at the centre — click it to release a swarm */
         if (c.bee) {
           return (
-            <div key={i} className="absolute" style={{ left, top, width: size, height: h }}>
+            <div
+              key={i}
+              className="absolute"
+              style={{ left, top, width: size, height: h }}
+            >
               <BeeCell size={size} height={h} />
             </div>
           );
         }
 
-        if (c.faint) {
-          const tone =
-            c.faint === 1
-              ? { stroke: "#EFE3C8", width: 2 }
-              : c.faint === 2
-                ? { stroke: "#F4ECD9", width: 1.8 }
-                : { stroke: "#F9F3E6", width: 1.6 };
-          return (
-            <div key={i} className="absolute" style={{ left, top, width: size, height: h }}>
-              <svg viewBox="0 0 100 115.47" width={size} height={h} aria-hidden="true">
-                <path d={HEX_D} fill="transparent" stroke={tone.stroke} strokeWidth={tone.width} strokeLinejoin="round" />
-              </svg>
-            </div>
-          );
-        }
-
-        const inner = (
-          <>
-            <svg
-              viewBox="0 0 100 115.47"
-              width={size}
-              height={h}
-              className="drop-shadow-[0_6px_14px_rgba(232,157,0,0.12)]"
-              aria-hidden="true"
-            >
-              <path d={HEX_D} fill={c.fill ?? "#FFFFFF"} stroke={stroke} strokeWidth={2.5} strokeLinejoin="round" />
-            </svg>
-            <div className="absolute inset-0 flex items-center justify-center text-gold-dark transition-transform duration-200 group-hover:scale-110">
-              {c.icon}
-            </div>
-            {c.label && (
-              <span className="pointer-events-none absolute bottom-full left-1/2 z-30 -mb-1.5 -translate-x-1/2 opacity-0 transition-all duration-200 group-hover:mb-0.5 group-hover:opacity-100">
-                <span className="block whitespace-nowrap rounded-full border border-gold bg-white px-3 py-1 text-xs font-bold text-ink shadow-lift">
-                  {c.label}
-                </span>
-                <span className="mx-auto block h-3.5 w-[2px] bg-gold" />
-              </span>
-            )}
-          </>
-        );
-
+        /* a clickable service */
         return (
-          <div key={i} className="absolute" style={{ left, top, width: size, height: h }}>
-            {c.href ? (
-              <Link
-                href={c.href}
-                aria-label={`${c.label} — shiko profesionistët`}
-                draggable={false}
-                className="group relative block h-full w-full hover:z-20"
-              >
-                {inner}
-              </Link>
-            ) : (
-              <div className="group relative h-full w-full">{inner}</div>
-            )}
-          </div>
+          <Link
+            key={i}
+            href={`/kerko?kategoria=${category!.slug}`}
+            aria-label={`${category!.name} — shiko profesionistët`}
+            draggable={false}
+            className="group absolute z-10 hover:z-40 focus:z-40"
+            style={{ left, top, width: size, height: h }}
+          >
+            {shape}
+            <span className="absolute inset-0 flex items-center justify-center text-gold-dark transition-transform duration-200 group-hover:scale-110">
+              <CategoryIcon
+                name={category!.icon}
+                size={30}
+                className="text-gold-dark"
+                strokeWidth={1.7}
+              />
+            </span>
+            <Label name={category!.name} below={c.below} />
+          </Link>
         );
       })}
     </div>
