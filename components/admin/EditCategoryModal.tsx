@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Pencil, X } from "lucide-react";
 import { updateCategory } from "@/app/actions/admin";
+import IconPicker from "./IconPicker";
 
 export default function EditCategoryModal({
   cat,
@@ -53,14 +54,10 @@ export default function EditCategoryModal({
                 />
               </div>
               <div>
-                <label className="text-sm font-semibold text-ink" htmlFor={`ci-${cat.id}`}>Ikona (emri lucide)</label>
-                <input
-                  id={`ci-${cat.id}`}
-                  name="icon"
-                  defaultValue={cat.icon}
-                  className="mt-1.5 w-full rounded-xl border border-line bg-cream px-4 py-3 text-sm outline-none focus:border-gold"
-                />
-                <p className="mt-1 text-xs text-muted">p.sh. home, zap, sparkles, camera, music, baby, mail…</p>
+                <label className="text-sm font-semibold text-ink">Logo / ikona</label>
+                <div className="mt-1.5">
+                  <IconPicker name="icon" defaultValue={cat.icon} />
+                </div>
               </div>
               <button
                 type="submit"
