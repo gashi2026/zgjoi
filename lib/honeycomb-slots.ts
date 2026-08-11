@@ -1,0 +1,53 @@
+/* The honeycomb's service cells. Keys are "col,row" positions inside the
+   comb; the admin homepage editor lets you choose which category sits in
+   each one. Order: from the bottom-left tail up to the top-right tip. */
+
+export const DEFAULT_SERVICES: Record<string, string> = {
+  "0,7": "tutor",
+  "2,7": "evente",
+  "0.5,6": "parukeri",
+  "1.5,6": "makeup",
+  "2.5,6": "kujdes-pleq",
+  "0,5": "nane",
+  "1,5": "hidraulik",
+  "3,5": "ndertim",
+  "1.5,4": "piktor",
+  "2.5,4": "elektricist",
+  "3.5,4": "pastrim",
+  "2,3": "transport",
+  "4,3": "kopsht",
+  "3.5,2": "mobilje",
+  "2.5,2": "postier",
+  "4.5,2": "fotograf",
+  "5.5,2": "riparime",
+  "3,1": "balet",
+  "4,1": "siguria",
+  "6,1": "klima",
+  "4.5,0": "shofer-personal",
+  "5.5,0": "internet",
+};
+
+export const CELL_LABELS: Record<string, string> = {
+  "0,7": "Rreshti i fundit — majtas",
+  "2,7": "Rreshti i fundit — djathtas",
+  "0.5,6": "Rreshti 7 — majtas",
+  "1.5,6": "Rreshti 7 — mesi",
+  "2.5,6": "Rreshti 7 — djathtas",
+  "0,5": "Rreshti 6 — majtas",
+  "1,5": "Rreshti 6 — mesi",
+  "3,5": "Rreshti 6 — djathtas",
+  "1.5,4": "Rreshti 5 — majtas",
+  "2.5,4": "Rreshti 5 — mesi",
+  "3.5,4": "Rreshti 5 — djathtas",
+  "2,3": "Rreshti 4 — majtas (afër bletës)",
+  "4,3": "Rreshti 4 — djathtas (afër bletës)",
+  "2.5,2": "Rreshti 3 — majtas",
+  "3.5,2": "Rreshti 3 — mesi",
+  "4.5,2": "Rreshti 3 — djathtas",
+  "5.5,2": "Rreshti 3 — skaj",
+  "3,1": "Rreshti 2 — majtas",
+  "4,1": "Rreshti 2 — mesi",
+  "6,1": "Rreshti 2 — skaj",
+  "4.5,0": "Maja — majtas",
+  "5.5,0": "Maja — djathtas",
+};
