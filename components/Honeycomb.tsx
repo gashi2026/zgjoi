@@ -2,6 +2,7 @@ import Link from "next/link";
 import CategoryIcon from "./CategoryIcon";
 import BeeCell from "./BeeCell";
 import { categories } from "@/lib/data";
+import { DEFAULT_SERVICES } from "@/lib/honeycomb-slots";
 import { HEX_D, HEX_RATIO as RATIO } from "@/lib/hex";
 
 type Cell = {
@@ -34,38 +35,15 @@ const ROWS: { row: number; offset: number; cols: number[] }[] = [
 const bandCentre = (row: number) => 5.2 - 0.62 * row;
 
 /* Which cells carry a service. Key is "col,row" using the offset column. */
-const SERVICES: Record<string, string> = {
-  "4.5,0": "shofer-personal",
-  "5.5,0": "internet",
-  "3,1": "balet",
-  "2.5,2": "postier",
-  "4.5,2": "fotograf",
-  "4,1": "siguria",
-  "6,1": "klima",
-  "3.5,2": "mobilje",
-  "5.5,2": "riparime",
-  "2,3": "transport",
-  "4,3": "kopsht",
-  "1.5,4": "piktor",
-  "3.5,4": "pastrim",
-  "2.5,4": "elektricist",
-  "1,5": "hidraulik",
-  "3,5": "ndertim",
-  "0,5": "nane",
-  "0.5,6": "parukeri",
-  "1.5,6": "makeup",
-  "2.5,6": "kujdes-pleq",
-  "0,7": "tutor",
-  "2,7": "evente",
-};
+const SERVICES: Record<string, string> = DEFAULT_SERVICES;
 
 const BEE_AT = "3,3";
 
-const CELLS: Cell[] = ROWS.flatMap(({ row, offset, cols }) =>
+const buildCells = (services: Record<string, string>): Cell[] => ROWS.flatMap(({ row, offset, cols }) =>
   cols.map((c) => {
     const col = c + offset;
     const key = `${col},${row}`;
-    const slug = SERVICES[key];
+    const slug = services[key];
     const fade = Math.max(
       0.28,
       Math.min(1, 1 - Math.abs(col - bandCentre(row)) * 0.21)
@@ -136,11 +114,23 @@ function Label({ name, below }: { name: string; below?: boolean }) {
   );
 }
 
-export default function Honeycomb({ size = 70 }: { size?: number }) {
+export default function Honeycomb({
+  size = 70,
+  services,
+  catalog,
+}: {
+  size?: number;
+  services?: Record<string, string>;
+  catalog?: { slug: string; name: string; icon: string }[];
+}) {
+  const activeServices = services ?? SERVICES;
+  const lookup = (slug: string) =>
+    catalog?.find((c) => c.slug === slug) ?? categories.find((c) => c.slug === slug);
   const h = size * RATIO;
   const dx = size; // horizontal distance between hex centres
   const dy = h * 0.75; // vertical distance between rows
 
+  const CELLS = buildCells(activeServices);
   const cols = CELLS.map((c) => c.col);
   const minCol = Math.min(...cols);
   const width = (Math.max(...cols) - minCol) * dx + size;
@@ -151,9 +141,7 @@ export default function Honeycomb({ size = 70 }: { size?: number }) {
       {CELLS.map((c, i) => {
         const left = (c.col - minCol) * dx;
         const top = c.row * dy;
-        const category = c.slug
-          ? categories.find((cat) => cat.slug === c.slug)
-          : undefined;
+        const category = c.slug ? lookup(c.slug) : undefined;
         const decorative = !category && !c.bee;
 
         const shape = (

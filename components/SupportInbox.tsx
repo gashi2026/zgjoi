@@ -27,6 +27,7 @@ export default function SupportInbox() {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState<"ALL" | "OPEN" | "WAITING" | "RESOLVED">("ALL");
 
   async function loadTickets() {
     try {
@@ -106,13 +107,27 @@ export default function SupportInbox() {
 
   const activeTicket = tickets.find((t) => t.id === active);
   const activeState = activeTicket?.state ?? "OPEN";
+  const visible = filter === "ALL" ? tickets : tickets.filter((t) => t.state === filter);
 
   return (
     <div className="grid gap-4 lg:grid-cols-[300px_1fr]">
       {/* ticket list */}
       <div className="rounded-2xl border border-line bg-white shadow-soft">
+        <div className="flex gap-1 border-b border-line p-2">
+          {([["ALL", "Të gjitha"], ["OPEN", "Hapur"], ["WAITING", "Pritje"], ["RESOLVED", "Zgjidhur"]] as const).map(([k, lbl]) => (
+            <button
+              key={k}
+              onClick={() => setFilter(k)}
+              className={`flex-1 rounded-full px-2 py-1.5 text-[11px] font-bold transition-colors ${
+                filter === k ? "bg-gold text-ink" : "text-muted hover:bg-cream"
+              }`}
+            >
+              {lbl}
+            </button>
+          ))}
+        </div>
         <ul>
-          {tickets.map((t) => {
+          {visible.map((t) => {
             const chip = stateChip[t.state] ?? stateChip.OPEN;
             return (
               <li key={t.id}>
@@ -141,6 +156,9 @@ export default function SupportInbox() {
               </li>
             );
           })}
+          {visible.length === 0 && (
+            <li className="p-6 text-center text-xs text-muted">Asnjë bisedë në këtë filtër.</li>
+          )}
         </ul>
       </div>
 

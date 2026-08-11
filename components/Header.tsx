@@ -21,6 +21,7 @@ export default function Header() {
   const [open, setOpen] = useState(false);
   const [me, setMe] = useState<Me>(null);
   const [checked, setChecked] = useState(false);
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const pathname = usePathname();
   const router = useRouter();
 
@@ -36,6 +37,13 @@ export default function Header() {
   }, [open]);
 
   // who is logged in? re-checked on every route change so login/logout reflects
+  useEffect(() => {
+    fetch("/api/site", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => setLogoUrl(d.logoUrl))
+      .catch(() => {});
+  }, []);
+
   useEffect(() => {
     let alive = true;
     fetch("/api/auth/me", { cache: "no-store" })
@@ -99,7 +107,14 @@ export default function Header() {
   return (
     <header className="sticky top-0 z-40 border-b border-line bg-white/95 backdrop-blur">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-        <Logo />
+        {logoUrl ? (
+          <a href="/" aria-label="Zgjoi — kryefaqja">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={logoUrl} alt="Zgjoi" className="h-9 w-auto" />
+          </a>
+        ) : (
+          <Logo />
+        )}
 
         <nav className="hidden items-center gap-7 lg:flex" aria-label="Kryesore">
           {links.map((l) => (
