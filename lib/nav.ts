@@ -22,7 +22,6 @@ export const clientNav: NavItem[] = [
 
 export const adminNav: NavItem[] = [
   { href: "/admin", label: "Paneli", icon: "layoutGrid" },
-  { href: "/admin/faqja", label: "Faqja", icon: "settings" },
   { href: "/admin/perdoruesit", label: "Përdoruesit", icon: "users" },
   { href: "/admin/kategorite", label: "Kategoritë", icon: "layers" },
   { href: "/admin/transaksionet", label: "Transaksionet", icon: "receipt" },
