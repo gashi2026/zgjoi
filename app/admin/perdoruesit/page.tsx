@@ -4,8 +4,10 @@ import { BadgeCheck, Search, ShieldOff, UserCheck } from "lucide-react";
 import AccountShell from "@/components/AccountShell";
 import { Card, SectionTitle } from "@/components/account/Bits";
 import EditUserModal from "@/components/admin/EditUserModal";
+import AddUserModal from "@/components/admin/AddUserModal";
 import { adminNav } from "@/lib/nav";
 import { db } from "@/lib/server/db";
+import { categories as baseCategories } from "@/lib/data";
 import { currentUser } from "@/lib/server/auth";
 import { approvePro, rejectPro, suspendUser, unsuspendUser } from "@/app/actions/admin";
 
@@ -39,6 +41,11 @@ export default async function AdminUsersPage({
 
   const pendingPros = users.filter((u) => u.proProfile?.verification === "PENDING");
 
+  const dbCats = await db.category.findMany({ where: { active: true }, orderBy: { position: "asc" } }).catch(() => []);
+  const categoryOptions = dbCats.length > 0
+    ? dbCats.map((c) => ({ slug: c.slug, name: c.name }))
+    : baseCategories.map((c) => ({ slug: c.slug, name: c.name }));
+
   const shellUser = { name: me.name, initials: me.name.slice(0, 2).toUpperCase(), hue: 38, caption: "Administrator" };
 
   return (
@@ -48,8 +55,9 @@ export default async function AdminUsersPage({
       nav={adminNav}
       user={shellUser}
     >
-      {/* search */}
-      <form className="flex max-w-md items-center gap-2 rounded-full border border-line bg-white p-1.5 shadow-soft" role="search">
+      {/* search + add */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+      <form className="flex max-w-md flex-1 items-center gap-2 rounded-full border border-line bg-white p-1.5 shadow-soft" role="search">
         <Search size={16} className="ml-3 shrink-0 text-muted" />
         <input
           type="text"
@@ -62,6 +70,8 @@ export default async function AdminUsersPage({
           Kërko
         </button>
       </form>
+      <AddUserModal categoryOptions={categoryOptions} />
+      </div>
 
       {/* pending verifications first */}
       {pendingPros.length > 0 && (

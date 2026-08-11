@@ -11,7 +11,6 @@ export async function GET() {
   }
 
   const tickets = await db.supportTicket.findMany({
-    where: { state: { not: "RESOLVED" } },
     orderBy: [{ offline: "desc" }, { updatedAt: "desc" }],
     take: 50,
     include: { user: { select: { name: true } }, _count: { select: { messages: true } } },
