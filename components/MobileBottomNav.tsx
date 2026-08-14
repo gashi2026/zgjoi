@@ -3,25 +3,37 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { LayoutGrid, MessageSquare, UserRound, Users, Headset } from "lucide-react";
+import { Headset, LayoutGrid, MessageSquare, UserRound, Users } from "lucide-react";
 
 type Me = { name: string; role: "CLIENT" | "PRO" | "ADMIN" | "SUPPORT" } | null;
+
+/* The bar belongs to the account areas only. Public marketing pages —
+   the homepage above all — never show it, logged in or not. */
+const ACCOUNT_PREFIXES = ["/llogaria", "/pro", "/admin"];
 
 export default function MobileBottomNav() {
   const [me, setMe] = useState<Me>(null);
   const pathname = usePathname();
 
-  // Only show the bar for a real, verified session — never for visitors.
+  const onAccountPage = ACCOUNT_PREFIXES.some(
+    (p) => pathname === p || pathname.startsWith(`${p}/`)
+  );
+
   useEffect(() => {
+    // don't even ask who's logged in on public pages
+    if (!onAccountPage) {
+      setMe(null);
+      return;
+    }
     let alive = true;
     fetch("/api/auth/me", { cache: "no-store" })
       .then((r) => r.json())
       .then((d) => { if (alive) setMe(d.user ?? null); })
       .catch(() => { if (alive) setMe(null); });
     return () => { alive = false; };
-  }, [pathname]);
+  }, [pathname, onAccountPage]);
 
-  if (!me) return null;
+  if (!onAccountPage || !me) return null;
 
   const items =
     me.role === "ADMIN" || me.role === "SUPPORT"
@@ -49,9 +61,8 @@ export default function MobileBottomNav() {
     >
       <div className="grid grid-cols-3">
         {items.map(({ href, label, icon: Icon }) => {
-          const active =
-            pathname === href ||
-            (href !== "/llogaria" && href !== "/admin" && pathname.startsWith(href));
+          const exact = href === "/llogaria" || href === "/admin";
+          const active = exact ? pathname === href : pathname.startsWith(href);
           return (
             <Link
               key={href}
