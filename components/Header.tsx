@@ -36,7 +36,6 @@ export default function Header() {
     };
   }, [open]);
 
-  // who is logged in? re-checked on every route change so login/logout reflects
   useEffect(() => {
     fetch("/api/site", { cache: "no-store" })
       .then((r) => r.json())
@@ -48,17 +47,27 @@ export default function Header() {
     let alive = true;
     fetch("/api/auth/me", { cache: "no-store" })
       .then((r) => r.json())
-      .then((d) => { if (alive) { setMe(d.user); setChecked(true); } })
+      .then((d) => { if (alive) { setMe(d.user ?? null); setChecked(true); } })
       .catch(() => { if (alive) setChecked(true); });
     return () => { alive = false; };
   }, [pathname]);
 
   async function logout() {
+    setOpen(false);
     await fetch("/api/auth/logout", { method: "POST" });
     setMe(null);
     router.push("/");
     router.refresh();
   }
+
+  const brand = logoUrl ? (
+    <Link href="/" aria-label="Zgjoi — kryefaqja">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={logoUrl} alt="Zgjoi" className="h-9 w-auto" />
+    </Link>
+  ) : (
+    <Logo />
+  );
 
   const authArea = !checked ? (
     <span className="h-10 w-40" aria-hidden="true" />
@@ -105,51 +114,54 @@ export default function Header() {
   );
 
   return (
-    <header className="sticky top-0 z-40 border-b border-line bg-white/95 backdrop-blur">
-      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-        {logoUrl ? (
-          <a href="/" aria-label="Zgjoi — kryefaqja">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={logoUrl} alt="Zgjoi" className="h-9 w-auto" />
-          </a>
-        ) : (
-          <Logo />
-        )}
+    <>
+      <header className="sticky top-0 z-40 border-b border-line bg-white/95 backdrop-blur">
+        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+          {brand}
 
-        <nav className="hidden items-center gap-7 lg:flex" aria-label="Kryesore">
-          {links.map((l) => (
-            <Link
-              key={l.href}
-              href={l.href}
-              className={`text-sm font-medium transition-colors hover:text-gold-dark ${
-                pathname === l.href ? "text-gold-dark" : "text-ink"
-              }`}
-            >
-              {l.label}
-            </Link>
-          ))}
-        </nav>
+          <nav className="hidden items-center gap-7 lg:flex" aria-label="Kryesore">
+            {links.map((l) => (
+              <Link
+                key={l.href}
+                href={l.href}
+                className={`text-sm font-medium transition-colors hover:text-gold-dark ${
+                  pathname === l.href ? "text-gold-dark" : "text-ink"
+                }`}
+              >
+                {l.label}
+              </Link>
+            ))}
+          </nav>
 
-        <div className="hidden items-center gap-3 lg:flex">{authArea}</div>
+          <div className="hidden items-center gap-3 lg:flex">{authArea}</div>
 
-        <button
-          type="button"
-          onClick={() => setOpen((v) => !v)}
-          className="flex h-11 w-11 items-center justify-center rounded-full text-ink lg:hidden"
-          aria-expanded={open}
-          aria-label={open ? "Mbyll menunë" : "Hap menunë"}
-        >
-          {open ? <X size={24} /> : <Menu size={24} />}
-        </button>
-      </div>
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            className="flex h-11 w-11 items-center justify-center rounded-full text-ink lg:hidden"
+            aria-expanded={open}
+            aria-controls="mobile-menu"
+            aria-label={open ? "Mbyll menunë" : "Hap menunë"}
+          >
+            {open ? <X size={24} /> : <Menu size={24} />}
+          </button>
+        </div>
+      </header>
 
+      {/* The drawer lives OUTSIDE the header: a blurred element becomes the
+          containing block for fixed children, which would trap it inside the
+          64px bar. As a sibling it covers the screen properly. */}
       {open && (
-        <div className="fixed inset-x-0 bottom-0 top-16 z-40 overflow-y-auto bg-white lg:hidden">
+        <div
+          id="mobile-menu"
+          className="fixed inset-x-0 bottom-0 top-16 z-50 overflow-y-auto bg-white lg:hidden"
+        >
           <nav className="flex flex-col gap-1 p-4" aria-label="Mobile">
             {links.map((l) => (
               <Link
                 key={l.href}
                 href={l.href}
+                onClick={() => setOpen(false)}
                 className={`rounded-xl px-4 py-3.5 text-base font-medium transition-colors ${
                   pathname === l.href ? "bg-honey text-ink" : "text-ink hover:bg-cream"
                 }`}
@@ -162,6 +174,7 @@ export default function Header() {
                 <>
                   <Link
                     href={dashboardFor(me.role)}
+                    onClick={() => setOpen(false)}
                     className="rounded-full bg-gold px-5 py-3 text-center text-base font-semibold text-ink transition-colors hover:bg-gold-dark"
                   >
                     Paneli im
@@ -178,18 +191,21 @@ export default function Header() {
                 <>
                   <Link
                     href="/regjistrohu-profesionist"
+                    onClick={() => setOpen(false)}
                     className="rounded-full border border-gold px-5 py-3 text-center text-base font-semibold text-gold-dark transition-colors hover:bg-honey"
                   >
                     Bëhu profesionist
                   </Link>
                   <Link
                     href="/hyr"
+                    onClick={() => setOpen(false)}
                     className="rounded-full border border-line px-5 py-3 text-center text-base font-semibold text-ink transition-colors hover:bg-cream"
                   >
                     Hyr
                   </Link>
                   <Link
                     href="/regjistrohu"
+                    onClick={() => setOpen(false)}
                     className="rounded-full bg-gold px-5 py-3 text-center text-base font-semibold text-ink transition-colors hover:bg-gold-dark"
                   >
                     Regjistrohu
@@ -200,6 +216,6 @@ export default function Header() {
           </nav>
         </div>
       )}
-    </header>
+    </>
   );
 }
