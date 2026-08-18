@@ -7,8 +7,8 @@ import EditUserModal from "@/components/admin/EditUserModal";
 import AddUserModal from "@/components/admin/AddUserModal";
 import { adminNav } from "@/lib/nav";
 import { db } from "@/lib/server/db";
-import { categories as baseCategories } from "@/lib/data";
 import { currentUser } from "@/lib/server/auth";
+import { categories as baseCategories } from "@/lib/data";
 import { approvePro, rejectPro, suspendUser, unsuspendUser } from "@/app/actions/admin";
 
 export const dynamic = "force-dynamic";
@@ -39,9 +39,19 @@ export default async function AdminUsersPage({
     take: 100,
   });
 
+  // profile photos live in Setting under "avatar:<userId>"
+  const avatarRows = await db.setting
+    .findMany({ where: { key: { startsWith: "avatar:" } } })
+    .catch(() => [] as { key: string; value: unknown }[]);
+  const avatars = new Map(
+    avatarRows.map((r) => [r.key.slice(7), typeof r.value === "string" ? r.value : null])
+  );
+
   const pendingPros = users.filter((u) => u.proProfile?.verification === "PENDING");
 
-  const dbCats = await db.category.findMany({ where: { active: true }, orderBy: { position: "asc" } }).catch(() => []);
+  const dbCats = await db.category
+    .findMany({ where: { active: true }, orderBy: { position: "asc" } })
+    .catch(() => []);
   const categoryOptions = dbCats.length > 0
     ? dbCats.map((c) => ({ slug: c.slug, name: c.name }))
     : baseCategories.map((c) => ({ slug: c.slug, name: c.name }));
@@ -55,25 +65,21 @@ export default async function AdminUsersPage({
       nav={adminNav}
       user={shellUser}
     >
-      {/* search + add */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-      <form className="flex max-w-md flex-1 items-center gap-2 rounded-full border border-line bg-white p-1.5 shadow-soft" role="search">
-        <Search size={16} className="ml-3 shrink-0 text-muted" />
-        <input
-          type="text"
-          name="q"
-          defaultValue={q}
-          placeholder="Kërko emër, email ose qytet…"
-          className="w-full bg-transparent px-1 py-2 text-sm outline-none"
-        />
-        <button type="submit" className="rounded-full bg-gold px-5 py-2 text-sm font-semibold text-ink hover:bg-gold-dark">
-          Kërko
-        </button>
-      </form>
-      <AddUserModal categoryOptions={categoryOptions} />
+        <form className="flex max-w-md flex-1 items-center gap-2 rounded-full border border-line bg-white p-1.5 shadow-soft" role="search">
+          <Search size={16} className="ml-3 shrink-0 text-muted" />
+          <input
+            type="text" name="q" defaultValue={q}
+            placeholder="Kërko emër, email ose qytet…"
+            className="w-full bg-transparent px-1 py-2 text-sm outline-none"
+          />
+          <button type="submit" className="rounded-full bg-gold px-5 py-2 text-sm font-semibold text-ink hover:bg-gold-dark">
+            Kërko
+          </button>
+        </form>
+        <AddUserModal categoryOptions={categoryOptions} />
       </div>
 
-      {/* pending verifications first */}
       {pendingPros.length > 0 && (
         <Card className="mt-6">
           <SectionTitle>
@@ -92,15 +98,11 @@ export default async function AdminUsersPage({
                 <div className="flex gap-2">
                   <form action={approvePro}>
                     <input type="hidden" name="profileId" value={u.proProfile!.id} />
-                    <button className="rounded-full bg-gold px-4 py-1.5 text-xs font-bold text-ink hover:bg-gold-dark">
-                      Aprovo
-                    </button>
+                    <button className="rounded-full bg-gold px-4 py-1.5 text-xs font-bold text-ink hover:bg-gold-dark">Aprovo</button>
                   </form>
                   <form action={rejectPro}>
                     <input type="hidden" name="profileId" value={u.proProfile!.id} />
-                    <button className="rounded-full border border-line px-4 py-1.5 text-xs font-semibold text-muted hover:border-red-300 hover:text-red-500">
-                      Refuzo
-                    </button>
+                    <button className="rounded-full border border-line px-4 py-1.5 text-xs font-semibold text-muted hover:border-red-300 hover:text-red-500">Refuzo</button>
                   </form>
                 </div>
               </li>
@@ -109,7 +111,6 @@ export default async function AdminUsersPage({
         </Card>
       )}
 
-      {/* all users */}
       <Card className="mt-6">
         <SectionTitle>Të gjithë përdoruesit</SectionTitle>
         {users.length === 0 ? (
@@ -127,49 +128,66 @@ export default async function AdminUsersPage({
                 </tr>
               </thead>
               <tbody className="divide-y divide-line">
-                {users.map((u) => (
-                  <tr key={u.id}>
-                    <td className="py-3 pr-4">
-                      <p className="font-bold text-ink">{u.name}</p>
-                      <p className="text-xs text-muted">{u.email}</p>
-                    </td>
-                    <td className="py-3 pr-4">
-                      <span className="rounded-full bg-cream px-2.5 py-1 text-xs font-semibold text-ink">
-                        {u.role === "ADMIN" ? "Admin" : u.role === "PRO" ? "Profesionist" : "Klient"}
-                      </span>
-                    </td>
-                    <td className="py-3 pr-4 text-muted">{u.city ?? "—"}</td>
-                    <td className="py-3 pr-4">
-                      {u.suspendedAt ? (
-                        <span className="rounded-full bg-red-50 px-2.5 py-1 text-xs font-bold text-red-600">Pezulluar</span>
-                      ) : (
-                        <span className="rounded-full bg-honey px-2.5 py-1 text-xs font-bold text-gold-dark">Aktiv</span>
-                      )}
-                    </td>
-                    <td className="py-3">
-                      <div className="flex items-center justify-end gap-2">
-                        <EditUserModal user={{ id: u.id, name: u.name, city: u.city, phone: u.phone, email: u.email }} />
-                        {u.id !== me.id && (
-                          u.suspendedAt ? (
-                            <form action={unsuspendUser}>
-                              <input type="hidden" name="id" value={u.id} />
-                              <button className="flex items-center gap-1.5 rounded-full border border-line px-3.5 py-1.5 text-xs font-semibold text-ink hover:border-gold hover:text-gold-dark">
-                                <UserCheck size={12} /> Aktivizo
-                              </button>
-                            </form>
+                {users.map((u) => {
+                  const avatar = avatars.get(u.id) ?? null;
+                  return (
+                    <tr key={u.id}>
+                      <td className="py-3 pr-4">
+                        <div className="flex items-center gap-3">
+                          {avatar ? (
+                            /* eslint-disable-next-line @next/next/no-img-element */
+                            <img src={avatar} alt="" className="h-9 w-9 shrink-0 rounded-full object-cover" />
                           ) : (
-                            <form action={suspendUser}>
-                              <input type="hidden" name="id" value={u.id} />
-                              <button className="flex items-center gap-1.5 rounded-full border border-line px-3.5 py-1.5 text-xs font-semibold text-muted hover:border-red-300 hover:text-red-500">
-                                <ShieldOff size={12} /> Pezullo
-                              </button>
-                            </form>
-                          )
+                            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-honey text-xs font-bold text-gold-dark">
+                              {u.name.slice(0, 2).toUpperCase()}
+                            </span>
+                          )}
+                          <div>
+                            <p className="font-bold text-ink">{u.name}</p>
+                            <p className="text-xs text-muted">{u.email}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="py-3 pr-4">
+                        <span className="rounded-full bg-cream px-2.5 py-1 text-xs font-semibold text-ink">
+                          {u.role === "ADMIN" ? "Admin" : u.role === "PRO" ? "Profesionist" : u.role === "SUPPORT" ? "Mbështetje" : "Klient"}
+                        </span>
+                      </td>
+                      <td className="py-3 pr-4 text-muted">{u.city ?? "—"}</td>
+                      <td className="py-3 pr-4">
+                        {u.suspendedAt ? (
+                          <span className="rounded-full bg-red-50 px-2.5 py-1 text-xs font-bold text-red-600">Pezulluar</span>
+                        ) : (
+                          <span className="rounded-full bg-honey px-2.5 py-1 text-xs font-bold text-gold-dark">Aktiv</span>
                         )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="py-3">
+                        <div className="flex items-center justify-end gap-2">
+                          <EditUserModal
+                            user={{ id: u.id, name: u.name, city: u.city, phone: u.phone, email: u.email, avatarUrl: avatar }}
+                          />
+                          {u.id !== me.id && (
+                            u.suspendedAt ? (
+                              <form action={unsuspendUser}>
+                                <input type="hidden" name="id" value={u.id} />
+                                <button className="flex items-center gap-1.5 rounded-full border border-line px-3.5 py-1.5 text-xs font-semibold text-ink hover:border-gold hover:text-gold-dark">
+                                  <UserCheck size={12} /> Aktivizo
+                                </button>
+                              </form>
+                            ) : (
+                              <form action={suspendUser}>
+                                <input type="hidden" name="id" value={u.id} />
+                                <button className="flex items-center gap-1.5 rounded-full border border-line px-3.5 py-1.5 text-xs font-semibold text-muted hover:border-red-300 hover:text-red-500">
+                                  <ShieldOff size={12} /> Pezullo
+                                </button>
+                              </form>
+                            )
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

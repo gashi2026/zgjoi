@@ -14,21 +14,95 @@ export async function updateUser(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
   const city = String(formData.get("city") ?? "").trim();
   const phone = String(formData.get("phone") ?? "").trim();
+  const avatarUrl = String(formData.get("avatarUrl") ?? "").trim();
   if (!id || name.length < 2) return;
 
   await db.user.update({
     where: { id },
     data: { name, city: city || null, phone: phone || null },
   });
+  if (formData.has("avatarUrl")) {
+    await setSetting(`avatar:${id}`, avatarUrl || null);
+  }
+  revalidatePath("/admin/perdoruesit");
+}
+
+export async function createUser(formData: FormData) {
+  await requireRole("ADMIN");
+  const name = String(formData.get("name") ?? "").trim();
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const password = String(formData.get("password") ?? "");
+  const role = String(formData.get("role") ?? "CLIENT");
+  const city = String(formData.get("city") ?? "").trim();
+  const phone = String(formData.get("phone") ?? "").trim();
+  const avatarUrl = String(formData.get("avatarUrl") ?? "").trim();
+  const categorySlug = String(formData.get("categorySlug") ?? "").trim();
+  const subcategory = String(formData.get("subcategory") ?? "").trim();
+  const personalNo = String(formData.get("personalNo") ?? "").replace(/\D/g, "");
+  const priceFrom = Number(formData.get("priceFrom") ?? 15);
+
+  if (name.length < 2 || !email.includes("@") || password.length < 8) return;
+  if (!["CLIENT", "PRO", "SUPPORT", "ADMIN"].includes(role)) return;
+
+  const exists = await db.user.findUnique({ where: { email } });
+  if (exists) return;
+
+  const user = await db.user.create({
+    data: {
+      email,
+      name,
+      city: city || null,
+      phone: phone || null,
+      passwordHash: await hashPassword(password),
+      role: role as "CLIENT" | "PRO" | "SUPPORT" | "ADMIN",
+      emailVerified: new Date(),
+      // full number is only captured on the pro's own signup (encrypted there);
+      // admin-created accounts keep just the last four for identification
+      personalNoLast4: personalNo ? personalNo.slice(-4) : null,
+    },
+  });
+
+  if (avatarUrl) await setSetting(`avatar:${user.id}`, avatarUrl);
+
+  if (role === "PRO") {
+    const slugBase = name
+      .toLowerCase()
+      .replace(/ë/g, "e").replace(/ç/g, "c")
+      .replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    const profile = await db.proProfile.create({
+      data: {
+        userId: user.id,
+        slug: `${slugBase}-${user.id.slice(-4)}`,
+        categorySlug: categorySlug || "riparime",
+        about: subcategory
+          ? `Specializuar në ${subcategory}.`
+          : "Profil i krijuar nga administrata.",
+        priceFrom: Math.max(1, Math.round((Number.isFinite(priceFrom) ? priceFrom : 15) * 100)),
+        serviceCities: city ? [city] : [],
+        verification: "APPROVED",
+        verifiedAt: new Date(),
+      },
+    });
+    if (subcategory) {
+      await db.proService.create({
+        data: {
+          profileId: profile.id,
+          name: subcategory,
+          price: Math.max(1, Math.round((Number.isFinite(priceFrom) ? priceFrom : 15) * 100)),
+        },
+      });
+    }
+  }
+
   revalidatePath("/admin/perdoruesit");
 }
 
 export async function suspendUser(formData: FormData) {
   const admin = await requireRole("ADMIN");
   const id = String(formData.get("id"));
-  if (!id || id === admin.id) return; // never suspend yourself
+  if (!id || id === admin.id) return;
   await db.user.update({ where: { id }, data: { suspendedAt: new Date() } });
-  await db.session.deleteMany({ where: { userId: id } }); // log them out
+  await db.session.deleteMany({ where: { userId: id } });
   revalidatePath("/admin/perdoruesit");
 }
 
@@ -58,10 +132,7 @@ export async function rejectPro(formData: FormData) {
   await requireRole("ADMIN");
   const profileId = String(formData.get("profileId"));
   if (!profileId) return;
-  await db.proProfile.update({
-    where: { id: profileId },
-    data: { verification: "REJECTED" },
-  });
+  await db.proProfile.update({ where: { id: profileId }, data: { verification: "REJECTED" } });
   revalidatePath("/admin/perdoruesit");
   revalidatePath("/admin");
 }
@@ -74,11 +145,7 @@ export async function seedCategories() {
   if (existing > 0) return;
   await db.category.createMany({
     data: baseCategories.map((c, i) => ({
-      slug: c.slug,
-      name: c.name,
-      icon: c.icon,
-      position: i,
-      active: true,
+      slug: c.slug, name: c.name, icon: c.icon, position: i, active: true,
     })),
     skipDuplicates: true,
   });
@@ -111,10 +178,7 @@ export async function updateCategory(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
   const icon = String(formData.get("icon") ?? "").trim();
   if (!id || name.length < 2) return;
-  await db.category.update({
-    where: { id },
-    data: { name, icon: icon || "sparkles" },
-  });
+  await db.category.update({ where: { id }, data: { name, icon: icon || "sparkles" } });
   revalidatePath("/admin/kategorite");
 }
 
@@ -162,10 +226,7 @@ export async function restoreReview(formData: FormData) {
   await requireRole("ADMIN");
   const id = String(formData.get("id"));
   if (!id) return;
-  await db.review.update({
-    where: { id },
-    data: { state: "PUBLISHED", flagReason: null },
-  });
+  await db.review.update({ where: { id }, data: { state: "PUBLISHED", flagReason: null } });
   revalidatePath("/admin/vleresimet");
 }
 
@@ -183,71 +244,18 @@ export async function setTicketState(formData: FormData) {
   revalidatePath("/admin/mbeshtetja");
 }
 
-/* -------------------------------------------------------- create user */
-
-
-export async function createUser(formData: FormData) {
-  await requireRole("ADMIN");
-  const name = String(formData.get("name") ?? "").trim();
-  const email = String(formData.get("email") ?? "").trim().toLowerCase();
-  const password = String(formData.get("password") ?? "");
-  const role = String(formData.get("role") ?? "CLIENT");
-  const city = String(formData.get("city") ?? "").trim();
-  const categorySlug = String(formData.get("categorySlug") ?? "").trim();
-
-  if (name.length < 2 || !email.includes("@") || password.length < 8) return;
-  if (!["CLIENT", "PRO", "SUPPORT", "ADMIN"].includes(role)) return;
-
-  const exists = await db.user.findUnique({ where: { email } });
-  if (exists) return;
-
-  const user = await db.user.create({
-    data: {
-      email,
-      name,
-      city: city || null,
-      passwordHash: await hashPassword(password),
-      role: role as "CLIENT" | "PRO" | "SUPPORT" | "ADMIN",
-      emailVerified: new Date(), // admin-created accounts are trusted
-    },
-  });
-
-  // a PRO needs a profile so they can appear and receive leads
-  if (role === "PRO") {
-    const slugBase = name.toLowerCase()
-      .replace(/ë/g, "e").replace(/ç/g, "c")
-      .replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-    await db.proProfile.create({
-      data: {
-        userId: user.id,
-        slug: `${slugBase}-${user.id.slice(-4)}`,
-        categorySlug: categorySlug || "riparime",
-        about: "Profil i krijuar nga administrata.",
-        priceFrom: 1500,
-        serviceCities: city ? [city] : [],
-        verification: "APPROVED",
-        verifiedAt: new Date(),
-      },
-    });
-  }
-
-  revalidatePath("/admin/perdoruesit");
-}
-
 /* ------------------------------------------------------ site settings */
-
 
 export async function saveSiteSettings(formData: FormData) {
   await requireRole("ADMIN");
-  const site = {
+  await setSetting("site", {
     heroTitle: String(formData.get("heroTitle") ?? "").trim(),
     heroAccent: String(formData.get("heroAccent") ?? "").trim(),
     heroSubtitle: String(formData.get("heroSubtitle") ?? "").trim(),
     logoUrl: String(formData.get("logoUrl") ?? "").trim(),
-  };
-  await setSetting("site", site);
+  });
   revalidatePath("/");
-  revalidatePath("/admin/faqja");
+  revalidatePath("/admin/kategorite");
 }
 
 export async function saveHoneycomb(formData: FormData) {
@@ -262,5 +270,5 @@ export async function saveHoneycomb(formData: FormData) {
   }
   await setSetting("honeycomb", map);
   revalidatePath("/");
-  revalidatePath("/admin/faqja");
+  revalidatePath("/admin/kategorite");
 }
