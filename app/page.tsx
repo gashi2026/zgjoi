@@ -15,10 +15,12 @@ export default function HomePage() {
     <>
       <Hero />
       <Stats />
-      {/* Everything from "Kategoritë kryesore" down renders a touch smaller
-          so the page feels lighter and more of it fits on screen. */}
       <div className="home-compact">
-        <Categories />
+        {/* the category belt is desktop-only — on phones the comb above
+            already covers browsing by category */}
+        <div className="hidden sm:block">
+          <Categories />
+        </div>
         <DualCards />
         <WhyZgjoi />
         <HowItWorks />
