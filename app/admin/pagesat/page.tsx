@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { BanknoteArrowDown, CheckCircle2, Clock3, Undo2, Wallet } from "lucide-react";
+import { Banknote, CheckCircle2, Clock3, Undo2, Wallet } from "lucide-react";
 import AccountShell from "@/components/AccountShell";
 import { Card, SectionTitle } from "@/components/account/Bits";
 import { adminNav } from "@/lib/nav";
@@ -19,33 +19,49 @@ export default async function AdminPayoutsPage() {
   const me = await currentUser();
   if (!me || me.role !== "ADMIN") redirect("/hyr?next=/admin/pagesat");
 
+  /* Only scalar fields + the client relation are read here, then the
+     professionals are looked up separately — fewer assumptions, fewer
+     ways for a nested relation name to break the page. */
   const include = {
     request: {
       select: {
         title: true,
         state: true,
         city: true,
+        acceptedProfileId: true,
         client: { select: { name: true, phone: true } },
-        acceptedPro: {
-          select: {
-            ibanLast4: true,
-            user: { select: { name: true, phone: true, email: true } },
-          },
-        },
       },
     },
   } as const;
 
   const [awaiting, held, paid] = await Promise.all([
-    // 1. client says they've transferred — waiting for the statement to show it
     db.payment.findMany({ where: { state: "PENDING" }, include, orderBy: { createdAt: "asc" } }),
-    // 2. money is in the Zgjoi account
-    db.payment.findMany({ where: { state: "HELD" }, include, orderBy: { heldAt: "asc" } }),
-    // 3. already paid out
-    db.payment.findMany({ where: { state: "RELEASED" }, include, orderBy: { releasedAt: "desc" }, take: 40 }),
+    db.payment.findMany({ where: { state: "HELD" }, include, orderBy: { createdAt: "asc" } }),
+    db.payment.findMany({ where: { state: "RELEASED" }, include, orderBy: { createdAt: "desc" }, take: 40 }),
   ]);
 
-  // ready to pay = money held AND the job is confirmed complete
+  const profileIds = Array.from(
+    new Set(
+      [...awaiting, ...held, ...paid]
+        .map((p) => p.request.acceptedProfileId)
+        .filter((id): id is string => Boolean(id))
+    )
+  );
+
+  const profiles = profileIds.length
+    ? await db.proProfile.findMany({
+        where: { id: { in: profileIds } },
+        select: {
+          id: true,
+          ibanLast4: true,
+          user: { select: { name: true, phone: true, email: true } },
+        },
+      })
+    : [];
+  const proById = new Map(profiles.map((p) => [p.id, p]));
+  const proOf = (payment: { request: { acceptedProfileId: string | null } }) =>
+    payment.request.acceptedProfileId ? proById.get(payment.request.acceptedProfileId) : undefined;
+
   const readyToPay = held.filter((p) => p.request.state === "COMPLETED");
   const stillWorking = held.filter((p) => p.request.state !== "COMPLETED");
 
@@ -80,7 +96,6 @@ export default async function AdminPayoutsPage() {
         </Card>
       </div>
 
-      {/* 1 — waiting for the transfer to land */}
       <Card className="mt-6">
         <SectionTitle>
           <span className="flex items-center gap-2">
@@ -99,7 +114,8 @@ export default async function AdminPayoutsPage() {
                 <div className="min-w-0">
                   <p className="text-sm font-bold text-ink">{p.request.title}</p>
                   <p className="text-xs text-muted">
-                    {p.request.client.name} · {p.request.city} · referenca: <b className="text-ink">ZG-{p.id.slice(-6).toUpperCase()}</b>
+                    {p.request.client.name} · {p.request.city} · referenca:{" "}
+                    <b className="text-ink">ZG-{p.id.slice(-6).toUpperCase()}</b>
                   </p>
                 </div>
                 <div className="flex items-center gap-3">
@@ -123,11 +139,10 @@ export default async function AdminPayoutsPage() {
         )}
       </Card>
 
-      {/* 2 — the payout queue */}
       <Card className="mt-6">
         <SectionTitle>
           <span className="flex items-center gap-2">
-            <BanknoteArrowDown size={18} className="text-gold-dark" /> Për t&apos;u paguar ({readyToPay.length})
+            <Banknote size={18} className="text-gold-dark" /> Për t&apos;u paguar ({readyToPay.length})
           </span>
         </SectionTitle>
         <p className="mb-4 text-sm text-muted">
@@ -137,43 +152,45 @@ export default async function AdminPayoutsPage() {
           <p className="py-6 text-center text-sm text-muted">Asgjë për të paguar për momentin.</p>
         ) : (
           <ul className="divide-y divide-line">
-            {readyToPay.map((p) => (
-              <li key={p.id} className="py-4">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-sm font-bold text-ink">{p.request.title}</p>
-                    <p className="text-xs text-muted">
-                      Paguaj: <b className="text-ink">{p.request.acceptedPro?.user.name}</b>
-                      {p.request.acceptedPro?.user.phone ? ` · ${p.request.acceptedPro.user.phone}` : ""}
-                      {p.request.acceptedPro?.ibanLast4 ? ` · IBAN ····${p.request.acceptedPro.ibanLast4}` : " · IBAN mungon"}
-                    </p>
-                    <p className="mt-1 text-xs text-muted">
-                      Klienti pagoi {eur(p.amount)} · komisioni yt {eur(p.commissionAmount)}
-                    </p>
+            {readyToPay.map((p) => {
+              const pro = proOf(p);
+              return (
+                <li key={p.id} className="py-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-bold text-ink">{p.request.title}</p>
+                      <p className="text-xs text-muted">
+                        Paguaj: <b className="text-ink">{pro?.user.name ?? "—"}</b>
+                        {pro?.user.phone ? ` · ${pro.user.phone}` : ""}
+                        {pro?.ibanLast4 ? ` · IBAN ····${pro.ibanLast4}` : " · IBAN mungon"}
+                      </p>
+                      <p className="mt-1 text-xs text-muted">
+                        Klienti pagoi {eur(p.amount)} · komisioni yt {eur(p.commissionAmount)}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs text-muted">Shuma për transfer</p>
+                      <p className="text-xl font-extrabold text-gold-dark">{eur(p.proAmount)}</p>
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <p className="text-xs text-muted">Shuma për transfer</p>
-                    <p className="text-xl font-extrabold text-gold-dark">{eur(p.proAmount)}</p>
-                  </div>
-                </div>
-                <form action={markPaidOut} className="mt-3 flex flex-wrap items-center gap-2">
-                  <input type="hidden" name="paymentId" value={p.id} />
-                  <input
-                    name="reference"
-                    placeholder="Referenca e transferit (opsionale)"
-                    className="min-w-[220px] flex-1 rounded-xl border border-line bg-cream px-4 py-2 text-sm outline-none focus:border-gold"
-                  />
-                  <button className="flex items-center gap-1.5 rounded-full bg-gold px-5 py-2 text-sm font-bold text-ink hover:bg-gold-dark">
-                    <Wallet size={14} /> E pagova
-                  </button>
-                </form>
-              </li>
-            ))}
+                  <form action={markPaidOut} className="mt-3 flex flex-wrap items-center gap-2">
+                    <input type="hidden" name="paymentId" value={p.id} />
+                    <input
+                      name="reference"
+                      placeholder="Referenca e transferit (opsionale)"
+                      className="min-w-[220px] flex-1 rounded-xl border border-line bg-cream px-4 py-2 text-sm outline-none focus:border-gold"
+                    />
+                    <button className="flex items-center gap-1.5 rounded-full bg-gold px-5 py-2 text-sm font-bold text-ink hover:bg-gold-dark">
+                      <Wallet size={14} /> E pagova
+                    </button>
+                  </form>
+                </li>
+              );
+            })}
           </ul>
         )}
       </Card>
 
-      {/* 3 — held but job not confirmed yet */}
       {stillWorking.length > 0 && (
         <Card className="mt-6">
           <SectionTitle>Paratë e mbajtura, puna në vazhdim ({stillWorking.length})</SectionTitle>
@@ -183,7 +200,7 @@ export default async function AdminPayoutsPage() {
                 <div>
                   <p className="text-sm font-bold text-ink">{p.request.title}</p>
                   <p className="text-xs text-muted">
-                    {p.request.acceptedPro?.user.name ?? "—"} · arkëtuar më {dt(p.heldAt)}
+                    {proOf(p)?.user.name ?? "—"} · arkëtuar më {dt(p.heldAt)}
                   </p>
                 </div>
                 <span className="text-sm font-bold text-ink">{eur(p.amount)}</span>
@@ -193,7 +210,6 @@ export default async function AdminPayoutsPage() {
         </Card>
       )}
 
-      {/* 4 — history */}
       {paid.length > 0 && (
         <Card className="mt-6">
           <SectionTitle>Pagesat e kryera</SectionTitle>
@@ -212,7 +228,7 @@ export default async function AdminPayoutsPage() {
                 {paid.map((p) => (
                   <tr key={p.id}>
                     <td className="py-3 pr-4 font-semibold text-ink">{p.request.title}</td>
-                    <td className="py-3 pr-4 text-muted">{p.request.acceptedPro?.user.name ?? "—"}</td>
+                    <td className="py-3 pr-4 text-muted">{proOf(p)?.user.name ?? "—"}</td>
                     <td className="py-3 pr-4 font-bold text-ink">{eur(p.proAmount)}</td>
                     <td className="py-3 pr-4 text-muted">{eur(p.commissionAmount)}</td>
                     <td className="py-3 text-muted">{dt(p.releasedAt)}</td>
