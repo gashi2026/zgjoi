@@ -6,24 +6,120 @@ import { requireRole, hashPassword } from "@/lib/server/auth";
 import { setSetting } from "@/lib/server/settings";
 import { categories as baseCategories } from "@/lib/data";
 
+const slugify = (s: string) =>
+  s.toLowerCase().replace(/ë/g, "e").replace(/ç/g, "c")
+    .replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+
 /* ------------------------------------------------------------- users */
 
+/** Full account edit: identity, contact, role, password, photo. */
 export async function updateUser(formData: FormData) {
-  await requireRole("ADMIN");
+  const admin = await requireRole("ADMIN");
   const id = String(formData.get("id"));
   const name = String(formData.get("name") ?? "").trim();
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const city = String(formData.get("city") ?? "").trim();
   const phone = String(formData.get("phone") ?? "").trim();
+  const role = String(formData.get("role") ?? "").trim();
+  const password = String(formData.get("password") ?? "");
+  const personalNo = String(formData.get("personalNo") ?? "").replace(/\D/g, "");
   const avatarUrl = String(formData.get("avatarUrl") ?? "").trim();
   if (!id || name.length < 2) return;
 
-  await db.user.update({
-    where: { id },
-    data: { name, city: city || null, phone: phone || null },
-  });
+  const data: Record<string, unknown> = {
+    name,
+    city: city || null,
+    phone: phone || null,
+  };
+
+  if (email && email.includes("@")) {
+    const clash = await db.user.findFirst({ where: { email, NOT: { id } } });
+    if (!clash) data.email = email;
+  }
+  if (personalNo) data.personalNoLast4 = personalNo.slice(-4);
+  if (password.length >= 8) data.passwordHash = await hashPassword(password);
+  // never let an admin lock themselves out of the admin area
+  if (["CLIENT", "PRO", "SUPPORT", "ADMIN"].includes(role) && id !== admin.id) {
+    data.role = role;
+  }
+
+  await db.user.update({ where: { id }, data });
+
   if (formData.has("avatarUrl")) {
     await setSetting(`avatar:${id}`, avatarUrl || null);
   }
+
+  // promoted to PRO but has no profile yet? create a starter one
+  if (data.role === "PRO") {
+    const existing = await db.proProfile.findUnique({ where: { userId: id } });
+    if (!existing) {
+      await db.proProfile.create({
+        data: {
+          userId: id,
+          slug: `${slugify(name)}-${id.slice(-4)}`,
+          categorySlug: "riparime",
+          about: "Profil i krijuar nga administrata.",
+          priceFrom: 1500,
+          serviceCities: city ? [city] : [],
+          verification: "PENDING",
+        },
+      });
+    }
+  }
+
+  revalidatePath("/admin/perdoruesit");
+}
+
+/** Everything on the professional's profile. */
+export async function updateProProfile(formData: FormData) {
+  await requireRole("ADMIN");
+  const profileId = String(formData.get("profileId"));
+  if (!profileId) return;
+
+  const categorySlug = String(formData.get("categorySlug") ?? "").trim();
+  const subcategory = String(formData.get("subcategory") ?? "").trim();
+  const about = String(formData.get("about") ?? "").trim();
+  const experience = String(formData.get("experience") ?? "").trim();
+  const priceFromEur = Number(formData.get("priceFrom") ?? 0);
+  const radiusKm = Number(formData.get("radiusKm") ?? 25);
+  const citiesRaw = String(formData.get("serviceCities") ?? "");
+  const iban = String(formData.get("iban") ?? "").replace(/\s/g, "");
+  const verification = String(formData.get("verification") ?? "");
+
+  const serviceCities = citiesRaw
+    .split(",")
+    .map((c) => c.trim())
+    .filter(Boolean);
+
+  const data: Record<string, unknown> = {
+    about: about || "Profil i krijuar nga administrata.",
+    experience: experience || null,
+    radiusKm: Number.isFinite(radiusKm) && radiusKm > 0 ? Math.round(radiusKm) : 25,
+    serviceCities,
+  };
+  if (categorySlug) data.categorySlug = categorySlug;
+  if (Number.isFinite(priceFromEur) && priceFromEur > 0) {
+    data.priceFrom = Math.round(priceFromEur * 100);
+  }
+  if (iban) data.ibanLast4 = iban.slice(-4);
+  if (["PENDING", "APPROVED", "REJECTED"].includes(verification)) {
+    data.verification = verification;
+    if (verification === "APPROVED") data.verifiedAt = new Date();
+  }
+
+  await db.proProfile.update({ where: { id: profileId }, data });
+
+  // the specialisation is kept as the profile's headline service
+  if (subcategory) {
+    const price = (data.priceFrom as number) ?? 1500;
+    const existing = await db.proService.findFirst({ where: { profileId } });
+    if (existing) {
+      await db.proService.update({ where: { id: existing.id }, data: { name: subcategory, price } });
+    } else {
+      await db.proService.create({ data: { profileId, name: subcategory, price } });
+    }
+  }
+
   revalidatePath("/admin/perdoruesit");
 }
 
@@ -43,21 +139,16 @@ export async function createUser(formData: FormData) {
 
   if (name.length < 2 || !email.includes("@") || password.length < 8) return;
   if (!["CLIENT", "PRO", "SUPPORT", "ADMIN"].includes(role)) return;
-
-  const exists = await db.user.findUnique({ where: { email } });
-  if (exists) return;
+  if (await db.user.findUnique({ where: { email } })) return;
 
   const user = await db.user.create({
     data: {
-      email,
-      name,
+      email, name,
       city: city || null,
       phone: phone || null,
       passwordHash: await hashPassword(password),
       role: role as "CLIENT" | "PRO" | "SUPPORT" | "ADMIN",
       emailVerified: new Date(),
-      // full number is only captured on the pro's own signup (encrypted there);
-      // admin-created accounts keep just the last four for identification
       personalNoLast4: personalNo ? personalNo.slice(-4) : null,
     },
   });
@@ -65,32 +156,21 @@ export async function createUser(formData: FormData) {
   if (avatarUrl) await setSetting(`avatar:${user.id}`, avatarUrl);
 
   if (role === "PRO") {
-    const slugBase = name
-      .toLowerCase()
-      .replace(/ë/g, "e").replace(/ç/g, "c")
-      .replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    const cents = Math.max(100, Math.round((Number.isFinite(priceFrom) ? priceFrom : 15) * 100));
     const profile = await db.proProfile.create({
       data: {
         userId: user.id,
-        slug: `${slugBase}-${user.id.slice(-4)}`,
+        slug: `${slugify(name)}-${user.id.slice(-4)}`,
         categorySlug: categorySlug || "riparime",
-        about: subcategory
-          ? `Specializuar në ${subcategory}.`
-          : "Profil i krijuar nga administrata.",
-        priceFrom: Math.max(1, Math.round((Number.isFinite(priceFrom) ? priceFrom : 15) * 100)),
+        about: subcategory ? `Specializuar në ${subcategory}.` : "Profil i krijuar nga administrata.",
+        priceFrom: cents,
         serviceCities: city ? [city] : [],
         verification: "APPROVED",
         verifiedAt: new Date(),
       },
     });
     if (subcategory) {
-      await db.proService.create({
-        data: {
-          profileId: profile.id,
-          name: subcategory,
-          price: Math.max(1, Math.round((Number.isFinite(priceFrom) ? priceFrom : 15) * 100)),
-        },
-      });
+      await db.proService.create({ data: { profileId: profile.id, name: subcategory, price: cents } });
     }
   }
 
@@ -111,6 +191,15 @@ export async function unsuspendUser(formData: FormData) {
   const id = String(formData.get("id"));
   if (!id) return;
   await db.user.update({ where: { id }, data: { suspendedAt: null } });
+  revalidatePath("/admin/perdoruesit");
+}
+
+export async function deleteUser(formData: FormData) {
+  const admin = await requireRole("ADMIN");
+  const id = String(formData.get("id"));
+  if (!id || id === admin.id) return;
+  await db.session.deleteMany({ where: { userId: id } });
+  await db.user.delete({ where: { id } }).catch(() => {});
   revalidatePath("/admin/perdoruesit");
 }
 
@@ -141,12 +230,9 @@ export async function rejectPro(formData: FormData) {
 
 export async function seedCategories() {
   await requireRole("ADMIN");
-  const existing = await db.category.count();
-  if (existing > 0) return;
+  if ((await db.category.count()) > 0) return;
   await db.category.createMany({
-    data: baseCategories.map((c, i) => ({
-      slug: c.slug, name: c.name, icon: c.icon, position: i, active: true,
-    })),
+    data: baseCategories.map((c, i) => ({ slug: c.slug, name: c.name, icon: c.icon, position: i, active: true })),
     skipDuplicates: true,
   });
   revalidatePath("/admin/kategorite");
@@ -155,13 +241,9 @@ export async function seedCategories() {
 export async function createCategory(formData: FormData) {
   await requireRole("ADMIN");
   const name = String(formData.get("name") ?? "").trim();
-  const slugRaw = String(formData.get("slug") ?? "").trim();
   const icon = String(formData.get("icon") ?? "sparkles").trim() || "sparkles";
   if (name.length < 2) return;
-  const slug = (slugRaw || name)
-    .toLowerCase()
-    .replace(/ë/g, "e").replace(/ç/g, "c")
-    .replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  const slug = slugify(String(formData.get("slug") ?? "").trim() || name);
   if (!slug) return;
   const last = await db.category.findFirst({ orderBy: { position: "desc" } });
   await db.category.upsert({
@@ -263,9 +345,8 @@ export async function saveHoneycomb(formData: FormData) {
   const map: Record<string, string> = {};
   for (const [key, value] of formData.entries()) {
     if (key.startsWith("cell:")) {
-      const cell = key.slice(5);
       const slug = String(value);
-      if (slug && slug !== "—") map[cell] = slug;
+      if (slug && slug !== "—") map[key.slice(5)] = slug;
     }
   }
   await setSetting("honeycomb", map);

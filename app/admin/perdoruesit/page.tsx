@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { BadgeCheck, Search, ShieldOff, UserCheck } from "lucide-react";
+import { BadgeCheck, Search, ShieldOff, Trash2, UserCheck } from "lucide-react";
 import AccountShell from "@/components/AccountShell";
 import { Card, SectionTitle } from "@/components/account/Bits";
 import EditUserModal from "@/components/admin/EditUserModal";
@@ -9,7 +9,7 @@ import { adminNav } from "@/lib/nav";
 import { db } from "@/lib/server/db";
 import { currentUser } from "@/lib/server/auth";
 import { categories as baseCategories } from "@/lib/data";
-import { approvePro, rejectPro, suspendUser, unsuspendUser } from "@/app/actions/admin";
+import { approvePro, deleteUser, rejectPro, suspendUser, unsuspendUser } from "@/app/actions/admin";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Përdoruesit — Admin" };
@@ -34,12 +34,20 @@ export default async function AdminUsersPage({
           ],
         }
       : undefined,
-    include: { proProfile: { select: { id: true, verification: true, categorySlug: true } } },
+    include: {
+      proProfile: {
+        select: {
+          id: true, categorySlug: true, about: true, experience: true,
+          priceFrom: true, radiusKm: true, serviceCities: true,
+          verification: true, ibanLast4: true,
+          services: { select: { name: true }, take: 1 },
+        },
+      },
+    },
     orderBy: { createdAt: "desc" },
     take: 100,
   });
 
-  // profile photos live in Setting under "avatar:<userId>"
   const avatarRows = await db.setting
     .findMany({ where: { key: { startsWith: "avatar:" } } })
     .catch(() => [] as { key: string; value: unknown }[]);
@@ -130,6 +138,7 @@ export default async function AdminUsersPage({
               <tbody className="divide-y divide-line">
                 {users.map((u) => {
                   const avatar = avatars.get(u.id) ?? null;
+                  const p = u.proProfile;
                   return (
                     <tr key={u.id}>
                       <td className="py-3 pr-4">
@@ -164,24 +173,54 @@ export default async function AdminUsersPage({
                       <td className="py-3">
                         <div className="flex items-center justify-end gap-2">
                           <EditUserModal
-                            user={{ id: u.id, name: u.name, city: u.city, phone: u.phone, email: u.email, avatarUrl: avatar }}
+                            isSelf={u.id === me.id}
+                            categoryOptions={categoryOptions}
+                            user={{
+                              id: u.id, name: u.name, email: u.email, city: u.city,
+                              phone: u.phone, role: u.role,
+                              personalNoLast4: u.personalNoLast4, avatarUrl: avatar,
+                            }}
+                            pro={
+                              p
+                                ? {
+                                    id: p.id,
+                                    categorySlug: p.categorySlug,
+                                    about: p.about,
+                                    experience: p.experience,
+                                    priceFrom: p.priceFrom,
+                                    radiusKm: p.radiusKm,
+                                    serviceCities: p.serviceCities,
+                                    verification: p.verification,
+                                    ibanLast4: p.ibanLast4,
+                                    subcategory: p.services[0]?.name ?? null,
+                                  }
+                                : null
+                            }
                           />
                           {u.id !== me.id && (
-                            u.suspendedAt ? (
-                              <form action={unsuspendUser}>
+                            <>
+                              {u.suspendedAt ? (
+                                <form action={unsuspendUser}>
+                                  <input type="hidden" name="id" value={u.id} />
+                                  <button className="flex items-center gap-1.5 rounded-full border border-line px-3.5 py-1.5 text-xs font-semibold text-ink hover:border-gold hover:text-gold-dark">
+                                    <UserCheck size={12} /> Aktivizo
+                                  </button>
+                                </form>
+                              ) : (
+                                <form action={suspendUser}>
+                                  <input type="hidden" name="id" value={u.id} />
+                                  <button className="flex items-center gap-1.5 rounded-full border border-line px-3.5 py-1.5 text-xs font-semibold text-muted hover:border-red-300 hover:text-red-500">
+                                    <ShieldOff size={12} /> Pezullo
+                                  </button>
+                                </form>
+                              )}
+                              <form action={deleteUser}>
                                 <input type="hidden" name="id" value={u.id} />
-                                <button className="flex items-center gap-1.5 rounded-full border border-line px-3.5 py-1.5 text-xs font-semibold text-ink hover:border-gold hover:text-gold-dark">
-                                  <UserCheck size={12} /> Aktivizo
+                                <button className="flex h-7 w-7 items-center justify-center rounded-full border border-line text-muted hover:border-red-300 hover:text-red-500" title="Fshij llogarinë">
+                                  <Trash2 size={12} />
                                 </button>
                               </form>
-                            ) : (
-                              <form action={suspendUser}>
-                                <input type="hidden" name="id" value={u.id} />
-                                <button className="flex items-center gap-1.5 rounded-full border border-line px-3.5 py-1.5 text-xs font-semibold text-muted hover:border-red-300 hover:text-red-500">
-                                  <ShieldOff size={12} /> Pezullo
-                                </button>
-                              </form>
-                            )
+                            </>
                           )}
                         </div>
                       </td>
