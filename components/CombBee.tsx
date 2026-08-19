@@ -1,75 +1,109 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Bee } from "./Brand";
 
 export type Stop = { x: number; y: number; name: string };
 
-/* A bee that tours the comb: it drifts from icon to icon and, as it
-   settles over one, that category's name pops up beneath it. */
+/* Catmull-Rom: a smooth curve that passes through every point, so the
+   bee sweeps through the icons on a continuous flight path instead of
+   travelling in straight hops. */
+function spline(p0: number, p1: number, p2: number, p3: number, t: number) {
+  const t2 = t * t;
+  const t3 = t2 * t;
+  return 0.5 * (
+    2 * p1 +
+    (-p0 + p2) * t +
+    (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2 +
+    (-p0 + 3 * p1 - 3 * p2 + p3) * t3
+  );
+}
+
 export default function CombBee({ stops, size }: { stops: Stop[]; size: number }) {
-  const [i, setI] = useState(0);
-  const [showName, setShowName] = useState(false);
-  const [mounted, setMounted] = useState(false);
-  const [calm, setCalm] = useState(false); // reduced-motion: jump instead of glide
+  const beeRef = useRef<HTMLDivElement>(null);
+  const [label, setLabel] = useState<string | null>(null);
 
   useEffect(() => {
-    setMounted(true);
-    if (typeof window !== "undefined") {
-      setCalm(window.matchMedia("(prefers-reduced-motion: reduce)").matches);
-    }
-  }, []);
+    const node = beeRef.current;
+    if (node === null || stops.length < 4) return;
 
-  useEffect(() => {
-    if (!mounted || stops.length === 0) return;
+    /* A wandering route: step through the icons out of order so the
+       flight path crosses the comb rather than reading it row by row. */
+    const step = stops.length % 3 === 0 ? 4 : 3;
+    const route = stops.map((_, i) => stops[(i * step) % stops.length]);
+    const n = route.length;
 
-    let alive = true;
-    const dwell = calm ? 4000 : 2600;
-    const settle = calm ? 200 : 1400;
+    const SPEED = 0.55;        // segments per second — never stops
+    const NEAR = size * 0.55;  // how close counts as "over" an icon
 
-    const first = setTimeout(() => alive && setShowName(true), settle);
-    const hop = setInterval(() => {
-      if (!alive) return;
-      setShowName(false);
-      setI((v) => (v + 1) % stops.length);
-      setTimeout(() => alive && setShowName(true), settle);
-    }, dwell);
+    let raf = 0;
+    const start = performance.now();
+    let shown: string | null = null;
 
-    return () => {
-      alive = false;
-      clearInterval(hop);
-      clearTimeout(first);
+    const frame = (now: number) => {
+      const elapsed = (now - start) / 1000;
+      const travelled = elapsed * SPEED;
+      const i = Math.floor(travelled) % n;
+      const t = travelled - Math.floor(travelled);
+
+      const a = route[(i - 1 + n) % n];
+      const b = route[i];
+      const c = route[(i + 1) % n];
+      const d = route[(i + 2) % n];
+
+      // position along the smooth curve through b → c
+      let x = spline(a.x, b.x, c.x, d.x, t);
+      let y = spline(a.y, b.y, c.y, d.y, t);
+
+      // a soft drifting bob, as if riding the air
+      x += Math.sin(elapsed * 1.9) * 4;
+      y += Math.cos(elapsed * 2.4) * 5;
+
+      // lean into the direction of travel
+      const t2 = Math.min(1, t + 0.04);
+      const nx = spline(a.x, b.x, c.x, d.x, t2);
+      const tilt = Math.max(-12, Math.min(12, (nx - x) * 1.6));
+
+      node.style.transform = `translate(${x}px, ${y}px) rotate(${tilt}deg)`;
+
+      // whichever icon it happens to be over right now
+      let over: string | null = null;
+      for (const s of stops) {
+        if (Math.hypot(x - s.x, y - s.y) < NEAR) {
+          over = s.name;
+          break;
+        }
+      }
+      if (over !== shown) {
+        shown = over;
+        setLabel(over);
+      }
+
+      raf = requestAnimationFrame(frame);
     };
-  }, [mounted, calm, stops.length]);
 
-  if (stops.length === 0) return null;
-  const stop = stops[Math.min(i, stops.length - 1)];
+    raf = requestAnimationFrame(frame);
+    return () => cancelAnimationFrame(raf);
+  }, [stops, size]);
+
+  if (stops.length < 4) return null;
 
   return (
     <div
+      ref={beeRef}
       className="pointer-events-none absolute left-0 top-0 z-30"
-      style={{
-        transform: `translate(${stop.x}px, ${stop.y}px)`,
-        transition: calm ? undefined : "transform 1.4s cubic-bezier(0.45, 0, 0.25, 1)",
-        width: size,
-        height: size,
-      }}
+      style={{ width: size, height: size, willChange: "transform" }}
       aria-hidden="true"
     >
       <span className="absolute inset-0 flex items-center justify-center">
-        <span className="block animate-bee-hover">
-          <Bee size={Math.round(size * 0.62)} />
-        </span>
+        <Bee size={Math.round(size * 0.58)} />
       </span>
 
       <span
-        className="absolute left-1/2 top-full whitespace-nowrap rounded-full border border-gold bg-white px-2.5 py-1 text-[11px] font-bold text-ink shadow-lift transition-all duration-300"
-        style={{
-          opacity: showName ? 1 : 0,
-          transform: `translate(-50%, ${showName ? "2px" : "-4px"})`,
-        }}
+        className="absolute left-1/2 top-full whitespace-nowrap rounded-full border border-gold bg-white px-2.5 py-1 text-[11px] font-bold text-ink shadow-lift transition-opacity duration-200"
+        style={{ opacity: label ? 1 : 0, transform: "translate(-50%, 3px)" }}
       >
-        {stop.name}
+        {label ?? ""}
       </span>
     </div>
   );
