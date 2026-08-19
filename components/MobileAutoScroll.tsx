@@ -2,9 +2,9 @@
 
 import { useEffect, useRef } from "react";
 
-/* On phones, nudge any horizontally scrollable belt inside this wrapper
-   along on its own, looping back to the start. Touching it pauses the
-   drift so people can browse by hand. */
+/* On phones, keep any horizontally scrollable belt inside this wrapper
+   drifting on its own. Touching it pauses the drift so people can
+   browse by hand. */
 export default function MobileAutoScroll({
   speed = 28, // pixels per second
   children,
@@ -16,38 +16,47 @@ export default function MobileAutoScroll({
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    if (!window.matchMedia("(max-width: 640px)").matches) return;
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (!window.matchMedia("(max-width: 767px)").matches) return;
 
     const root = wrap.current;
     if (!root) return;
 
-    // the scrollable strip inside the belt
-    const belts = Array.from(root.querySelectorAll<HTMLElement>("*")).filter(
-      (el) => el.scrollWidth > el.clientWidth + 24
-    );
-    if (belts.length === 0) return;
+    const calm = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const pxPerSec = calm ? speed * 0.4 : speed;
 
-    let paused = false;
     let raf = 0;
     let last = performance.now();
+    let paused = false;
+    let belts: HTMLElement[] = [];
+
+    const findBelts = () => {
+      const all = Array.from(root.querySelectorAll<HTMLElement>("div, ul, section"));
+      belts = all.filter((el) => {
+        if (el.scrollWidth <= el.clientWidth + 12) return false;
+        const ox = getComputedStyle(el).overflowX;
+        return ox === "auto" || ox === "scroll";
+      });
+      belts.forEach((b) => {
+        b.addEventListener("touchstart", pause, { passive: true });
+        b.addEventListener("touchend", resume, { passive: true });
+      });
+    };
 
     const pause = () => { paused = true; };
     const resume = () => { setTimeout(() => { paused = false; }, 2500); };
 
-    belts.forEach((b) => {
-      b.addEventListener("touchstart", pause, { passive: true });
-      b.addEventListener("touchend", resume, { passive: true });
-    });
+    // give the belt a moment to render its cards before measuring
+    const scan = setTimeout(findBelts, 400);
+    const rescan = setTimeout(() => { if (belts.length === 0) findBelts(); }, 1500);
 
     const tick = (now: number) => {
-      const dt = (now - last) / 1000;
+      const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
       if (!paused) {
         belts.forEach((b) => {
           const max = b.scrollWidth - b.clientWidth;
           if (max <= 0) return;
-          const next = b.scrollLeft + speed * dt;
+          const next = b.scrollLeft + pxPerSec * dt;
           b.scrollLeft = next >= max - 1 ? 0 : next;
         });
       }
@@ -57,6 +66,8 @@ export default function MobileAutoScroll({
 
     return () => {
       cancelAnimationFrame(raf);
+      clearTimeout(scan);
+      clearTimeout(rescan);
       belts.forEach((b) => {
         b.removeEventListener("touchstart", pause);
         b.removeEventListener("touchend", resume);
