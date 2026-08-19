@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import CategoryIcon from "./CategoryIcon";
-import BeeCell from "./BeeCell";
 import { Bee } from "./Brand";
 import { HEX_D, HEX_RATIO as RATIO } from "@/lib/hex";
 
@@ -12,8 +11,7 @@ type Cat = { slug: string; name: string; icon: string };
 type Placed = {
   key: string;
   cat: Cat | null;  // null = a bee cell
-  bee?: boolean;    // the pressable one
-  decor?: boolean;  // just for looks
+  decor?: boolean;  // bees, purely decorative
   x: number;
   y: number;
   row: number;
@@ -68,10 +66,6 @@ const Cells = memo(function Cells({
             <span className="absolute inset-0 flex items-center justify-center">
               <Bee size={Math.round(size * 0.46)} />
             </span>
-          </div>
-        ) : c.bee ? (
-          <div key={c.key} className="absolute z-20" style={{ left: c.x, top: c.y, width: size, height: h }}>
-            <BeeCell size={size} height={h} />
           </div>
         ) : (
           <Link
@@ -131,15 +125,22 @@ export default function MobileHexBelt({
   const dy = h * 0.75;
 
   const { cells, groupWidth, beltHeight } = useMemo(() => {
-    /* A scattering of bees for looks — one every few columns. */
-    const isDecorBee = (col: number, row: number) =>
-      col !== 2 && col % 3 === 1 && row === (col * 2) % ROWS;
+    /* Bees dotted around the sheet — irregular, never two touching. */
+    const isDecorBee = (col: number, row: number) => {
+      const hash = (col * 73856093) ^ (row * 19349663);
+      const a = Math.abs(hash % 97) / 97;
+      if (a > 0.13) return false;
+      // keep them apart: no bee directly beside another
+      const prevHash = ((col - 1) * 73856093) ^ (row * 19349663);
+      if (Math.abs(prevHash % 97) / 97 <= 0.13) return false;
+      return true;
+    };
 
     /* Grow the sheet until every category fits once alongside the bees,
        so nothing has to repeat. */
     let columns = Math.max(8, Math.ceil((cats.length + 1) / ROWS));
     const slotsFor = (cols: number) => {
-      let bees = 1; // the pressable one
+      let bees = 0;
       for (let col = 0; col < cols; col++) {
         for (let row = 0; row < ROWS; row++) if (isDecorBee(col, row)) bees++;
       }
@@ -155,9 +156,7 @@ export default function MobileHexBelt({
         const y = row * dy;
         const honey = (col * 2 + row) % 3 === 0;
 
-        if (col === 2 && row === 1) {
-          list.push({ key: `b-${col}-${row}`, cat: null, bee: true, x, y, row, honey });
-        } else if (isDecorBee(col, row)) {
+        if (isDecorBee(col, row)) {
           list.push({ key: `d-${col}-${row}`, cat: null, decor: true, x, y, row, honey });
         } else {
           list.push({ key: `c-${col}-${row}`, cat: cats[n++ % cats.length], x, y, row, honey });

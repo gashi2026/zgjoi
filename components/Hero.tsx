@@ -36,8 +36,23 @@ export default async function Hero() {
 
   return (
     <section className="relative overflow-hidden bg-cream">
-      <div className="mx-auto grid max-w-7xl items-center gap-8 px-4 pb-10 pt-10 sm:gap-12 sm:px-6 sm:pb-16 sm:pt-12 lg:grid-cols-2 lg:gap-8 lg:px-8 lg:pb-24 lg:pt-20">
-        {/* Left: copy + search */}
+      {/* Phones keep the phone layout no matter how far you zoom out —
+          the switch follows the device, not the window width. */}
+      <style
+        dangerouslySetInnerHTML={{
+          __html: `
+            .zg-touch { display: none; }
+            .zg-pointer { display: block; }
+            @media (max-width: 640px), (hover: none) and (pointer: coarse) {
+              .zg-touch { display: block; }
+              .zg-pointer { display: none; }
+              .zg-hero-grid { grid-template-columns: 1fr !important; }
+            }
+          `,
+        }}
+      />
+
+      <div className="zg-hero-grid mx-auto grid max-w-7xl items-center gap-8 px-4 pb-10 pt-10 sm:gap-12 sm:px-6 sm:pb-16 sm:pt-12 lg:grid-cols-2 lg:gap-8 lg:px-8 lg:pb-24 lg:pt-20">
         <div className="relative z-10 animate-fade-up">
           <h1 className="text-[2rem] font-extrabold leading-[1.1] tracking-tight text-ink sm:text-5xl lg:text-[3.4rem]">
             {line1}
@@ -57,14 +72,14 @@ export default async function Hero() {
             <SearchBar />
           </div>
 
-          {/* Phones: the hex belt, tucked right under the search box */}
-          <div className="-mt-3 sm:hidden">
+          {/* touch devices: the hex belt, tucked under the search box */}
+          <div className="zg-touch -mt-3">
             <MobileHexBelt cats={beltCats} />
           </div>
         </div>
 
-        {/* Tablet & desktop: the full comb on the right */}
-        <div className="relative hidden min-h-[520px] sm:block">
+        {/* pointer devices: the full comb on the right */}
+        <div className="zg-pointer relative min-h-[520px]">
           <div className="absolute bottom-0 right-0 z-0">
             <Honeycomb services={services} catalog={catalog} />
             <div className="pointer-events-none absolute -bottom-2 -left-10 z-20">
