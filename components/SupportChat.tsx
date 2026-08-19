@@ -5,9 +5,14 @@ import { MessageCircle, Send, X } from "lucide-react";
 
 type Msg = { id: string; body: string; fromAgent: boolean; time: string };
 type Status = { online: boolean; localTime: string; nextOpenLabel: string };
+type Pos = { x: number; y: number };
 
 const STORAGE_KEY = "zgjoi_support_ticket";
-const HOURS_LABEL = "E hënë–e premte, 09:00–17:00 (koha e Kosovës)";
+const POS_KEY = "zgjoi_support_pos";
+const HOURS_LABEL = "E hënë–e premte, 09:00–17:00";
+
+const BTN = 56;      // launcher size
+const MARGIN = 12;   // keep it off the very edge
 
 export default function SupportChat() {
   const [open, setOpen] = useState(false);
@@ -19,6 +24,67 @@ export default function SupportChat() {
   const [error, setError] = useState("");
   const endRef = useRef<HTMLDivElement>(null);
 
+  /* ---------------------------------------------- draggable launcher */
+  const [pos, setPos] = useState<Pos | null>(null);
+  const dragging = useRef(false);
+  const moved = useRef(0);
+  const grab = useRef<Pos>({ x: 0, y: 0 });
+
+  const clamp = useCallback((p: Pos): Pos => {
+    const maxX = window.innerWidth - BTN - MARGIN;
+    const maxY = window.innerHeight - BTN - MARGIN;
+    return {
+      x: Math.max(MARGIN, Math.min(maxX, p.x)),
+      y: Math.max(MARGIN, Math.min(maxY, p.y)),
+    };
+  }, []);
+
+  useEffect(() => {
+    const fallback = (): Pos => ({
+      x: window.innerWidth - BTN - 20,
+      y: window.innerHeight - BTN - (window.innerWidth < 1024 ? 96 : 24),
+    });
+    let start = fallback();
+    try {
+      const saved = localStorage.getItem(POS_KEY);
+      if (saved) {
+        const p = JSON.parse(saved) as Pos;
+        if (typeof p.x === "number" && typeof p.y === "number") start = p;
+      }
+    } catch { /* private mode */ }
+    setPos(clamp(start));
+
+    const onResize = () => setPos((p) => (p ? clamp(p) : p));
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [clamp]);
+
+  const onPointerDown = (e: React.PointerEvent) => {
+    if (!pos) return;
+    dragging.current = true;
+    moved.current = 0;
+    grab.current = { x: e.clientX - pos.x, y: e.clientY - pos.y };
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  };
+
+  const onPointerMove = (e: React.PointerEvent) => {
+    if (!dragging.current) return;
+    moved.current += Math.abs(e.movementX) + Math.abs(e.movementY);
+    setPos(clamp({ x: e.clientX - grab.current.x, y: e.clientY - grab.current.y }));
+  };
+
+  const onPointerUp = (e: React.PointerEvent) => {
+    if (!dragging.current) return;
+    dragging.current = false;
+    try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId); } catch { /* ignore */ }
+    if (pos) {
+      try { localStorage.setItem(POS_KEY, JSON.stringify(pos)); } catch { /* ignore */ }
+    }
+    // a real drag shouldn't also open the chat
+    if (moved.current < 6) setOpen((o) => !o);
+  };
+
+  /* ------------------------------------------------------ messaging */
   useEffect(() => {
     try {
       const saved = sessionStorage.getItem(STORAGE_KEY);
@@ -88,15 +154,25 @@ export default function SupportChat() {
   }
 
   const online = status?.online ?? false;
+  if (!pos) return null; // wait until we know where it lives
+
+  /* open the panel on whichever side there's room */
+  const panelAbove = pos.y > 300;
+  const panelLeft = pos.x < 380;
 
   return (
-    <>
-      {/* launcher button */}
+    <div className="fixed z-[80]" style={{ left: pos.x, top: pos.y }}>
+      {/* launcher — drag it anywhere, tap to open */}
       <button
         type="button"
-        onClick={() => setOpen((o) => !o)}
-        aria-label={open ? "Mbyll bisedën" : "Hap mbështetjen"}
-        className="fixed bottom-24 right-5 z-[80] flex h-14 w-14 items-center justify-center rounded-full bg-gold text-ink shadow-lift transition-transform hover:scale-105 lg:bottom-6"
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+        aria-label={open ? "Mbyll bisedën" : "Hap mbështetjen (mbaje shtypur për ta zhvendosur)"}
+        title="Mbaje shtypur për ta zhvendosur"
+        className="flex items-center justify-center rounded-full bg-gold text-ink shadow-lift transition-transform active:scale-95"
+        style={{ width: BTN, height: BTN, touchAction: "none", cursor: dragging.current ? "grabbing" : "grab" }}
       >
         {open ? <X size={22} /> : <MessageCircle size={24} />}
         {!open && (
@@ -107,9 +183,15 @@ export default function SupportChat() {
         )}
       </button>
 
-      {/* chat panel */}
+      {/* chat panel, anchored to the launcher wherever it sits */}
       {open && (
-        <div className="fixed bottom-40 right-5 z-[80] flex h-[min(520px,70vh)] w-[min(360px,calc(100vw-2.5rem))] flex-col overflow-hidden rounded-2xl border border-line bg-white shadow-lift lg:bottom-24">
+        <div
+          className="absolute flex h-[min(520px,60vh)] w-[min(360px,calc(100vw-2.5rem))] flex-col overflow-hidden rounded-2xl border border-line bg-white shadow-lift"
+          style={{
+            [panelAbove ? "bottom" : "top"]: BTN + 12,
+            [panelLeft ? "left" : "right"]: 0,
+          } as React.CSSProperties}
+        >
           <header className="border-b border-line bg-cream px-5 py-4">
             <div className="flex items-center gap-2">
               <span className={`h-2.5 w-2.5 rounded-full ${online ? "bg-green-500" : "bg-gray-400"}`} />
@@ -165,6 +247,6 @@ export default function SupportChat() {
           </div>
         </div>
       )}
-    </>
+    </div>
   );
 }
