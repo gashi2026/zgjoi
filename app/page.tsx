@@ -13,15 +13,13 @@ export const dynamic = "force-dynamic";
 export default function HomePage() {
   return (
     <>
-      {/* On computers the whole homepage renders a quarter larger; phones
-          keep their own sizing. */}
       <div className="home-scale">
         <Hero />
         <Stats />
         <div className="home-compact">
-          {/* the category belt is desktop-only — on phones the comb above
-              already covers browsing by category */}
-          <div className="hidden sm:block">
+          {/* the category belt is for pointer devices — phones have the
+              hex belt in the hero instead */}
+          <div className="zg-pointer-block">
             <Categories />
           </div>
           <DualCards />
@@ -36,11 +34,21 @@ export default function HomePage() {
       <style
         dangerouslySetInnerHTML={{
           __html: `
-            @media (min-width: 641px) {
+            .zg-pointer-block { display: block; }
+            .home-compact { zoom: 0.88; }
+
+            /* computers: bigger page */
+            @media (min-width: 641px) and (hover: hover) and (pointer: fine) {
               .home-scale { zoom: 1.25; }
             }
-            .home-compact { zoom: 0.88; }
-            @media (max-width: 640px) { .home-compact { zoom: 0.92; } }
+
+            /* phones and tablets — regardless of zoom level */
+            @media (max-width: 640px), (hover: none) and (pointer: coarse) {
+              .zg-pointer-block { display: none; }
+              .home-scale { zoom: 1; }
+              .home-compact { zoom: 0.92; }
+            }
+
             @supports not (zoom: 1) {
               .home-compact { font-size: 0.9rem; }
             }
