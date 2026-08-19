@@ -22,7 +22,7 @@ const ROWS = 4;
 export default function MobileHexBelt({
   cats,
   size = 52,
-  speed = 26, // pixels per second, right → left
+  speed = 24, // pixels per second, right → left
 }: {
   cats: Cat[];
   size?: number;
@@ -34,21 +34,23 @@ export default function MobileHexBelt({
   const [callout, setCallout] = useState<{ key: string; name: string; x: number; y: number } | null>(null);
 
   const h = size * RATIO;
-  const dx = size;
-  const dy = h * 0.75;
+  const dx = size;        // step between cells in the same row
+  const dy = h * 0.75;    // step between rows
 
-  /* Lay the categories out column by column, four rows deep, with a
-     scattering of empty cells and one bee. */
+  /* Exactly the comb's own tiling: rows step down by 3/4 of a hex and
+     every other row shifts half a step across, so the cells interlock
+     instead of stacking on top of one another. */
+  const columns = Math.max(8, Math.ceil((cats.length + 8) / ROWS));
   const cells: Placed[] = [];
-  const columns = Math.max(6, Math.ceil((cats.length + 6) / ROWS));
   let n = 0;
   for (let col = 0; col < columns; col++) {
     for (let row = 0; row < ROWS; row++) {
-      const gap = (col * 3 + row * 2) % 7 === 0; // breathing holes
-      const bee = col === 2 && row === 1;
-      const x = col * dx;
-      const y = row * dy + (col % 2 === 1 ? dy / 2 : 0);
+      const x = col * dx + (row % 2 === 1 ? dx / 2 : 0);
+      const y = row * dy;
       const honey = (col * 2 + row) % 3 === 0;
+      const gap = (col * 3 + row * 2) % 7 === 0;   // scattered empty cells
+      const bee = col === 2 && row === 1;
+
       if (bee) {
         cells.push({ key: `b-${col}-${row}`, cat: null, bee: true, x, y, honey });
       } else if (gap || n >= cats.length) {
@@ -60,9 +62,9 @@ export default function MobileHexBelt({
   }
 
   const groupWidth = columns * dx;
-  const beltHeight = (ROWS - 1) * dy + h + dy / 2;
+  const beltHeight = (ROWS - 1) * dy + h;
+  const TOP_ROOM = 78; // space above the belt for the call-outs
 
-  /* Continuous right → left drift. */
   useEffect(() => {
     const track = trackRef.current;
     if (track === null) return;
@@ -84,8 +86,7 @@ export default function MobileHexBelt({
     return () => cancelAnimationFrame(raf);
   }, [groupWidth, speed]);
 
-  /* Every couple of seconds, a call-out line pops up on a random icon
-     that's currently on screen. */
+  /* A call-out pops up on a random icon that's on screen right now. */
   useEffect(() => {
     const named = cells.filter((c) => c.cat !== null);
     if (named.length === 0) return;
@@ -93,12 +94,10 @@ export default function MobileHexBelt({
     const pick = () => {
       const viewW = frameRef.current?.clientWidth ?? 360;
       const left = -offset.current;
-      const visible = named.filter(
-        (c) => c.x > left + 10 && c.x < left + viewW - 150
-      );
+      const visible = named.filter((c) => c.x > left + 8 && c.x < left + viewW - 150);
       const pool = visible.length > 0 ? visible : named;
       const c = pool[Math.floor(Math.random() * pool.length)];
-      setCallout({ key: c.key + Math.random(), name: c.cat!.name, x: c.x, y: c.y });
+      setCallout({ key: `${c.key}-${Date.now()}`, name: c.cat!.name, x: c.x, y: c.y });
       window.setTimeout(() => setCallout(null), 2600);
     };
 
@@ -125,7 +124,7 @@ export default function MobileHexBelt({
         <div
           key={c.key + suffix}
           className="absolute"
-          style={{ left: c.x, top: c.y, width: size, height: h, opacity: 0.5 }}
+          style={{ left: c.x, top: c.y, width: size, height: h, opacity: 0.55 }}
           aria-hidden="true"
         >
           <svg viewBox="0 0 100 115.47" width={size} height={h}>
@@ -176,51 +175,49 @@ export default function MobileHexBelt({
     <div
       ref={frameRef}
       className="relative overflow-hidden"
-      style={{ height: beltHeight + 74, marginInline: "-1rem" }}
+      style={{ height: beltHeight + TOP_ROOM, marginInline: "-1rem" }}
       aria-label="Kategoritë e shërbimeve"
     >
       <style>{`
-        @keyframes callout-in {
-          from { opacity: 0; }
-          to   { opacity: 1; }
-        }
+        @keyframes callout-in { from { opacity: 0 } to { opacity: 1 } }
         @keyframes callout-draw {
-          from { stroke-dashoffset: 120; }
-          to   { stroke-dashoffset: 0; }
+          from { stroke-dashoffset: 130 }
+          to   { stroke-dashoffset: 0 }
         }
         @keyframes callout-glow {
-          0%, 100% { filter: drop-shadow(0 0 3px rgba(255,184,0,0.85)); }
-          50%      { filter: drop-shadow(0 0 7px rgba(255,184,0,1)); }
+          0%, 100% { filter: drop-shadow(0 0 3px rgba(255,184,0,0.8)) }
+          50%      { filter: drop-shadow(0 0 8px rgba(255,184,0,1)) }
         }
       `}</style>
 
       <div
         ref={trackRef}
         className="absolute left-0 will-change-transform"
-        style={{ top: 74, width: groupWidth * 2, height: beltHeight }}
+        style={{ top: TOP_ROOM, width: groupWidth * 2, height: beltHeight }}
       >
-        {/* two copies so the belt loops seamlessly */}
         {cells.map((c) => renderCell(c, "-a"))}
         <div className="absolute left-0 top-0" style={{ transform: `translateX(${groupWidth}px)` }}>
           {cells.map((c) => renderCell(c, "-b"))}
         </div>
 
-        {/* the call-out: a shining line lifting off the cell to its name */}
+        {/* call-out: a shining line lifting off the cell, name resting on it */}
         {callout && (
           <div
             key={callout.key}
             className="pointer-events-none absolute z-30"
             style={{
               left: callout.x + size / 2,
-              top: callout.y,
+              top: callout.y - 62,
+              width: 132,
+              height: 70,
               animation: "callout-in 260ms ease-out both",
             }}
           >
             <svg
-              width="118"
-              height="66"
-              viewBox="0 0 118 66"
-              className="absolute bottom-0 left-0"
+              width="132"
+              height="70"
+              viewBox="0 0 132 70"
+              className="absolute inset-0"
               style={{ animation: "callout-glow 1.8s ease-in-out infinite" }}
               aria-hidden="true"
             >
@@ -232,18 +229,23 @@ export default function MobileHexBelt({
                 </linearGradient>
               </defs>
               <path
-                d="M8 58 L34 26 L112 26"
+                d="M6 64 L34 30 L126 30"
                 fill="none"
                 stroke="url(#calloutShine)"
                 strokeWidth="2"
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                strokeDasharray="120"
+                strokeDasharray="130"
                 style={{ animation: "callout-draw 520ms ease-out both" }}
               />
-              <circle cx="8" cy="58" r="4.5" fill="#FFFFFF" stroke="#FFB800" strokeWidth="2" />
+              <circle cx="6" cy="64" r="4.5" fill="#FFFFFF" stroke="#FFB800" strokeWidth="2" />
             </svg>
-            <span className="absolute bottom-[52px] left-[34px] whitespace-nowrap rounded-full border border-gold bg-white px-2.5 py-1 text-[11px] font-bold text-ink shadow-lift">
+
+            {/* the name sits directly on top of the horizontal line */}
+            <span
+              className="absolute whitespace-nowrap text-[12px] font-extrabold text-ink"
+              style={{ left: 36, top: 30 - 19 }}
+            >
               {callout.name}
             </span>
           </div>
