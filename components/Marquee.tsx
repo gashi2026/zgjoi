@@ -15,9 +15,9 @@ type Props = {
 /**
  * Infinite "conveyor belt" row.
  * - scrolls continuously with requestAnimationFrame
- * - pauses on hover / keyboard focus
+ * - pauses on hover / keyboard focus (pointer devices only)
  * - can be dragged (mouse or touch) to scrub, then resumes
- * - respects prefers-reduced-motion
+ * - with reduced motion on, it slows down rather than stopping
  */
 export default function Marquee({
   children,
@@ -40,7 +40,11 @@ export default function Marquee({
     const group = groupRef.current;
     if (!track || !group) return;
 
+    // Reduced motion shouldn't freeze the belt outright — it just takes
+    // it down to a gentle crawl.
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const rate = reduce ? speed * 0.4 : speed;
+
     const dir = direction === "left" ? -1 : 1;
     let raf = 0;
     let prev = performance.now();
@@ -57,8 +61,8 @@ export default function Marquee({
     const frame = (now: number) => {
       const dt = Math.min((now - prev) / 1000, 0.05);
       prev = now;
-      if (!paused.current && !dragging.current && !reduce) {
-        offset.current += dir * speed * dt;
+      if (!paused.current && !dragging.current) {
+        offset.current += dir * rate * dt;
         normalize();
         track.style.transform = `translate3d(${offset.current}px,0,0)`;
       }
@@ -113,13 +117,21 @@ export default function Marquee({
     dragMoved.current = 0;
   };
 
+  /* only pause on hover where hovering is a real thing — on a phone the
+     "hover" can stick after a tap and freeze the belt for good */
+  const hoverPause = (v: boolean) => () => {
+    if (typeof window !== "undefined" && window.matchMedia("(hover: hover)").matches) {
+      paused.current = v;
+    }
+  };
+
   return (
     <div
       className={`group/marquee relative overflow-hidden ${className}`}
-      onMouseEnter={() => (paused.current = true)}
-      onMouseLeave={() => (paused.current = false)}
-      onFocusCapture={() => (paused.current = true)}
-      onBlurCapture={() => (paused.current = false)}
+      onMouseEnter={hoverPause(true)}
+      onMouseLeave={hoverPause(false)}
+      onFocusCapture={hoverPause(true)}
+      onBlurCapture={hoverPause(false)}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={endDrag}
