@@ -11,8 +11,8 @@ const STORAGE_KEY = "zgjoi_support_ticket";
 const POS_KEY = "zgjoi_support_pos";
 const HOURS_LABEL = "E hënë–e premte, 09:00–17:00";
 
-const BTN = 56;      // launcher size
-const MARGIN = 12;   // keep it off the very edge
+const BTN = 56;
+const MARGIN = 12;
 
 export default function SupportChat() {
   const [open, setOpen] = useState(false);
@@ -24,25 +24,58 @@ export default function SupportChat() {
   const [error, setError] = useState("");
   const endRef = useRef<HTMLDivElement>(null);
 
-  /* ---------------------------------------------- draggable launcher */
-  const [pos, setPos] = useState<Pos | null>(null);
+  /* ------------------------------------------- draggable, edge-snapped */
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const posRef = useRef<Pos>({ x: 0, y: 0 });
+  const [pos, setPos] = useState<Pos | null>(null); // only for anchoring the panel
   const dragging = useRef(false);
   const moved = useRef(0);
   const grab = useRef<Pos>({ x: 0, y: 0 });
 
-  const clamp = useCallback((p: Pos): Pos => {
-    const maxX = window.innerWidth - BTN - MARGIN;
-    const maxY = window.innerHeight - BTN - MARGIN;
+  const bounds = () => ({
+    maxX: window.innerWidth - BTN - MARGIN,
+    maxY: window.innerHeight - BTN - MARGIN,
+  });
+
+  const clamp = (p: Pos): Pos => {
+    const { maxX, maxY } = bounds();
     return {
       x: Math.max(MARGIN, Math.min(maxX, p.x)),
       y: Math.max(MARGIN, Math.min(maxY, p.y)),
     };
-  }, []);
+  };
+
+  /* nearest edge — left, right, top or bottom */
+  const snap = (p: Pos): Pos => {
+    const { maxX, maxY } = bounds();
+    const c = clamp(p);
+    const d = {
+      left: c.x - MARGIN,
+      right: maxX - c.x,
+      top: c.y - MARGIN,
+      bottom: maxY - c.y,
+    };
+    const nearest = (Object.keys(d) as (keyof typeof d)[]).reduce((a, b) =>
+      d[a] <= d[b] ? a : b
+    );
+    if (nearest === "left") return { x: MARGIN, y: c.y };
+    if (nearest === "right") return { x: maxX, y: c.y };
+    if (nearest === "top") return { x: c.x, y: MARGIN };
+    return { x: c.x, y: maxY };
+  };
+
+  /* write straight to the DOM while dragging — no React work per frame */
+  const paint = (p: Pos, animate: boolean) => {
+    const el = wrapRef.current;
+    if (!el) return;
+    el.style.transition = animate ? "transform 240ms cubic-bezier(0.22, 1, 0.36, 1)" : "none";
+    el.style.transform = `translate3d(${p.x}px, ${p.y}px, 0)`;
+  };
 
   useEffect(() => {
     const fallback = (): Pos => ({
-      x: window.innerWidth - BTN - 20,
-      y: window.innerHeight - BTN - (window.innerWidth < 1024 ? 96 : 24),
+      x: window.innerWidth - BTN - MARGIN,
+      y: window.innerHeight - BTN - (window.innerWidth < 1024 ? 110 : 30),
     });
     let start = fallback();
     try {
@@ -52,36 +85,53 @@ export default function SupportChat() {
         if (typeof p.x === "number" && typeof p.y === "number") start = p;
       }
     } catch { /* private mode */ }
-    setPos(clamp(start));
 
-    const onResize = () => setPos((p) => (p ? clamp(p) : p));
+    const snapped = snap(start);
+    posRef.current = snapped;
+    setPos(snapped);
+    paint(snapped, false);
+
+    const onResize = () => {
+      const next = snap(posRef.current);
+      posRef.current = next;
+      setPos(next);
+      paint(next, true);
+    };
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
-  }, [clamp]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const onPointerDown = (e: React.PointerEvent) => {
-    if (!pos) return;
     dragging.current = true;
     moved.current = 0;
-    grab.current = { x: e.clientX - pos.x, y: e.clientY - pos.y };
+    grab.current = { x: e.clientX - posRef.current.x, y: e.clientY - posRef.current.y };
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
     if (!dragging.current) return;
     moved.current += Math.abs(e.movementX) + Math.abs(e.movementY);
-    setPos(clamp({ x: e.clientX - grab.current.x, y: e.clientY - grab.current.y }));
+    const next = clamp({ x: e.clientX - grab.current.x, y: e.clientY - grab.current.y });
+    posRef.current = next;
+    paint(next, false); // follows the finger exactly, nothing re-renders
   };
 
   const onPointerUp = (e: React.PointerEvent) => {
     if (!dragging.current) return;
     dragging.current = false;
     try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId); } catch { /* ignore */ }
-    if (pos) {
-      try { localStorage.setItem(POS_KEY, JSON.stringify(pos)); } catch { /* ignore */ }
+
+    if (moved.current < 6) {
+      setOpen((o) => !o);
+      return;
     }
-    // a real drag shouldn't also open the chat
-    if (moved.current < 6) setOpen((o) => !o);
+
+    const landed = snap(posRef.current); // glide to the closest edge
+    posRef.current = landed;
+    paint(landed, true);
+    setPos(landed);
+    try { localStorage.setItem(POS_KEY, JSON.stringify(landed)); } catch { /* ignore */ }
   };
 
   /* ------------------------------------------------------ messaging */
@@ -154,25 +204,25 @@ export default function SupportChat() {
   }
 
   const online = status?.online ?? false;
-  if (!pos) return null; // wait until we know where it lives
-
-  /* open the panel on whichever side there's room */
-  const panelAbove = pos.y > 300;
-  const panelLeft = pos.x < 380;
+  const panelAbove = (pos?.y ?? 0) > 300;
+  const panelLeft = (pos?.x ?? 0) < 380;
 
   return (
-    <div className="fixed z-[80]" style={{ left: pos.x, top: pos.y }}>
-      {/* launcher — drag it anywhere, tap to open */}
+    <div
+      ref={wrapRef}
+      className="fixed left-0 top-0 z-[80] will-change-transform"
+      style={{ visibility: pos ? "visible" : "hidden" }}
+    >
       <button
         type="button"
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
-        aria-label={open ? "Mbyll bisedën" : "Hap mbështetjen (mbaje shtypur për ta zhvendosur)"}
-        title="Mbaje shtypur për ta zhvendosur"
-        className="flex items-center justify-center rounded-full bg-gold text-ink shadow-lift transition-transform active:scale-95"
-        style={{ width: BTN, height: BTN, touchAction: "none", cursor: dragging.current ? "grabbing" : "grab" }}
+        aria-label={open ? "Mbyll bisedën" : "Hap mbështetjen (tërhiqe për ta zhvendosur)"}
+        title="Tërhiqe për ta zhvendosur"
+        className="relative flex items-center justify-center rounded-full bg-gold text-ink shadow-lift active:scale-95"
+        style={{ width: BTN, height: BTN, touchAction: "none", cursor: "grab" }}
       >
         {open ? <X size={22} /> : <MessageCircle size={24} />}
         {!open && (
@@ -183,7 +233,6 @@ export default function SupportChat() {
         )}
       </button>
 
-      {/* chat panel, anchored to the launcher wherever it sits */}
       {open && (
         <div
           className="absolute flex h-[min(520px,60vh)] w-[min(360px,calc(100vw-2.5rem))] flex-col overflow-hidden rounded-2xl border border-line bg-white shadow-lift"
