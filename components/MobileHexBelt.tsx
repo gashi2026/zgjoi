@@ -25,6 +25,9 @@ const TOP_ROOM = 66;
 const BOTTOM_ROOM = 54;
 const HOLD_MS = 2000;   // every name stays exactly two seconds
 const MAX_LIVE = 3;
+const LABEL_W = 150;    // how much room a call-out takes across
+const SAME_SIDE_GAP = LABEL_W + 30; // side by side on the same side of the belt
+const CROSS_GAP = 40;               // one above, one below — they can sit closer
 
 /* The hexes never change once laid out, so they render in their own
    memoised layer — call-outs coming and going can't make them re-render,
@@ -170,34 +173,42 @@ export default function MobileHexBelt({
 
     let id = 0;
     let lastName = "";
-    let showing: string[] = [];
+    /* what's on screen right now, so new ones can keep their distance */
+    let showing: { name: string; x: number; dir: "up" | "down" }[] = [];
+
+    const clearOf = (x: number, dir: "up" | "down") =>
+      showing.every((s) =>
+        Math.abs(s.x - x) >= (s.dir === dir ? SAME_SIDE_GAP : CROSS_GAP)
+      );
 
     const spawn = () => {
       if (showing.length >= MAX_LIVE) return;
       const viewW = frameRef.current?.clientWidth ?? 360;
       const left = -offset.current;
-      const pool = named.filter(
-        (c) =>
+
+      const pool = named.filter((c) => {
+        const dir: "up" | "down" = c.row <= 1 ? "up" : "down";
+        return (
           c.x > left + 8 &&
-          c.x < left + viewW - 150 &&
+          c.x < left + viewW - LABEL_W - 10 &&
           c.cat!.name !== lastName &&
-          !showing.includes(c.cat!.name)
-      );
+          !showing.some((s) => s.name === c.cat!.name) &&
+          clearOf(c.x, dir)
+        );
+      });
       if (pool.length === 0) return;
 
       const c = pool[Math.floor(Math.random() * pool.length)];
       const name = c.cat!.name;
+      const dir: "up" | "down" = c.row <= 1 ? "up" : "down";
       lastName = name;
-      showing = [...showing, name];
+      showing = [...showing, { name, x: c.x, dir }];
       const mine = ++id;
 
-      setLive((v) => [
-        ...v,
-        { id: mine, name, x: c.x, y: c.y, dir: c.row <= 1 ? "up" : "down" },
-      ]);
+      setLive((v) => [...v, { id: mine, name, x: c.x, y: c.y, dir }]);
 
       window.setTimeout(() => {
-        showing = showing.filter((s) => s !== name);
+        showing = showing.filter((s) => s.name !== name);
         setLive((v) => v.filter((co) => co.id !== mine));
       }, HOLD_MS);
     };
