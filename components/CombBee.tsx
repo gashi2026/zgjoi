@@ -5,9 +5,7 @@ import { Bee } from "./Brand";
 
 export type Stop = { x: number; y: number; name: string };
 
-/* Catmull-Rom: a smooth curve that passes through every point, so the
-   bee sweeps through the icons on a continuous flight path instead of
-   travelling in straight hops. */
+/* Smooth curve through the icons, so the bee sweeps rather than hops. */
 function spline(p0: number, p1: number, p2: number, p3: number, t: number) {
   const t2 = t * t;
   const t3 = t2 * t;
@@ -19,6 +17,8 @@ function spline(p0: number, p1: number, p2: number, p3: number, t: number) {
   );
 }
 
+/* The bee that tours the comb. Decorative — it just flies and names the
+   icons it passes over; the clickable bee is the hex cell. */
 export default function CombBee({ stops, size }: { stops: Stop[]; size: number }) {
   const beeRef = useRef<HTMLDivElement>(null);
   const [label, setLabel] = useState<string | null>(null);
@@ -31,8 +31,8 @@ export default function CombBee({ stops, size }: { stops: Stop[]; size: number }
     const route = stops.map((_, i) => stops[(i * step) % stops.length]);
     const n = route.length;
 
-    const SPEED = 0.42;        // segments per second — a lazy, steady drift
-    const NEAR = size * 0.55;  // how close counts as "over" an icon
+    const SPEED = 0.42;
+    const NEAR = size * 0.55;
 
     let raf = 0;
     const start = performance.now();
@@ -51,12 +51,9 @@ export default function CombBee({ stops, size }: { stops: Stop[]; size: number }
 
       let x = spline(a.x, b.x, c.x, d.x, t);
       let y = spline(a.y, b.y, c.y, d.y, t);
-
-      // a soft drifting bob, as if riding the air
       x += Math.sin(elapsed * 1.5) * 4;
       y += Math.cos(elapsed * 1.9) * 5;
 
-      // lean into the direction of travel
       const t2 = Math.min(1, t + 0.04);
       const nx = spline(a.x, b.x, c.x, d.x, t2);
       const tilt = Math.max(-12, Math.min(12, (nx - x) * 1.8));
@@ -65,15 +62,9 @@ export default function CombBee({ stops, size }: { stops: Stop[]; size: number }
 
       let over: string | null = null;
       for (const s of stops) {
-        if (Math.hypot(x - s.x, y - s.y) < NEAR) {
-          over = s.name;
-          break;
-        }
+        if (Math.hypot(x - s.x, y - s.y) < NEAR) { over = s.name; break; }
       }
-      if (over !== shown) {
-        shown = over;
-        setLabel(over);
-      }
+      if (over !== shown) { shown = over; setLabel(over); }
 
       raf = requestAnimationFrame(frame);
     };

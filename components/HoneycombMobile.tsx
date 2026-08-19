@@ -6,8 +6,8 @@ import { categories } from "@/lib/data";
 import { DEFAULT_SERVICES } from "@/lib/honeycomb-slots";
 import { HEX_D, HEX_RATIO as RATIO } from "@/lib/hex";
 
-/* Phone comb: a 7 x 7 sheet with categories spread across every row,
-   scattered empty hexes between them, and a bee touring the icons. */
+/* Phone comb: a 7 x 7 sheet of categories, one bee cell you can press
+   for the heart, and a bee flying over the top naming what it passes. */
 
 const ROWS = 7;
 const COLS = 7;
@@ -46,7 +46,6 @@ export default function HoneycombMobile({
         dist,
         honey: (c * 2 + row) % 3 === 0,
         fade: Math.max(0.2, Math.min(1, 1 - dist * 0.15)),
-        /* breathing holes land on every row, never side by side */
         gap: (c * 3 + row * 2) % 5 === 0,
       });
     }
@@ -56,11 +55,11 @@ export default function HoneycombMobile({
   const fromCatalog = catalog?.map((c) => c.slug) ?? categories.map((c) => c.slug);
   const unique = Array.from(new Set([...chosen, ...fromCatalog]));
 
-  /* every row keeps icons — only the outermost fringe stays empty */
   const solid = cells
     .filter((c) => !c.gap && c.dist <= 4.6)
     .sort((a, b) => (b.row - a.row) || (a.col - b.col));
 
+  /* the pressable bee sits in the middle of the sheet */
   const middleRow = Math.floor(ROWS / 2);
   const beeCell =
     solid.filter((c) => c.row === middleRow).sort((a, b) => a.dist - b.dist)[0] ??
@@ -83,24 +82,18 @@ export default function HoneycombMobile({
   const width = (Math.max(...allCols) - minCol) * dx + size;
   const height = (ROWS - 1) * dy + h;
 
-  /* where the touring bee should stop, in the comb's own coordinates */
   const stops: Stop[] = solid
     .filter((c) => c.key !== beeKey)
     .map((c) => {
       const slug = slugFor.get(c.key);
       const cat = slug ? lookup(slug) : undefined;
-      return cat
-        ? { x: (c.col - minCol) * dx, y: c.row * dy, name: cat.name }
-        : null;
+      return cat ? { x: (c.col - minCol) * dx, y: c.row * dy, name: cat.name } : null;
     })
-    .filter((s): s is Stop => s !== null)
-    /* wander rather than march: visit every third stop, looping around */
-    .filter((_, idx, arr) => idx < arr.length)
-    .map((s, idx, arr) => arr[(idx * 5) % arr.length]);
+    .filter((s): s is Stop => s !== null);
 
   return (
     <div
-      className="relative -mx-2 select-none"
+      className="relative select-none"
       style={{ width, height, maxWidth: "100%", marginInline: "auto" }}
       aria-label="Kategoritë e shërbimeve"
     >
@@ -108,9 +101,10 @@ export default function HoneycombMobile({
         const left = (c.col - minCol) * dx;
         const top = c.row * dy;
 
+        /* the pressable bee — same one as on desktop */
         if (c.key === beeKey) {
           return (
-            <div key={c.key} className="absolute z-10" style={{ left, top, width: size, height: h }}>
+            <div key={c.key} className="absolute z-20" style={{ left, top, width: size, height: h }}>
               <BeeCell size={size} height={h} />
             </div>
           );
