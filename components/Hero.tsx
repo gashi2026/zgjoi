@@ -57,8 +57,8 @@ export default async function Hero() {
             <SearchBar />
           </div>
 
-          {/* Phones: a four-row hex belt drifting right to left */}
-          <div className="mt-6 sm:hidden">
+          {/* Phones: the hex belt, tucked right under the search box */}
+          <div className="-mt-3 sm:hidden">
             <MobileHexBelt cats={beltCats} />
           </div>
         </div>

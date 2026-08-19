@@ -10,14 +10,19 @@ type Cat = { slug: string; name: string; icon: string };
 
 type Placed = {
   key: string;
-  cat: Cat | null;   // null = faint filler
+  cat: Cat | null; // null = the bee
   bee?: boolean;
   x: number;
   y: number;
+  row: number;
   honey: boolean;
 };
 
+type Callout = { key: string; name: string; x: number; y: number; dir: "up" | "down" };
+
 const ROWS = 4;
+const TOP_ROOM = 66;    // headroom for the upward call-outs
+const BOTTOM_ROOM = 54; // room for the downward ones
 
 export default function MobileHexBelt({
   cats,
@@ -31,16 +36,19 @@ export default function MobileHexBelt({
   const trackRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<HTMLDivElement>(null);
   const offset = useRef(0);
-  const [callout, setCallout] = useState<{ key: string; name: string; x: number; y: number } | null>(null);
+  const dragging = useRef(false);
+  const dragMoved = useRef(0);
+  const lastX = useRef(0);
+  const [top, setTop] = useState<Callout | null>(null);
+  const [bottom, setBottom] = useState<Callout | null>(null);
 
   const h = size * RATIO;
-  const dx = size;        // step between cells in the same row
-  const dy = h * 0.75;    // step between rows
+  const dx = size;
+  const dy = h * 0.75;
 
-  /* Exactly the comb's own tiling: rows step down by 3/4 of a hex and
-     every other row shifts half a step across, so the cells interlock
-     instead of stacking on top of one another. */
-  const columns = Math.max(8, Math.ceil((cats.length + 8) / ROWS));
+  /* The comb's own tiling: rows step down 3/4 of a hex, every other row
+     shifts half a step across. Every cell carries a category — no gaps. */
+  const columns = Math.max(10, Math.ceil(cats.length / ROWS) + 2);
   const cells: Placed[] = [];
   let n = 0;
   for (let col = 0; col < columns; col++) {
@@ -48,23 +56,23 @@ export default function MobileHexBelt({
       const x = col * dx + (row % 2 === 1 ? dx / 2 : 0);
       const y = row * dy;
       const honey = (col * 2 + row) % 3 === 0;
-      const gap = (col * 3 + row * 2) % 7 === 0;   // scattered empty cells
       const bee = col === 2 && row === 1;
-
       if (bee) {
-        cells.push({ key: `b-${col}-${row}`, cat: null, bee: true, x, y, honey });
-      } else if (gap || n >= cats.length) {
-        cells.push({ key: `f-${col}-${row}`, cat: null, x, y, honey });
+        cells.push({ key: `b-${col}-${row}`, cat: null, bee: true, x, y, row, honey });
       } else {
-        cells.push({ key: `c-${col}-${row}`, cat: cats[n++], x, y, honey });
+        cells.push({
+          key: `c-${col}-${row}`,
+          cat: cats[n++ % cats.length],
+          x, y, row, honey,
+        });
       }
     }
   }
 
   const groupWidth = columns * dx;
   const beltHeight = (ROWS - 1) * dy + h;
-  const TOP_ROOM = 78; // space above the belt for the call-outs
 
+  /* ---- continuous drift, paused while you drag ---- */
   useEffect(() => {
     const track = trackRef.current;
     if (track === null) return;
@@ -77,38 +85,93 @@ export default function MobileHexBelt({
     const frame = (now: number) => {
       const dt = Math.min(0.05, (now - prev) / 1000);
       prev = now;
-      offset.current -= rate * dt;
-      if (offset.current <= -groupWidth) offset.current += groupWidth;
-      track.style.transform = `translate3d(${offset.current}px,0,0)`;
+      if (!dragging.current) {
+        offset.current -= rate * dt;
+        if (offset.current <= -groupWidth) offset.current += groupWidth;
+        if (offset.current > 0) offset.current -= groupWidth;
+        track.style.transform = `translate3d(${offset.current}px,0,0)`;
+      }
       raf = requestAnimationFrame(frame);
     };
     raf = requestAnimationFrame(frame);
     return () => cancelAnimationFrame(raf);
   }, [groupWidth, speed]);
 
-  /* A call-out pops up on a random icon that's on screen right now. */
+  /* ---- two call-outs, on their own rhythms ---- */
   useEffect(() => {
     const named = cells.filter((c) => c.cat !== null);
     if (named.length === 0) return;
 
-    const pick = () => {
+    const pickFrom = (rows: number[], dir: "up" | "down", set: (c: Callout | null) => void, hold: number) => {
       const viewW = frameRef.current?.clientWidth ?? 360;
       const left = -offset.current;
-      const visible = named.filter((c) => c.x > left + 8 && c.x < left + viewW - 150);
-      const pool = visible.length > 0 ? visible : named;
-      const c = pool[Math.floor(Math.random() * pool.length)];
-      setCallout({ key: `${c.key}-${Date.now()}`, name: c.cat!.name, x: c.x, y: c.y });
-      window.setTimeout(() => setCallout(null), 2600);
+      const pool = named.filter(
+        (c) => rows.includes(c.row) && c.x > left + 8 && c.x < left + viewW - 150
+      );
+      const fallback = named.filter((c) => rows.includes(c.row));
+      const list = pool.length > 0 ? pool : fallback;
+      if (list.length === 0) return;
+      const c = list[Math.floor(Math.random() * list.length)];
+      set({ key: `${c.key}-${Date.now()}`, name: c.cat!.name, x: c.x, y: c.y, dir });
+      window.setTimeout(() => set(null), hold);
     };
 
-    const first = window.setTimeout(pick, 900);
-    const loop = window.setInterval(pick, 3400);
+    const upTick = () => pickFrom([0, 1], "up", setTop, 2600);
+    const downTick = () => pickFrom([2, 3], "down", setBottom, 2600);
+
+    const t1 = window.setTimeout(upTick, 700);
+    const t2 = window.setTimeout(downTick, 2100);
+    const i1 = window.setInterval(upTick, 3600);
+    const i2 = window.setInterval(downTick, 4300);
+
     return () => {
-      window.clearTimeout(first);
-      window.clearInterval(loop);
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+      window.clearInterval(i1);
+      window.clearInterval(i2);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cells.length]);
+
+  /* ---- drag to pull the belt either way ---- */
+  const onPointerDown = (e: React.PointerEvent) => {
+    dragging.current = true;
+    dragMoved.current = 0;
+    lastX.current = e.clientX;
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  };
+
+  const onPointerMove = (e: React.PointerEvent) => {
+    if (!dragging.current) return;
+    const track = trackRef.current;
+    if (track === null) return;
+    const d = e.clientX - lastX.current;
+    lastX.current = e.clientX;
+    dragMoved.current += Math.abs(d);
+    offset.current += d;
+    if (offset.current <= -groupWidth) offset.current += groupWidth;
+    if (offset.current > 0) offset.current -= groupWidth;
+    track.style.transform = `translate3d(${offset.current}px,0,0)`;
+  };
+
+  const endDrag = (e: React.PointerEvent) => {
+    if (!dragging.current) return;
+    dragging.current = false;
+    try {
+      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+    } catch {
+      /* already released */
+    }
+  };
+
+  /* a real drag shouldn't open the category underneath */
+  const onClickCapture = (e: React.MouseEvent) => {
+    if (dragMoved.current > 6) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    dragMoved.current = 0;
+  };
 
   const renderCell = (c: Placed, suffix: string) => {
     if (c.bee) {
@@ -118,33 +181,11 @@ export default function MobileHexBelt({
         </div>
       );
     }
-
-    if (c.cat === null) {
-      return (
-        <div
-          key={c.key + suffix}
-          className="absolute"
-          style={{ left: c.x, top: c.y, width: size, height: h, opacity: 0.55 }}
-          aria-hidden="true"
-        >
-          <svg viewBox="0 0 100 115.47" width={size} height={h}>
-            <path
-              d={HEX_D}
-              fill={c.honey ? "#FFFAEC" : "transparent"}
-              stroke="#F2E9D4"
-              strokeWidth={2}
-              strokeLinejoin="round"
-            />
-          </svg>
-        </div>
-      );
-    }
-
     return (
       <Link
         key={c.key + suffix}
-        href={`/kerko?kategoria=${c.cat.slug}`}
-        aria-label={`${c.cat.name} — shiko profesionistët`}
+        href={`/kerko?kategoria=${c.cat!.slug}`}
+        aria-label={`${c.cat!.name} — shiko profesionistët`}
         draggable={false}
         className="absolute z-10 active:scale-95"
         style={{ left: c.x, top: c.y, width: size, height: h }}
@@ -165,9 +206,62 @@ export default function MobileHexBelt({
           />
         </svg>
         <span className="absolute inset-0 flex items-center justify-center text-gold-dark">
-          <CategoryIcon name={c.cat.icon} size={21} strokeWidth={1.8} className="text-gold-dark" />
+          <CategoryIcon name={c.cat!.icon} size={21} strokeWidth={1.8} className="text-gold-dark" />
         </span>
       </Link>
+    );
+  };
+
+  const renderCallout = (co: Callout) => {
+    const up = co.dir === "up";
+    return (
+      <div
+        key={co.key}
+        className="pointer-events-none absolute z-30"
+        style={{
+          left: co.x + size / 2,
+          top: up ? co.y - 60 : co.y + h - 10,
+          width: 134,
+          height: 68,
+          animation: "callout-in 260ms ease-out both",
+        }}
+      >
+        <svg
+          width="134"
+          height="68"
+          viewBox="0 0 134 68"
+          className="absolute inset-0"
+          style={{ animation: "callout-glow 1.8s ease-in-out infinite" }}
+          aria-hidden="true"
+        >
+          <defs>
+            <linearGradient id={`shine-${up ? "u" : "d"}`} x1="0" y1={up ? "1" : "0"} x2="1" y2={up ? "0" : "1"}>
+              <stop offset="0%" stopColor="#E89D00" />
+              <stop offset="55%" stopColor="#FFD466" />
+              <stop offset="100%" stopColor="#FFFFFF" />
+            </linearGradient>
+          </defs>
+          <path
+            d={up ? "M6 62 L34 28 L128 28" : "M6 6 L34 40 L128 40"}
+            fill="none"
+            stroke={`url(#shine-${up ? "u" : "d"})`}
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeDasharray="132"
+            style={{ animation: "callout-draw 520ms ease-out both" }}
+          />
+          <circle cx="6" cy={up ? 62 : 6} r="4.5" fill="#FFFFFF" stroke="#FFB800" strokeWidth="2" />
+        </svg>
+
+        {/* the name rests on the horizontal stroke */}
+        <span
+          className="absolute whitespace-nowrap text-[12px] font-extrabold text-ink"
+          style={{ left: 36, top: up ? 28 - 19 : 40 - 19 }}
+        >
+          {co.name}
+        </span>
+      </div>
     );
   };
 
@@ -175,15 +269,22 @@ export default function MobileHexBelt({
     <div
       ref={frameRef}
       className="relative overflow-hidden"
-      style={{ height: beltHeight + TOP_ROOM, marginInline: "-1rem" }}
+      style={{
+        height: beltHeight + TOP_ROOM + BOTTOM_ROOM,
+        marginInline: "-1rem",
+        touchAction: "pan-y",
+        cursor: "grab",
+      }}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={endDrag}
+      onPointerCancel={endDrag}
+      onClickCapture={onClickCapture}
       aria-label="Kategoritë e shërbimeve"
     >
       <style>{`
         @keyframes callout-in { from { opacity: 0 } to { opacity: 1 } }
-        @keyframes callout-draw {
-          from { stroke-dashoffset: 130 }
-          to   { stroke-dashoffset: 0 }
-        }
+        @keyframes callout-draw { from { stroke-dashoffset: 132 } to { stroke-dashoffset: 0 } }
         @keyframes callout-glow {
           0%, 100% { filter: drop-shadow(0 0 3px rgba(255,184,0,0.8)) }
           50%      { filter: drop-shadow(0 0 8px rgba(255,184,0,1)) }
@@ -200,56 +301,8 @@ export default function MobileHexBelt({
           {cells.map((c) => renderCell(c, "-b"))}
         </div>
 
-        {/* call-out: a shining line lifting off the cell, name resting on it */}
-        {callout && (
-          <div
-            key={callout.key}
-            className="pointer-events-none absolute z-30"
-            style={{
-              left: callout.x + size / 2,
-              top: callout.y - 62,
-              width: 132,
-              height: 70,
-              animation: "callout-in 260ms ease-out both",
-            }}
-          >
-            <svg
-              width="132"
-              height="70"
-              viewBox="0 0 132 70"
-              className="absolute inset-0"
-              style={{ animation: "callout-glow 1.8s ease-in-out infinite" }}
-              aria-hidden="true"
-            >
-              <defs>
-                <linearGradient id="calloutShine" x1="0" y1="1" x2="1" y2="0">
-                  <stop offset="0%" stopColor="#E89D00" />
-                  <stop offset="55%" stopColor="#FFD466" />
-                  <stop offset="100%" stopColor="#FFFFFF" />
-                </linearGradient>
-              </defs>
-              <path
-                d="M6 64 L34 30 L126 30"
-                fill="none"
-                stroke="url(#calloutShine)"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeDasharray="130"
-                style={{ animation: "callout-draw 520ms ease-out both" }}
-              />
-              <circle cx="6" cy="64" r="4.5" fill="#FFFFFF" stroke="#FFB800" strokeWidth="2" />
-            </svg>
-
-            {/* the name sits directly on top of the horizontal line */}
-            <span
-              className="absolute whitespace-nowrap text-[12px] font-extrabold text-ink"
-              style={{ left: 36, top: 30 - 19 }}
-            >
-              {callout.name}
-            </span>
-          </div>
-        )}
+        {top && renderCallout(top)}
+        {bottom && renderCallout(bottom)}
       </div>
     </div>
   );
