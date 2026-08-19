@@ -209,43 +209,47 @@ export default function MobileHexBelt({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupWidth, speed]);
 
-  /* ---- up to three names at a time, never repeating back to back ---- */
+  /* ---- names popping up all over, without ever going quiet ---- */
   useEffect(() => {
     const named = cells.filter((c) => c.cat !== null);
     if (named.length === 0) return;
 
     let id = 0;
-    /* a short memory, so names take turns instead of one dominating */
-    const RECENT = Math.min(8, Math.max(3, Math.floor(cats.length / 3)));
-    let recent: string[] = [];
-    /* what's on screen right now, so new ones can keep their distance */
+    let recent: string[] = [];                    // short memory of names just used
     let showing: { name: string; x: number; dir: "up" | "down" }[] = [];
+    const RECENT = Math.min(5, Math.max(2, Math.floor(cats.length / 6)));
 
-    const clearOf = (x: number, dir: "up" | "down") =>
+    const clearOf = (x: number, dir: "up" | "down", slack: number) =>
       showing.every((s) =>
-        Math.abs(s.x - x) >= (s.dir === dir ? SAME_SIDE_GAP : CROSS_GAP)
+        Math.abs(s.x - x) >= (s.dir === dir ? SAME_SIDE_GAP : CROSS_GAP) * slack
       );
+
+    /* Try the strictest rule first, then loosen — so there is always
+       something eligible somewhere on screen. */
+    const candidates = (relax: 0 | 1 | 2 | 3) => {
+      const viewW = frameRef.current?.clientWidth ?? 360;
+      const left = -offset.current;
+      return named.filter((c) => {
+        const dir: "up" | "down" = c.row <= 1 ? "up" : "down";
+        const onScreen = c.x > left + 8 && c.x < left + viewW - LABEL_W - 10;
+        if (!onScreen) return false;
+        if (showing.some((s) => s.name === c.cat!.name)) return false;
+        if (relax === 0) return !recent.includes(c.cat!.name) && clearOf(c.x, dir, 1);
+        if (relax === 1) return clearOf(c.x, dir, 1);
+        if (relax === 2) return clearOf(c.x, dir, 0.6);
+        return true;
+      });
+    };
 
     const spawn = () => {
       if (showing.length >= MAX_LIVE) return;
-      const viewW = frameRef.current?.clientWidth ?? 360;
-      const left = -offset.current;
 
-      const pool = named.filter((c) => {
-        const dir: "up" | "down" = c.row <= 1 ? "up" : "down";
-        return (
-          c.x > left + 8 &&
-          c.x < left + viewW - LABEL_W - 10 &&
-          !recent.includes(c.cat!.name) &&
-          !showing.some((s) => s.name === c.cat!.name) &&
-          clearOf(c.x, dir)
-        );
-      });
-      if (pool.length === 0) {
-        // nothing eligible right now — let the oldest memory expire
-        if (recent.length > 0) recent = recent.slice(1);
-        return;
+      let pool: typeof named = [];
+      for (const relax of [0, 1, 2, 3] as const) {
+        pool = candidates(relax);
+        if (pool.length > 0) break;
       }
+      if (pool.length === 0) return;
 
       const c = pool[Math.floor(Math.random() * pool.length)];
       const name = c.cat!.name;
@@ -262,10 +266,19 @@ export default function MobileHexBelt({
       }, HOLD_MS);
     };
 
-    const first = window.setTimeout(spawn, 600);
-    const loop = window.setInterval(spawn, 900); // staggered, so they overlap unevenly
+    /* A quick heartbeat: always top back up to two, and reach for a third
+       now and then, so the belt is never silent. */
+    const beat = () => {
+      if (showing.length < 2) spawn();
+      else if (Math.random() < 0.55) spawn();
+    };
+
+    const first = window.setTimeout(spawn, 300);
+    const second = window.setTimeout(spawn, 800);
+    const loop = window.setInterval(beat, 420);
     return () => {
       window.clearTimeout(first);
+      window.clearTimeout(second);
       window.clearInterval(loop);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
