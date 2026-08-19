@@ -7,6 +7,7 @@ import HowItWorks from "@/components/HowItWorks";
 import CTABanner from "@/components/CTABanner";
 import RecommendedPros from "@/components/RecommendedPros";
 import Testimonials from "@/components/Testimonials";
+import MobileAutoScroll from "@/components/MobileAutoScroll";
 
 export const dynamic = "force-dynamic";
 
@@ -25,8 +26,13 @@ export default function HomePage() {
         <WhyZgjoi />
         <HowItWorks />
         <CTABanner />
-        <RecommendedPros />
-        <Testimonials />
+        {/* these two belts drift on their own on phones */}
+        <MobileAutoScroll>
+          <RecommendedPros />
+        </MobileAutoScroll>
+        <MobileAutoScroll speed={22}>
+          <Testimonials />
+        </MobileAutoScroll>
       </div>
       <style
         dangerouslySetInnerHTML={{
