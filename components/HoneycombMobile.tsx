@@ -5,13 +5,12 @@ import { categories } from "@/lib/data";
 import { DEFAULT_SERVICES } from "@/lib/honeycomb-slots";
 import { HEX_D, HEX_RATIO as RATIO } from "@/lib/hex";
 
-/* Phone version of the comb. Same sheet of hexes as before — nothing is
-   added — but as many of them as possible now carry a real category,
-   filling outward from the diagonal band. Only the fringe stays faint. */
+/* Phone version of the comb. The categories are scattered across the
+   whole sheet in a staggered pattern — each one framed by empty hexes
+   rather than packed shoulder to shoulder. */
 
 const ROWS = 9;
 const COLS = 6;
-const MIN_FAINT = 10; // cells always left empty at the fringes
 
 const bandCentre = (row: number) => 4.4 - 0.45 * row;
 
@@ -28,7 +27,11 @@ export default function HoneycombMobile({
   const dx = size;
   const dy = h * 0.75;
 
-  type Cell = { key: string; col: number; row: number; dist: number; honey: boolean; fade: number };
+  type Cell = {
+    key: string; col: number; row: number; c: number;
+    dist: number; honey: boolean; fade: number; spread: boolean;
+  };
+
   const cells: Cell[] = [];
   for (let row = 0; row < ROWS; row++) {
     const offset = row % 2 === 1 ? 0.5 : 0;
@@ -39,25 +42,25 @@ export default function HoneycombMobile({
         key: `${col},${row}`,
         col,
         row,
+        c,
         dist,
         honey: (c * 2 + row) % 3 === 0,
-        fade: Math.max(0.22, Math.min(1, 1 - dist * 0.19)),
+        fade: Math.max(0.2, Math.min(1, 1 - dist * 0.16)),
+        /* staggered scatter: every other cell, shifting each row, so no
+           two icons ever sit side by side */
+        spread: (c + row) % 2 === 0,
       });
     }
   }
 
-  /* Every category we have, in the comb's own order. */
   const chosen = Object.values(services ?? DEFAULT_SERVICES);
   const fromCatalog = catalog?.map((c) => c.slug) ?? categories.map((c) => c.slug);
   const unique = Array.from(new Set([...chosen, ...fromCatalog]));
 
-  /* Fill from the band outward: as many buttons as we have categories,
-     while keeping a faint fringe. */
-  const capacity = Math.max(0, cells.length - MIN_FAINT);
-  const solidCount = Math.min(unique.length, capacity);
-  const solid = [...cells]
-    .sort((a, b) => a.dist - b.dist)
-    .slice(0, solidCount)
+  /* Scattered cells become buttons; the far fringe stays empty so the
+     sheet still dissolves at the edges. */
+  const solid = cells
+    .filter((c) => c.spread && c.dist <= 3.4)
     .sort((a, b) => (b.row - a.row) || (a.col - b.col)); // bottom-left → top-right
 
   const middleRow = Math.floor(ROWS / 2);
