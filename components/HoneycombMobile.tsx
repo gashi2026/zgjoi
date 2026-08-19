@@ -1,13 +1,13 @@
 import Link from "next/link";
 import CategoryIcon from "./CategoryIcon";
 import BeeCell from "./BeeCell";
+import CombBee, { type Stop } from "./CombBee";
 import { categories } from "@/lib/data";
 import { DEFAULT_SERVICES } from "@/lib/honeycomb-slots";
 import { HEX_D, HEX_RATIO as RATIO } from "@/lib/hex";
 
-/* Phone comb: a 7 x 7 sheet. Most hexes carry a category, with empty
-   ones scattered between them so it still breathes, and the fringe
-   fading out as always. */
+/* Phone comb: a 7 x 7 sheet with categories spread across every row,
+   scattered empty hexes between them, and a bee touring the icons. */
 
 const ROWS = 7;
 const COLS = 7;
@@ -15,7 +15,7 @@ const COLS = 7;
 const bandCentre = (row: number) => 4.6 - 0.5 * row;
 
 export default function HoneycombMobile({
-  size = 46,
+  size = 50,
   services,
   catalog,
 }: {
@@ -46,21 +46,20 @@ export default function HoneycombMobile({
         dist,
         honey: (c * 2 + row) % 3 === 0,
         fade: Math.max(0.2, Math.min(1, 1 - dist * 0.15)),
-        /* scattered breathing holes — never two in a row, shifting per row */
-        gap: (c * 2 + row) % 4 === 0,
+        /* breathing holes land on every row, never side by side */
+        gap: (c * 3 + row * 2) % 5 === 0,
       });
     }
   }
 
-  /* Every category we have available, in comb order. */
   const chosen = Object.values(services ?? DEFAULT_SERVICES);
   const fromCatalog = catalog?.map((c) => c.slug) ?? categories.map((c) => c.slug);
   const unique = Array.from(new Set([...chosen, ...fromCatalog]));
 
+  /* every row keeps icons — only the outermost fringe stays empty */
   const solid = cells
-    .filter((c) => !c.gap && c.dist <= 3.8)
-    .sort((a, b) => (b.row - a.row) || (a.col - b.col)) // bottom-left → top-right
-    .slice(0, unique.length + 1); // +1 for the bee's cell
+    .filter((c) => !c.gap && c.dist <= 4.6)
+    .sort((a, b) => (b.row - a.row) || (a.col - b.col));
 
   const middleRow = Math.floor(ROWS / 2);
   const beeCell =
@@ -84,10 +83,25 @@ export default function HoneycombMobile({
   const width = (Math.max(...allCols) - minCol) * dx + size;
   const height = (ROWS - 1) * dy + h;
 
+  /* where the touring bee should stop, in the comb's own coordinates */
+  const stops: Stop[] = solid
+    .filter((c) => c.key !== beeKey)
+    .map((c) => {
+      const slug = slugFor.get(c.key);
+      const cat = slug ? lookup(slug) : undefined;
+      return cat
+        ? { x: (c.col - minCol) * dx, y: c.row * dy, name: cat.name }
+        : null;
+    })
+    .filter((s): s is Stop => s !== null)
+    /* wander rather than march: visit every third stop, looping around */
+    .filter((_, idx, arr) => idx < arr.length)
+    .map((s, idx, arr) => arr[(idx * 5) % arr.length]);
+
   return (
     <div
-      className="relative mx-auto select-none"
-      style={{ width, height, maxWidth: "100%" }}
+      className="relative -mx-2 select-none"
+      style={{ width, height, maxWidth: "100%", marginInline: "auto" }}
       aria-label="Kategoritë e shërbimeve"
     >
       {cells.map((c) => {
@@ -151,11 +165,13 @@ export default function HoneycombMobile({
               />
             </svg>
             <span className="absolute inset-0 flex items-center justify-center text-gold-dark">
-              <CategoryIcon name={category.icon} size={19} strokeWidth={1.8} className="text-gold-dark" />
+              <CategoryIcon name={category.icon} size={20} strokeWidth={1.8} className="text-gold-dark" />
             </span>
           </Link>
         );
       })}
+
+      <CombBee stops={stops} size={size} />
     </div>
   );
 }
