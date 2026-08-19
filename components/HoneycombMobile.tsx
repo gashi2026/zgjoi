@@ -5,17 +5,17 @@ import { categories } from "@/lib/data";
 import { DEFAULT_SERVICES } from "@/lib/honeycomb-slots";
 import { HEX_D, HEX_RATIO as RATIO } from "@/lib/hex";
 
-/* Phone version of the comb. The categories are scattered across the
-   whole sheet in a staggered pattern — each one framed by empty hexes
-   rather than packed shoulder to shoulder. */
+/* Phone comb: a 7 x 7 sheet. Most hexes carry a category, with empty
+   ones scattered between them so it still breathes, and the fringe
+   fading out as always. */
 
-const ROWS = 9;
-const COLS = 6;
+const ROWS = 7;
+const COLS = 7;
 
-const bandCentre = (row: number) => 4.4 - 0.45 * row;
+const bandCentre = (row: number) => 4.6 - 0.5 * row;
 
 export default function HoneycombMobile({
-  size = 52,
+  size = 46,
   services,
   catalog,
 }: {
@@ -29,7 +29,7 @@ export default function HoneycombMobile({
 
   type Cell = {
     key: string; col: number; row: number; c: number;
-    dist: number; honey: boolean; fade: number; spread: boolean;
+    dist: number; honey: boolean; fade: number; gap: boolean;
   };
 
   const cells: Cell[] = [];
@@ -45,23 +45,22 @@ export default function HoneycombMobile({
         c,
         dist,
         honey: (c * 2 + row) % 3 === 0,
-        fade: Math.max(0.2, Math.min(1, 1 - dist * 0.16)),
-        /* staggered scatter: every other cell, shifting each row, so no
-           two icons ever sit side by side */
-        spread: (c + row) % 2 === 0,
+        fade: Math.max(0.2, Math.min(1, 1 - dist * 0.15)),
+        /* scattered breathing holes — never two in a row, shifting per row */
+        gap: (c * 2 + row) % 4 === 0,
       });
     }
   }
 
+  /* Every category we have available, in comb order. */
   const chosen = Object.values(services ?? DEFAULT_SERVICES);
   const fromCatalog = catalog?.map((c) => c.slug) ?? categories.map((c) => c.slug);
   const unique = Array.from(new Set([...chosen, ...fromCatalog]));
 
-  /* Scattered cells become buttons; the far fringe stays empty so the
-     sheet still dissolves at the edges. */
   const solid = cells
-    .filter((c) => c.spread && c.dist <= 3.4)
-    .sort((a, b) => (b.row - a.row) || (a.col - b.col)); // bottom-left → top-right
+    .filter((c) => !c.gap && c.dist <= 3.8)
+    .sort((a, b) => (b.row - a.row) || (a.col - b.col)) // bottom-left → top-right
+    .slice(0, unique.length + 1); // +1 for the bee's cell
 
   const middleRow = Math.floor(ROWS / 2);
   const beeCell =
@@ -152,7 +151,7 @@ export default function HoneycombMobile({
               />
             </svg>
             <span className="absolute inset-0 flex items-center justify-center text-gold-dark">
-              <CategoryIcon name={category.icon} size={21} strokeWidth={1.8} className="text-gold-dark" />
+              <CategoryIcon name={category.icon} size={19} strokeWidth={1.8} className="text-gold-dark" />
             </span>
           </Link>
         );
