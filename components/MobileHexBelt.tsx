@@ -104,7 +104,9 @@ export default function MobileHexBelt({
   const dy = h * 0.75;
 
   const { cells, groupWidth, beltHeight } = useMemo(() => {
-    const columns = Math.max(10, Math.ceil(cats.length / ROWS) + 2);
+    /* Just enough columns to hold the catalogue once (+ the bee's slot),
+       so the same category doesn't reappear a few cells later. */
+    const columns = Math.max(8, Math.ceil((cats.length + 1) / ROWS));
     const list: Placed[] = [];
     let n = 0;
     for (let col = 0; col < columns; col++) {
@@ -172,7 +174,9 @@ export default function MobileHexBelt({
     if (named.length === 0) return;
 
     let id = 0;
-    let lastName = "";
+    /* a short memory, so names take turns instead of one dominating */
+    const RECENT = Math.min(8, Math.max(3, Math.floor(cats.length / 3)));
+    let recent: string[] = [];
     /* what's on screen right now, so new ones can keep their distance */
     let showing: { name: string; x: number; dir: "up" | "down" }[] = [];
 
@@ -191,17 +195,21 @@ export default function MobileHexBelt({
         return (
           c.x > left + 8 &&
           c.x < left + viewW - LABEL_W - 10 &&
-          c.cat!.name !== lastName &&
+          !recent.includes(c.cat!.name) &&
           !showing.some((s) => s.name === c.cat!.name) &&
           clearOf(c.x, dir)
         );
       });
-      if (pool.length === 0) return;
+      if (pool.length === 0) {
+        // nothing eligible right now — let the oldest memory expire
+        if (recent.length > 0) recent = recent.slice(1);
+        return;
+      }
 
       const c = pool[Math.floor(Math.random() * pool.length)];
       const name = c.cat!.name;
       const dir: "up" | "down" = c.row <= 1 ? "up" : "down";
-      lastName = name;
+      recent = [...recent, name].slice(-RECENT);
       showing = [...showing, { name, x: c.x, dir }];
       const mine = ++id;
 
