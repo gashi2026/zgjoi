@@ -4,14 +4,16 @@ import Link from "next/link";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import CategoryIcon from "./CategoryIcon";
 import BeeCell from "./BeeCell";
+import { Bee } from "./Brand";
 import { HEX_D, HEX_RATIO as RATIO } from "@/lib/hex";
 
 type Cat = { slug: string; name: string; icon: string };
 
 type Placed = {
   key: string;
-  cat: Cat | null; // null = the bee
-  bee?: boolean;
+  cat: Cat | null;  // null = a bee cell
+  bee?: boolean;    // the pressable one
+  decor?: boolean;  // just for looks
   x: number;
   y: number;
   row: number;
@@ -42,7 +44,32 @@ const Cells = memo(function Cells({
   return (
     <>
       {cells.map((c) =>
-        c.bee ? (
+        c.decor ? (
+          <div
+            key={c.key}
+            className="absolute z-10"
+            style={{ left: c.x, top: c.y, width: size, height: h }}
+            aria-hidden="true"
+          >
+            <svg
+              viewBox="0 0 100 115.47"
+              width={size}
+              height={h}
+              className="drop-shadow-[0_4px_10px_rgba(232,157,0,0.12)]"
+            >
+              <path
+                d={HEX_D}
+                fill="#FFF3CF"
+                stroke="#FFB800"
+                strokeWidth={2.5}
+                strokeLinejoin="round"
+              />
+            </svg>
+            <span className="absolute inset-0 flex items-center justify-center">
+              <Bee size={Math.round(size * 0.46)} />
+            </span>
+          </div>
+        ) : c.bee ? (
           <div key={c.key} className="absolute z-20" style={{ left: c.x, top: c.y, width: size, height: h }}>
             <BeeCell size={size} height={h} />
           </div>
@@ -104,9 +131,22 @@ export default function MobileHexBelt({
   const dy = h * 0.75;
 
   const { cells, groupWidth, beltHeight } = useMemo(() => {
-    /* Just enough columns to hold the catalogue once (+ the bee's slot),
-       so the same category doesn't reappear a few cells later. */
-    const columns = Math.max(8, Math.ceil((cats.length + 1) / ROWS));
+    /* A scattering of bees for looks — one every few columns. */
+    const isDecorBee = (col: number, row: number) =>
+      col !== 2 && col % 3 === 1 && row === (col * 2) % ROWS;
+
+    /* Grow the sheet until every category fits once alongside the bees,
+       so nothing has to repeat. */
+    let columns = Math.max(8, Math.ceil((cats.length + 1) / ROWS));
+    const slotsFor = (cols: number) => {
+      let bees = 1; // the pressable one
+      for (let col = 0; col < cols; col++) {
+        for (let row = 0; row < ROWS; row++) if (isDecorBee(col, row)) bees++;
+      }
+      return cols * ROWS - bees;
+    };
+    while (slotsFor(columns) < cats.length && columns < cats.length + 8) columns++;
+
     const list: Placed[] = [];
     let n = 0;
     for (let col = 0; col < columns; col++) {
@@ -114,12 +154,14 @@ export default function MobileHexBelt({
         const x = col * dx + (row % 2 === 1 ? dx / 2 : 0);
         const y = row * dy;
         const honey = (col * 2 + row) % 3 === 0;
-        const bee = col === 2 && row === 1;
-        list.push(
-          bee
-            ? { key: `b-${col}-${row}`, cat: null, bee: true, x, y, row, honey }
-            : { key: `c-${col}-${row}`, cat: cats[n++ % cats.length], x, y, row, honey }
-        );
+
+        if (col === 2 && row === 1) {
+          list.push({ key: `b-${col}-${row}`, cat: null, bee: true, x, y, row, honey });
+        } else if (isDecorBee(col, row)) {
+          list.push({ key: `d-${col}-${row}`, cat: null, decor: true, x, y, row, honey });
+        } else {
+          list.push({ key: `c-${col}-${row}`, cat: cats[n++ % cats.length], x, y, row, honey });
+        }
       }
     }
     return {
