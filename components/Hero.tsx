@@ -1,9 +1,10 @@
 import SearchBar from "./SearchBar";
 import { Bee, FlightPath } from "./Brand";
 import Honeycomb from "./Honeycomb";
-import HoneycombMobile from "./HoneycombMobile";
+import MobileHexBelt from "./MobileHexBelt";
 import { db } from "@/lib/server/db";
 import { getHoneycombMap, getSiteSettings } from "@/lib/server/settings";
+import { categories as baseCategories } from "@/lib/data";
 
 export default async function Hero() {
   let title = "Gjej profesionist për\nçdo shërbim.";
@@ -17,7 +18,7 @@ export default async function Hero() {
     const [site, comb, cats] = await Promise.all([
       getSiteSettings(),
       getHoneycombMap(),
-      db.category.findMany({ where: { active: true } }),
+      db.category.findMany({ where: { active: true }, orderBy: { position: "asc" } }),
     ]);
     if (site?.heroTitle) title = site.heroTitle;
     if (site?.heroAccent) accent = site.heroAccent;
@@ -27,6 +28,9 @@ export default async function Hero() {
   } catch {
     /* fall back to defaults */
   }
+
+  const beltCats =
+    catalog ?? baseCategories.map((c) => ({ slug: c.slug, name: c.name, icon: c.icon }));
 
   const [line1, line2] = title.includes("\n") ? title.split("\n") : [title, ""];
 
@@ -53,9 +57,9 @@ export default async function Hero() {
             <SearchBar />
           </div>
 
-          {/* Phones: the compact comb, with the flying bee as its only bee */}
-          <div className="mt-8 sm:hidden">
-            <HoneycombMobile services={services} catalog={catalog} />
+          {/* Phones: a four-row hex belt drifting right to left */}
+          <div className="mt-6 sm:hidden">
+            <MobileHexBelt cats={beltCats} />
           </div>
         </div>
 
