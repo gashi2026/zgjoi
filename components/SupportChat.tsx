@@ -28,6 +28,7 @@ export default function SupportChat() {
   const wrapRef = useRef<HTMLDivElement>(null);
   const posRef = useRef<Pos>({ x: 0, y: 0 });
   const [pos, setPos] = useState<Pos | null>(null); // only for anchoring the panel
+  const [view, setView] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
   const dragging = useRef(false);
   const moved = useRef(0);
   const grab = useRef<Pos>({ x: 0, y: 0 });
@@ -91,7 +92,10 @@ export default function SupportChat() {
     setPos(snapped);
     paint(snapped, false);
 
+    setView({ w: window.innerWidth, h: window.innerHeight });
+
     const onResize = () => {
+      setView({ w: window.innerWidth, h: window.innerHeight });
       const next = snap(posRef.current);
       posRef.current = next;
       setPos(next);
@@ -204,11 +208,33 @@ export default function SupportChat() {
   }
 
   const online = status?.online ?? false;
-  const panelAbove = (pos?.y ?? 0) > 300;
-  const panelLeft = (pos?.x ?? 0) < 380;
+
+  /* The panel is placed in screen coordinates, next to the bubble where
+     there's room, and always nudged back inside the viewport. */
+  const panelBox = (() => {
+    const vw = view.w || 360;
+    const vh = view.h || 640;
+    const w = Math.min(360, vw - 24);
+    const h = Math.min(520, Math.round(vh * 0.62));
+    const bx = pos?.x ?? vw - BTN - MARGIN;
+    const by = pos?.y ?? vh - BTN - MARGIN;
+
+    // above the bubble if it fits, otherwise below
+    let top = by - h - 12;
+    if (top < 12) top = by + BTN + 12;
+    top = Math.max(12, Math.min(vh - h - 12, top));
+
+    // line the panel up with the bubble, then pull it back on screen
+    let left = bx + BTN - w;
+    if (left < 12) left = bx;
+    left = Math.max(12, Math.min(vw - w - 12, left));
+
+    return { left, top, w, h };
+  })();
 
   return (
-    <div
+    <>
+      <div
       ref={wrapRef}
       className="fixed left-0 top-0 z-[80] will-change-transform"
       style={{ visibility: pos ? "visible" : "hidden" }}
@@ -233,13 +259,17 @@ export default function SupportChat() {
         )}
       </button>
 
+      </div>
+
       {open && (
         <div
-          className="absolute flex h-[min(520px,60vh)] w-[min(360px,calc(100vw-2.5rem))] flex-col overflow-hidden rounded-2xl border border-line bg-white shadow-lift"
+          className="fixed z-[81] flex flex-col overflow-hidden rounded-2xl border border-line bg-white shadow-lift"
           style={{
-            [panelAbove ? "bottom" : "top"]: BTN + 12,
-            [panelLeft ? "left" : "right"]: 0,
-          } as React.CSSProperties}
+            left: panelBox.left,
+            top: panelBox.top,
+            width: panelBox.w,
+            height: panelBox.h,
+          }}
         >
           <header className="border-b border-line bg-cream px-5 py-4">
             <div className="flex items-center gap-2">
@@ -296,6 +326,6 @@ export default function SupportChat() {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }
