@@ -9,10 +9,10 @@ type Flyer = {
   id: number;
   hx: number;  // heart point, vw
   hy: number;  // heart point, vh
-  startX: number; // fly-in start, vw
-  startY: number; // fly-in start, vh
-  outX: number;   // fly-out end, vw
-  outY: number;   // fly-out end, vh
+  startX: number;
+  startY: number;
+  outX: number;
+  outY: number;
   size: number;
   delay: number;
 };
@@ -28,19 +28,15 @@ function heartPoint(t: number): [number, number] {
 function makeSwarm(seed: number): Flyer[] {
   const count = 22;
   return Array.from({ length: count }, (_, i) => {
-    const t = i / count;
-    const [nx, ny] = heartPoint(t);
-    const hx = 32 + nx * 36; // heart occupies 32–68 vw
-    const hy = 18 + ny * 50; // and 18–68 vh
-    // fly in from the left edge at scattered heights
-    const startX = -12;
-    const startY = 10 + Math.random() * 70;
-    // fly out to the top-right, gently scattered
-    const outX = 105 + Math.random() * 10;
-    const outY = -15 + Math.random() * 20;
+    const [nx, ny] = heartPoint(i / count);
     return {
       id: seed * 100 + i,
-      hx, hy, startX, startY, outX, outY,
+      hx: 32 + nx * 36,   // heart occupies 32–68 vw
+      hy: 18 + ny * 50,   // and 18–68 vh
+      startX: -12,
+      startY: 10 + Math.random() * 70,
+      outX: 105 + Math.random() * 10,
+      outY: -15 + Math.random() * 20,
       size: 20 + Math.random() * 16,
       delay: i * 0.05,
     };
@@ -58,14 +54,22 @@ export default function BeeCell({ size, height }: { size: number; height: number
     return () => { if (timer.current) clearTimeout(timer.current); };
   }, []);
 
+  /* Reduced motion used to cancel this outright — now the heart still
+     forms, it simply takes its time. */
   const release = () => {
-    if (typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const calm =
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
     seed.current += 1;
     setSwarm(makeSwarm(seed.current));
     if (timer.current) clearTimeout(timer.current);
-    // in 1.1s + hold 1.4s + out 1.1s + stagger ≈ 4.8s total
-    timer.current = setTimeout(() => setSwarm([]), 5000);
+    timer.current = setTimeout(() => setSwarm([]), calm ? 6500 : 5000);
   };
+
+  const calmNow =
+    typeof window !== "undefined" &&
+    window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 
   return (
     <>
@@ -131,7 +135,7 @@ export default function BeeCell({ size, height }: { size: number; height: number
                 "--hy": `${f.hy}vh`,
                 "--ox": `${f.outX}vw`,
                 "--oy": `${f.outY}vh`,
-                animation: `bee-journey 4.4s cubic-bezier(0.4, 0, 0.2, 1) ${f.delay}s both`,
+                animation: `bee-journey ${calmNow ? 6 : 4.4}s cubic-bezier(0.4, 0, 0.2, 1) ${f.delay}s both`,
               } as React.CSSProperties}
             >
               <span style={{ display: "block", animation: "bee-wiggle 0.5s ease-in-out infinite" }}>
