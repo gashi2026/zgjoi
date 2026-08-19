@@ -53,13 +53,9 @@ export default async function Hero() {
             <SearchBar />
           </div>
 
-          {/* Phones: a compact vertical comb, right under the search box */}
-          <div className="relative mt-8 sm:hidden">
+          {/* Phones: the compact comb, with the flying bee as its only bee */}
+          <div className="mt-8 sm:hidden">
             <HoneycombMobile services={services} catalog={catalog} />
-            <div className="pointer-events-none absolute bottom-6 left-0">
-              <Bee size={34} className="animate-bee-hover" />
-              <FlightPath className="absolute -top-6 left-8 scale-75" />
-            </div>
           </div>
         </div>
 

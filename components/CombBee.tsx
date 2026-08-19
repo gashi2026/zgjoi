@@ -27,13 +27,11 @@ export default function CombBee({ stops, size }: { stops: Stop[]; size: number }
     const node = beeRef.current;
     if (node === null || stops.length < 4) return;
 
-    /* A wandering route: step through the icons out of order so the
-       flight path crosses the comb rather than reading it row by row. */
     const step = stops.length % 3 === 0 ? 4 : 3;
     const route = stops.map((_, i) => stops[(i * step) % stops.length]);
     const n = route.length;
 
-    const SPEED = 0.55;        // segments per second — never stops
+    const SPEED = 0.42;        // segments per second — a lazy, steady drift
     const NEAR = size * 0.55;  // how close counts as "over" an icon
 
     let raf = 0;
@@ -51,22 +49,20 @@ export default function CombBee({ stops, size }: { stops: Stop[]; size: number }
       const c = route[(i + 1) % n];
       const d = route[(i + 2) % n];
 
-      // position along the smooth curve through b → c
       let x = spline(a.x, b.x, c.x, d.x, t);
       let y = spline(a.y, b.y, c.y, d.y, t);
 
       // a soft drifting bob, as if riding the air
-      x += Math.sin(elapsed * 1.9) * 4;
-      y += Math.cos(elapsed * 2.4) * 5;
+      x += Math.sin(elapsed * 1.5) * 4;
+      y += Math.cos(elapsed * 1.9) * 5;
 
       // lean into the direction of travel
       const t2 = Math.min(1, t + 0.04);
       const nx = spline(a.x, b.x, c.x, d.x, t2);
-      const tilt = Math.max(-12, Math.min(12, (nx - x) * 1.6));
+      const tilt = Math.max(-12, Math.min(12, (nx - x) * 1.8));
 
       node.style.transform = `translate(${x}px, ${y}px) rotate(${tilt}deg)`;
 
-      // whichever icon it happens to be over right now
       let over: string | null = null;
       for (const s of stops) {
         if (Math.hypot(x - s.x, y - s.y) < NEAR) {
