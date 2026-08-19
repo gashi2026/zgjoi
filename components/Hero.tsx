@@ -43,17 +43,36 @@ export default async function Hero() {
           __html: `
             .zg-touch { display: none; }
             .zg-pointer { display: block; }
+
+            /* touch devices keep the phone layout at any zoom level */
             @media (max-width: 640px), (hover: none) and (pointer: coarse) {
               .zg-touch { display: block; }
               .zg-pointer { display: none; }
               .zg-hero-grid { grid-template-columns: 1fr !important; }
+              .zg-hero-grid { padding-top: 1.75rem; padding-bottom: 1.5rem; }
+            }
+
+            /* phone held sideways: put the copy and the belt side by side,
+               and tighten everything so it still fits the short screen */
+            @media (hover: none) and (pointer: coarse) and (orientation: landscape) {
+              .zg-hero-grid {
+                grid-template-columns: 1fr 1fr !important;
+                align-items: center;
+                gap: 1.25rem !important;
+                padding-top: 1rem;
+                padding-bottom: 1rem;
+              }
+              .zg-hero-copy h1 { font-size: 1.6rem; line-height: 1.12; }
+              .zg-hero-copy p { font-size: 0.9rem; margin-top: 0.6rem; }
+              .zg-hero-search { margin-top: 0.9rem; }
+              .zg-touch { margin-top: 0 !important; }
             }
           `,
         }}
       />
 
       <div className="zg-hero-grid mx-auto grid max-w-7xl items-center gap-8 px-4 pb-10 pt-10 sm:gap-12 sm:px-6 sm:pb-16 sm:pt-12 lg:grid-cols-2 lg:gap-8 lg:px-8 lg:pb-24 lg:pt-20">
-        <div className="relative z-10 animate-fade-up">
+        <div className="zg-hero-copy relative z-10 animate-fade-up">
           <h1 className="text-[2rem] font-extrabold leading-[1.1] tracking-tight text-ink sm:text-5xl lg:text-[3.4rem]">
             {line1}
             {line2 && (
@@ -68,7 +87,7 @@ export default async function Hero() {
             {subtitle}
           </p>
 
-          <div className="mt-6 max-w-xl sm:mt-8">
+          <div className="zg-hero-search mt-6 max-w-xl sm:mt-8">
             <SearchBar />
           </div>
 

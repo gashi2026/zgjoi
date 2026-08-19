@@ -20,9 +20,12 @@ type Placed = {
 
 type Callout = { id: number; name: string; x: number; y: number; dir: "up" | "down" };
 
-const ROWS = 4;
+const ROWS_TALL = 4;
+const ROWS_SHORT = 3;   // phone held sideways — less height to play with
 const TOP_ROOM = 66;
 const BOTTOM_ROOM = 54;
+const TOP_ROOM_SHORT = 46;
+const BOTTOM_ROOM_SHORT = 38;
 const HOLD_MS = 2000;   // every name stays exactly two seconds
 const MAX_LIVE = 3;
 const LABEL_W = 150;    // how much room a call-out takes across
@@ -120,8 +123,23 @@ export default function MobileHexBelt({
   const lastT = useRef(0);
   const [live, setLive] = useState<Callout[]>([]);
 
-  const h = size * RATIO;
-  const dx = size;
+  /* A phone on its side has little height: fewer rows, smaller cells. */
+  const [short, setShort] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-height: 560px)");
+    const apply = () => setShort(mq.matches);
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, []);
+
+  const ROWS = short ? ROWS_SHORT : ROWS_TALL;
+  const topRoom = short ? TOP_ROOM_SHORT : TOP_ROOM;
+  const bottomRoom = short ? BOTTOM_ROOM_SHORT : BOTTOM_ROOM;
+  const cell = short ? Math.round(size * 0.86) : size;
+
+  const h = cell * RATIO;
+  const dx = cell;
   const dy = h * 0.75;
 
   const { cells, groupWidth, beltHeight } = useMemo(() => {
@@ -168,7 +186,7 @@ export default function MobileHexBelt({
       groupWidth: columns * dx,
       beltHeight: (ROWS - 1) * dy + h,
     };
-  }, [cats, dx, dy, h]);
+  }, [cats, dx, dy, h, ROWS]);
 
   const wrap = (v: number) => {
     let x = v;
@@ -230,7 +248,7 @@ export default function MobileHexBelt({
       const viewW = frameRef.current?.clientWidth ?? 360;
       const left = -offset.current;
       return named.filter((c) => {
-        const dir: "up" | "down" = c.row <= 1 ? "up" : "down";
+        const dir: "up" | "down" = c.row < ROWS / 2 ? "up" : "down";
         const onScreen = c.x > left + 8 && c.x < left + viewW - LABEL_W - 10;
         if (!onScreen) return false;
         if (showing.some((s) => s.name === c.cat!.name)) return false;
@@ -253,7 +271,7 @@ export default function MobileHexBelt({
 
       const c = pool[Math.floor(Math.random() * pool.length)];
       const name = c.cat!.name;
-      const dir: "up" | "down" = c.row <= 1 ? "up" : "down";
+      const dir: "up" | "down" = c.row < ROWS / 2 ? "up" : "down";
       recent = [...recent, name].slice(-RECENT);
       showing = [...showing, { name, x: c.x, dir }];
       const mine = ++id;
@@ -337,7 +355,7 @@ export default function MobileHexBelt({
         key={co.id}
         className="pointer-events-none absolute z-30"
         style={{
-          left: co.x + size / 2,
+          left: co.x + cell / 2,
           top: up ? co.y - 60 : co.y + h - 10,
           width: 150,
           height: 68,
@@ -388,7 +406,7 @@ export default function MobileHexBelt({
       ref={frameRef}
       className="relative overflow-hidden"
       style={{
-        height: beltHeight + TOP_ROOM + BOTTOM_ROOM,
+        height: beltHeight + topRoom + bottomRoom,
         marginInline: "-1rem",
         touchAction: "pan-y",
         cursor: "grab",
@@ -418,11 +436,11 @@ export default function MobileHexBelt({
       <div
         ref={trackRef}
         className="absolute left-0 will-change-transform"
-        style={{ top: TOP_ROOM, width: groupWidth * 2, height: beltHeight }}
+        style={{ top: topRoom, width: groupWidth * 2, height: beltHeight }}
       >
-        <Cells cells={cells} size={size} h={h} />
+        <Cells cells={cells} size={cell} h={h} />
         <div className="absolute left-0 top-0" style={{ transform: `translateX(${groupWidth}px)` }}>
-          <Cells cells={cells} size={size} h={h} />
+          <Cells cells={cells} size={cell} h={h} />
         </div>
 
         {live.map(renderCallout)}
