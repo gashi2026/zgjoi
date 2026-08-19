@@ -338,6 +338,12 @@ export default function MobileHexBelt({
         marginInline: "-1rem",
         touchAction: "pan-y",
         cursor: "grab",
+        /* the hexes dissolve into the background at both edges instead of
+           being cut off by the screen */
+        maskImage:
+          "linear-gradient(to right, transparent 0, rgba(0,0,0,0.35) 4%, #000 16%, #000 84%, rgba(0,0,0,0.35) 96%, transparent 100%)",
+        WebkitMaskImage:
+          "linear-gradient(to right, transparent 0, rgba(0,0,0,0.35) 4%, #000 16%, #000 84%, rgba(0,0,0,0.35) 96%, transparent 100%)",
       }}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
