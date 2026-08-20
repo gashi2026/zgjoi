@@ -104,6 +104,93 @@ const Cells = memo(function Cells({
   );
 });
 
+
+/* One swelling cell. It animates itself frame by frame, so it does not
+   depend on any stylesheet being present, and it starts already visible
+   at full size in case the animation cannot run at all. */
+function GrowCell({
+  co, cell, h, duration,
+}: {
+  co: Callout;
+  cell: number;
+  h: number;
+  duration: number;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const nameRef = useRef<HTMLSpanElement>(null);
+  const above = co.dir === "up";
+
+  useEffect(() => {
+    const el = ref.current;
+    const label = nameRef.current;
+    if (el === null) return;
+
+    const ease = (t: number) => 1 - Math.pow(1 - t, 3);
+    const PEAK = 1.55;
+    const start = performance.now();
+    let raf = 0;
+
+    const tick = (now: number) => {
+      const p = Math.min(1, (now - start) / duration);
+
+      let k: number;
+      if (p < 0.22) k = 1 + (PEAK - 1) * ease(p / 0.22);          // grow
+      else if (p < 0.78) k = PEAK;                                 // hold
+      else k = 1 + (PEAK - 1) * (1 - ease((p - 0.78) / 0.22));     // shrink
+
+      const fade = p < 0.1 ? p / 0.1 : p > 0.92 ? (1 - p) / 0.08 : 1;
+
+      el.style.transform = `scale(${k})`;
+      el.style.opacity = String(Math.max(0, Math.min(1, fade)));
+      if (label) {
+        const lf = p < 0.2 ? 0 : p > 0.85 ? 0 : 1;
+        label.style.opacity = String(lf);
+      }
+
+      if (p < 1) raf = requestAnimationFrame(tick);
+    };
+
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [duration]);
+
+  return (
+    <div
+      ref={ref}
+      className="pointer-events-none absolute z-30"
+      style={{
+        left: co.x,
+        top: co.y,
+        width: cell,
+        height: h,
+        transformOrigin: "center center",
+        transform: "scale(1.25)",
+        willChange: "transform, opacity",
+      }}
+      aria-hidden="true"
+    >
+      <svg
+        viewBox="0 0 100 115.47"
+        width={cell}
+        height={h}
+        className="drop-shadow-[0_6px_16px_rgba(232,157,0,0.32)]"
+      >
+        <path d={HEX_D} fill="#FFE9A8" stroke="#E89D00" strokeWidth={3} strokeLinejoin="round" />
+      </svg>
+      <span className="absolute inset-0 flex items-center justify-center text-gold-dark">
+        <CategoryIcon name={co.icon} size={21} strokeWidth={1.9} className="text-gold-dark" />
+      </span>
+      <span
+        ref={nameRef}
+        className="absolute left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md bg-white px-1.5 py-[1px] text-[9px] font-extrabold tracking-tight text-ink shadow-[0_2px_6px_rgba(232,157,0,0.3)]"
+        style={{ [above ? "bottom" : "top"]: -13, opacity: 0 } as React.CSSProperties}
+      >
+        {co.name}
+      </span>
+    </div>
+  );
+}
+
 export default function MobileHexBelt({
   cats,
   size = 52,
@@ -362,44 +449,6 @@ export default function MobileHexBelt({
     dragMoved.current = 0;
   };
 
-  /* A cell that swells out of the belt, shows its name, then settles
-     back — drawn over the top of the real cell so the memoised layer
-     underneath never re-renders. */
-  const renderHighlight = (co: Callout, shift: number) => {
-    const above = co.dir === "up";
-    return (
-      <div
-        key={`${co.id}-${shift}`}
-        className="pointer-events-none absolute z-30"
-        style={{
-          left: co.x + shift,
-          top: co.y,
-          width: cell,
-          height: h,
-          transformOrigin: "center center",
-          animation: `cell-grow ${HOLD_MS}ms cubic-bezier(0.22, 1, 0.36, 1) both`,
-        }}
-        aria-hidden="true"
-      >
-        <svg viewBox="0 0 100 115.47" width={cell} height={h} className="drop-shadow-[0_6px_16px_rgba(232,157,0,0.3)]">
-          <path d={HEX_D} fill="#FFE9A8" stroke="#E89D00" strokeWidth={3} strokeLinejoin="round" />
-        </svg>
-        <span className="absolute inset-0 flex items-center justify-center text-gold-dark">
-          <CategoryIcon name={co.icon} size={21} strokeWidth={1.9} className="text-gold-dark" />
-        </span>
-        <span
-          className="absolute left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md bg-white/95 px-1.5 py-[1px] text-[9px] font-extrabold tracking-tight text-ink shadow-[0_2px_6px_rgba(232,157,0,0.25)]"
-          style={{
-            [above ? "bottom" : "top"]: -13,
-            animation: `name-fade ${HOLD_MS}ms ease-out both`,
-          } as React.CSSProperties}
-        >
-          {co.name}
-        </span>
-      </div>
-    );
-  };
-
   return (
     <div
       ref={frameRef}
@@ -423,21 +472,6 @@ export default function MobileHexBelt({
       onClickCapture={onClickCapture}
       aria-label="Kategoritë e shërbimeve"
     >
-      <style>{`
-        @keyframes cell-grow {
-          0%   { transform: scale(1);    opacity: 0 }
-          10%  { opacity: 1 }
-          26%  { transform: scale(1.55) }
-          74%  { transform: scale(1.55) }
-          100% { transform: scale(1);    opacity: 0 }
-        }
-        @keyframes name-fade {
-          0%, 14%   { opacity: 0 }
-          28%, 76%  { opacity: 1 }
-          100%      { opacity: 0 }
-        }
-      `}</style>
-
       <div
         ref={trackRef}
         className="absolute left-0 will-change-transform"
@@ -448,8 +482,18 @@ export default function MobileHexBelt({
           <Cells cells={cells} size={cell} h={h} />
         </div>
 
-        {live.map((co) => renderHighlight(co, 0))}
-        {live.map((co) => renderHighlight(co, groupWidth))}
+        {live.map((co) => (
+          <GrowCell key={co.id} co={co} cell={cell} h={h} duration={HOLD_MS} />
+        ))}
+        {live.map((co) => (
+          <GrowCell
+            key={`${co.id}-loop`}
+            co={{ ...co, x: co.x + groupWidth }}
+            cell={cell}
+            h={h}
+            duration={HOLD_MS}
+          />
+        ))}
       </div>
     </div>
   );
