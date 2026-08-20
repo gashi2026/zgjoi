@@ -200,8 +200,8 @@ const BOTTOM_ROOM_SHORT = 38;
 const HOLD_MS = 2400;   // a slow swell, a pause on the name, a slow settle
 const MAX_LIVE = 4;
 const LABEL_W = 96;          // a grown cell plus its name
-const GAP_SAME_ROW = 168;    // two swollen cells on one row
-const GAP_ANY = 96;          // neighbouring rows sit lower, so they need less
+const GAP_SAME_ROW = 132;    // two swollen cells on one row (~80px each)
+const GAP_ANY = 76;          // different rows are offset vertically too
 
 /* The hexes never change once laid out, so they render in their own
    memoised layer — call-outs coming and going can't make them re-render,
@@ -520,12 +520,12 @@ export default function MobileHexBelt({
         return Math.abs(s.x - x) >= need * slack;
       });
 
-    const candidates = (row: number, wide: boolean, cooldown: number) => {
+    const candidates = (row: number, band: number, cooldown: number) => {
       const viewW = viewWidth();
       const left = -offset.current;
       /* normally we stay clear of the edges; when the middle is busy we
          reach further out rather than skipping a turn */
-      const from = left + (wide ? viewW * 0.24 : viewW * 0.42);
+      const from = left + viewW * band;
       const to = left + viewW - LABEL_W - 4;
 
       return named.filter((c) => {
@@ -568,17 +568,18 @@ export default function MobileHexBelt({
 
       /* Sweep: keep the full rest period first, widen the search area
          next, and only shorten the rest as a last resort. */
-      const passes: { wide: boolean; cooldown: number }[] = [
-        { wide: false, cooldown: COOLDOWN },
-        { wide: true, cooldown: COOLDOWN },
-        { wide: true, cooldown: Math.ceil(COOLDOWN / 2) },
-        { wide: true, cooldown: 3 },
+      const passes: { band: number; cooldown: number }[] = [
+        { band: 0.34, cooldown: COOLDOWN },              // right of centre
+        { band: 0.22, cooldown: COOLDOWN },              // reach further left
+        { band: 0.12, cooldown: COOLDOWN },              // most of the width
+        { band: 0.12, cooldown: Math.ceil(COOLDOWN / 2) },
+        { band: 0.1, cooldown: 3 },
       ];
 
       for (const pass of passes) {
         for (let attempt = 0; attempt < order.length; attempt++) {
           const row = order[(turn + attempt) % order.length];
-          const pool = candidates(row, pass.wide, pass.cooldown);
+          const pool = candidates(row, pass.band, pass.cooldown);
           if (pool.length === 0) continue;
 
           /* longest-rested first, then whatever sits nicely on screen */
