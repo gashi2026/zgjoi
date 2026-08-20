@@ -26,7 +26,7 @@ const TOP_ROOM = 66;
 const BOTTOM_ROOM = 54;
 const TOP_ROOM_SHORT = 46;
 const BOTTOM_ROOM_SHORT = 38;
-const HOLD_MS = 3000;   // a slow swell, a pause on the name, a slow settle
+const HOLD_MS = 2600;   // a slow swell, a pause on the name, a slow settle
 const MAX_LIVE = 3;
 const LABEL_W = 96;          // a grown cell plus its name
 const GAP_SAME_ROW = 170;    // two swollen cells on one row
@@ -118,7 +118,6 @@ function GrowCell({
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const nameRef = useRef<HTMLSpanElement>(null);
-  const above = co.dir === "up";
 
   useEffect(() => {
     const el = ref.current;
@@ -180,10 +179,11 @@ function GrowCell({
       <span className="absolute inset-0 flex items-center justify-center text-gold-dark">
         <CategoryIcon name={co.icon} size={21} strokeWidth={1.9} className="text-gold-dark" />
       </span>
+      {/* the name always rides on top of the icon */}
       <span
         ref={nameRef}
-        className="absolute left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md bg-white px-1.5 py-[1px] text-[9px] font-extrabold tracking-tight text-ink shadow-[0_2px_6px_rgba(232,157,0,0.3)]"
-        style={{ [above ? "bottom" : "top"]: -13, opacity: 0 } as React.CSSProperties}
+        className="absolute bottom-full left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md bg-gold px-1.5 py-[1px] text-[9px] font-extrabold tracking-tight text-ink shadow-[0_2px_6px_rgba(232,157,0,0.35)]"
+        style={{ marginBottom: -6, opacity: 0 }}
       >
         {co.name}
       </span>
@@ -348,7 +348,11 @@ export default function MobileHexBelt({
         if (c.row !== row) return false;
         if (showing.some((s) => s.row === c.row)) return false;
         if (showing.some((s) => s.name === c.cat!.name)) return false;
-        if (c.x <= left + 8 || c.x >= left + viewW - LABEL_W) return false;
+        /* skip cells drifting off the left and those still entering on
+           the right — a cell should have time to swell and settle while
+           it is comfortably in view */
+        if (c.x <= left + viewW * 0.14) return false;
+        if (c.x >= left + viewW - LABEL_W - viewW * 0.06) return false;
         if (relax === 0) return !recent.includes(c.cat!.name) && roomFor(c.x, row, 1);
         if (relax === 1) return roomFor(c.x, row, 1);
         return roomFor(c.x, row, 0.85); // never fully drop the spacing rule
@@ -368,7 +372,13 @@ export default function MobileHexBelt({
         }
         if (pool.length === 0) continue;
 
-        const c = pool[Math.floor(Math.random() * pool.length)];
+        /* of what's eligible, lean toward whatever is nearest the middle */
+        const centre = -offset.current + viewWidth() / 2;
+        const ranked = [...pool].sort(
+          (a, b) => Math.abs(a.x - centre) - Math.abs(b.x - centre)
+        );
+        const reach = Math.max(1, Math.ceil(ranked.length * 0.8));
+        const c = ranked[Math.floor(Math.random() * reach)];
         const name = c.cat!.name;
         recent = [...recent, name].slice(-RECENT);
         showing = [...showing, { name, x: c.x, row: c.row }];
@@ -399,10 +409,10 @@ export default function MobileHexBelt({
       if (showing.length < MAX_LIVE) spawn();
     };
 
-    const t1 = window.setTimeout(spawn, 250);
-    const t2 = window.setTimeout(spawn, 1000);
-    const t3 = window.setTimeout(spawn, 1750);
-    const loop = window.setInterval(beat, 500);
+    const t1 = window.setTimeout(spawn, 200);
+    const t2 = window.setTimeout(spawn, 750);
+    const t3 = window.setTimeout(spawn, 1300);
+    const loop = window.setInterval(beat, 340);
     return () => {
       window.clearTimeout(t1);
       window.clearTimeout(t2);
