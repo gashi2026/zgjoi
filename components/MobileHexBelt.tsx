@@ -227,34 +227,38 @@ export default function MobileHexBelt({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupWidth, speed]);
 
-  /* ---- names popping up all over, without ever going quiet ---- */
+  /* ---- which cells are swelling right now ---- */
   useEffect(() => {
     const named = cells.filter((c) => c.cat !== null);
     if (named.length === 0) return;
 
     let id = 0;
-    let recent: string[] = [];                    // short memory of names just used
-    let showing: { name: string; x: number; dir: "up" | "down" }[] = [];
+    let recent: string[] = [];
+    /* one live cell per row at most, up to four across the belt */
+    let showing: { name: string; x: number; row: number }[] = [];
     const RECENT = Math.min(5, Math.max(2, Math.floor(cats.length / 6)));
 
-    const clearOf = (x: number, dir: "up" | "down", slack: number) =>
-      showing.every((s) =>
-        Math.abs(s.x - x) >= (s.dir === dir ? SAME_SIDE_GAP : CROSS_GAP) * slack
-      );
+    const viewWidth = () => {
+      const w = frameRef.current?.clientWidth ?? 0;
+      return w > 40 ? w : 360; // never trust a zero measurement
+    };
 
-    /* Try the strictest rule first, then loosen — so there is always
-       something eligible somewhere on screen. */
+    const farEnough = (x: number, slack: number) =>
+      showing.every((s) => Math.abs(s.x - x) >= SAME_SIDE_GAP * slack);
+
     const candidates = (relax: 0 | 1 | 2 | 3) => {
-      const viewW = frameRef.current?.clientWidth ?? 360;
+      const viewW = viewWidth();
       const left = -offset.current;
       return named.filter((c) => {
-        const dir: "up" | "down" = c.row < ROWS / 2 ? "up" : "down";
-        const onScreen = c.x > left + 8 && c.x < left + viewW - LABEL_W - 10;
-        if (!onScreen) return false;
+        // hard rules: never two from one row, never the same name twice
+        if (showing.some((s) => s.row === c.row)) return false;
         if (showing.some((s) => s.name === c.cat!.name)) return false;
-        if (relax === 0) return !recent.includes(c.cat!.name) && clearOf(c.x, dir, 1);
-        if (relax === 1) return clearOf(c.x, dir, 1);
-        if (relax === 2) return clearOf(c.x, dir, 0.6);
+
+        const onScreen = c.x > left + 8 && c.x < left + viewW - LABEL_W;
+        if (relax < 3 && !onScreen) return false;
+        if (relax === 0) return !recent.includes(c.cat!.name) && farEnough(c.x, 1);
+        if (relax === 1) return farEnough(c.x, 1);
+        if (relax === 2) return farEnough(c.x, 0.55);
         return true;
       });
     };
@@ -271,12 +275,21 @@ export default function MobileHexBelt({
 
       const c = pool[Math.floor(Math.random() * pool.length)];
       const name = c.cat!.name;
-      const dir: "up" | "down" = c.row < ROWS / 2 ? "up" : "down";
       recent = [...recent, name].slice(-RECENT);
-      showing = [...showing, { name, x: c.x, dir }];
+      showing = [...showing, { name, x: c.x, row: c.row }];
       const mine = ++id;
 
-      setLive((v) => [...v, { id: mine, name, icon: c.cat!.icon, x: c.x, y: c.y, dir }]);
+      setLive((v) => [
+        ...v,
+        {
+          id: mine,
+          name,
+          icon: c.cat!.icon,
+          x: c.x,
+          y: c.y,
+          dir: c.row < ROWS / 2 ? "up" : "down",
+        },
+      ]);
 
       window.setTimeout(() => {
         showing = showing.filter((s) => s.name !== name);
@@ -284,23 +297,24 @@ export default function MobileHexBelt({
       }, HOLD_MS);
     };
 
-    /* A quick heartbeat: always top back up to two, and reach for a third
-       now and then, so the belt is never silent. */
+    /* keep the belt lively — top back up to three, reach for a fourth */
     const beat = () => {
       if (showing.length < 3) spawn();
       else if (Math.random() < 0.5) spawn();
     };
 
-    const first = window.setTimeout(spawn, 300);
-    const second = window.setTimeout(spawn, 800);
+    const t1 = window.setTimeout(spawn, 250);
+    const t2 = window.setTimeout(spawn, 650);
+    const t3 = window.setTimeout(spawn, 1050);
     const loop = window.setInterval(beat, 420);
     return () => {
-      window.clearTimeout(first);
-      window.clearTimeout(second);
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+      window.clearTimeout(t3);
       window.clearInterval(loop);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cells]);
+  }, [cells, ROWS]);
 
   /* ---- drag ---- */
   const onPointerDown = (e: React.PointerEvent) => {
