@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { ImagePlus, Loader2 } from "lucide-react";
 import BeltIcon, { CUSTOM_ICON_KEYS } from "@/components/BeltIcons";
 
@@ -112,6 +112,8 @@ export default function IconPicker({
   const [dragOver, setDragOver] = useState(false);
   const [error, setError] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
+  const reactId = useId();
+  const fileId = `icon-file-${reactId.replace(/[^a-zA-Z0-9-]/g, "")}`;
 
   const value = mode === "own" ? own : picked;
   const field =
@@ -181,18 +183,19 @@ export default function IconPicker({
             </select>
           ) : (
             <>
-              {/* drop it here, or tap to browse */}
-              <button
-                type="button"
-                onClick={() => fileRef.current?.click()}
+              {/* a plain file input does the heavy lifting — the zone
+                  around it just adds drag-and-drop on top */}
+              <label
+                htmlFor={fileId}
                 onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                onDragEnter={(e) => { e.preventDefault(); setDragOver(true); }}
                 onDragLeave={() => setDragOver(false)}
                 onDrop={(e) => {
                   e.preventDefault();
                   setDragOver(false);
                   takeFile(e.dataTransfer.files?.[0]);
                 }}
-                className={`flex w-full flex-col items-center justify-center gap-1.5 rounded-xl border-2 border-dashed px-4 py-5 text-center transition-colors ${
+                className={`flex w-full cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border-2 border-dashed px-4 py-5 text-center transition-colors ${
                   dragOver ? "border-gold bg-honey" : "border-line bg-cream hover:border-gold"
                 }`}
               >
@@ -202,19 +205,21 @@ export default function IconPicker({
                   <ImagePlus size={20} className="text-gold-dark" />
                 )}
                 <span className="text-xs font-bold text-ink">
-                  {own.startsWith("data:") ? "Imazhi u ngarkua — kliko për ta ndërruar" : "Tërhiq PNG-në këtu ose kliko"}
+                  {own.startsWith("data:") ? "Imazhi u ngarkua" : "Tërhiq imazhin këtu"}
                 </span>
                 <span className="text-[11px] text-muted">PNG me sfond transparent duket më së miri</span>
-              </button>
+              </label>
+
               <input
+                id={fileId}
                 ref={fileRef}
                 type="file"
-                accept="image/*"
-                className="hidden"
+                accept="image/png,image/jpeg,image/webp,image/svg+xml"
                 onChange={(e) => {
                   takeFile(e.target.files?.[0]);
                   e.target.value = "";
                 }}
+                className="mt-2 block w-full cursor-pointer rounded-xl border border-line bg-white text-xs text-muted file:mr-3 file:cursor-pointer file:rounded-full file:border-0 file:bg-gold file:px-4 file:py-2 file:text-xs file:font-bold file:text-ink hover:file:bg-gold-dark"
               />
 
               <input
