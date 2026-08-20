@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import CategoryIcon from "./CategoryIcon";
 import { Bee } from "./Brand";
 import { HEX_D, HEX_RATIO as RATIO } from "@/lib/hex";
@@ -119,7 +119,7 @@ function GrowCell({
   const ref = useRef<HTMLDivElement>(null);
   const nameRef = useRef<HTMLSpanElement>(null);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const el = ref.current;
     const label = nameRef.current;
     if (el === null) return;
@@ -137,18 +137,20 @@ function GrowCell({
       else if (p < 0.66) k = PEAK;                                  // hold
       else k = 1 + (PEAK - 1) * (1 - ease((p - 0.66) / 0.34));      // slow settle
 
-      const fade = p < 0.12 ? p / 0.12 : p > 0.94 ? (1 - p) / 0.06 : 1;
+      const fade = p > 0.94 ? (1 - p) / 0.06 : 1;
 
       el.style.transform = `scale(${k})`;
       el.style.opacity = String(Math.max(0, Math.min(1, fade)));
       if (label) {
-        const lf = p < 0.3 ? 0 : p > 0.78 ? 0 : 1;
-        label.style.opacity = String(lf);
+        const inP = Math.min(1, Math.max(0, (p - 0.26) / 0.14));
+        const outP = Math.min(1, Math.max(0, (p - 0.74) / 0.14));
+        label.style.opacity = String(inP * (1 - outP));
       }
 
       if (p < 1) raf = requestAnimationFrame(tick);
     };
 
+    tick(start);                       // set frame zero before first paint
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, [duration]);
@@ -163,7 +165,9 @@ function GrowCell({
         width: cell,
         height: h,
         transformOrigin: "center center",
-        transform: "scale(1.25)",
+        transform: "scale(1)",
+        opacity: 1,
+        backfaceVisibility: "hidden",
         willChange: "transform, opacity",
       }}
       aria-hidden="true"
@@ -341,83 +345,88 @@ export default function MobileHexBelt({
         return Math.abs(s.x - x) >= need * slack;
       });
 
-    const candidates = (row: number, relax: 0 | 1 | 2) => {
+    const candidates = (row: number, relax: 0 | 1, wide: boolean) => {
       const viewW = viewWidth();
       const left = -offset.current;
+      /* normally we stay clear of the edges; when the middle is busy we
+         reach further out rather than skipping a turn */
+      const from = left + (wide ? 10 : viewW * 0.14);
+      const to = left + viewW - LABEL_W - (wide ? 4 : viewW * 0.06);
+
       return named.filter((c) => {
         if (c.row !== row) return false;
         if (showing.some((s) => s.row === c.row)) return false;
         if (showing.some((s) => s.name === c.cat!.name)) return false;
-        /* skip cells drifting off the left and those still entering on
-           the right — a cell should have time to swell and settle while
-           it is comfortably in view */
-        if (c.x <= left + viewW * 0.14) return false;
-        if (c.x >= left + viewW - LABEL_W - viewW * 0.06) return false;
+        if (c.x <= from || c.x >= to) return false;
         if (relax === 0) return !recent.includes(c.cat!.name) && roomFor(c.x, row, 1);
         return roomFor(c.x, row, 1); // spacing is never relaxed — no overlaps
       });
     };
 
+    const place = (c: (typeof named)[number]) => {
+      const name = c.cat!.name;
+      recent = [...recent, name].slice(-RECENT);
+      showing = [...showing, { name, x: c.x, row: c.row }];
+      const mine = ++id;
+
+      setLive((v) => [
+        ...v,
+        {
+          id: mine,
+          name,
+          icon: c.cat!.icon,
+          x: c.x,
+          y: c.y,
+          dir: c.row < ROWS / 2 ? "up" : "down",
+        },
+      ]);
+
+      window.setTimeout(() => {
+        showing = showing.filter((s) => s.name !== name);
+        setLive((v) => v.filter((co) => co.id !== mine));
+      }, HOLD_MS);
+    };
+
     const spawn = () => {
       if (showing.length >= MAX_LIVE) return;
 
-      /* walk the row order until one of them has somewhere to pop */
-      for (let attempt = 0; attempt < order.length; attempt++) {
-        const row = order[(turn + attempt) % order.length];
-        let pool: typeof named = [];
-        for (const relax of [0, 1, 2] as const) {
-          pool = candidates(row, relax);
-          if (pool.length > 0) break;
+      /* walk the row order, then widen the search — one of these will
+         land, so the belt keeps popping at a steady rate */
+      for (const wide of [false, true]) {
+        for (let attempt = 0; attempt < order.length; attempt++) {
+          const row = order[(turn + attempt) % order.length];
+          let pool: typeof named = [];
+          for (const relax of [0, 1] as const) {
+            pool = candidates(row, relax, wide);
+            if (pool.length > 0) break;
+          }
+          if (pool.length === 0) continue;
+
+          const vw = viewWidth();
+          const aim = -offset.current + vw * 0.58;
+          const ranked = [...pool].sort(
+            (a, b) => Math.abs(a.x - aim) - Math.abs(b.x - aim)
+          );
+          const reach = Math.max(1, Math.ceil(ranked.length * 0.75));
+          place(ranked[Math.floor(Math.random() * reach)]);
+          turn = (turn + attempt + 1) % order.length;
+          return;
         }
-        if (pool.length === 0) continue;
-
-        /* aim around the middle, biased a touch to the right, where a
-           cell still has plenty of screen time ahead of it */
-        const vw = viewWidth();
-        const aim = -offset.current + vw * 0.58;
-        const ranked = [...pool].sort(
-          (a, b) => Math.abs(a.x - aim) - Math.abs(b.x - aim)
-        );
-        const reach = Math.max(1, Math.ceil(ranked.length * 0.75));
-        const c = ranked[Math.floor(Math.random() * reach)];
-        const name = c.cat!.name;
-        recent = [...recent, name].slice(-RECENT);
-        showing = [...showing, { name, x: c.x, row: c.row }];
-        turn = (turn + attempt + 1) % order.length;
-        const mine = ++id;
-
-        setLive((v) => [
-          ...v,
-          {
-            id: mine,
-            name,
-            icon: c.cat!.icon,
-            x: c.x,
-            y: c.y,
-            dir: c.row < ROWS / 2 ? "up" : "down",
-          },
-        ]);
-
-        window.setTimeout(() => {
-          showing = showing.filter((s) => s.name !== name);
-          setLive((v) => v.filter((co) => co.id !== mine));
-        }, HOLD_MS);
-        return;
       }
     };
 
-    const beat = () => {
-      if (showing.length < MAX_LIVE) spawn();
-    };
+    /* One pop leaves exactly as another arrives: spawning on a fixed
+       cadence of lifetime ÷ count keeps a steady four on screen with no
+       bursts and no quiet gaps. */
+    const cadence = Math.round(HOLD_MS / MAX_LIVE);
+    const kick: number[] = [];
+    for (let i = 0; i < MAX_LIVE; i++) {
+      kick.push(window.setTimeout(spawn, 150 + i * cadence));
+    }
+    const loop = window.setInterval(spawn, cadence);
 
-    const t1 = window.setTimeout(spawn, 200);
-    const t2 = window.setTimeout(spawn, 750);
-    const t3 = window.setTimeout(spawn, 1300);
-    const loop = window.setInterval(beat, 340);
     return () => {
-      window.clearTimeout(t1);
-      window.clearTimeout(t2);
-      window.clearTimeout(t3);
+      kick.forEach((t) => window.clearTimeout(t));
       window.clearInterval(loop);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
