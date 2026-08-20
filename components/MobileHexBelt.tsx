@@ -329,9 +329,10 @@ export default function MobileHexBelt({
     let turn = 0;
 
     let id = 0;
-    let recent: string[] = [];
     let showing: { name: string; x: number; row: number }[] = [];
-    const RECENT = Math.min(5, Math.max(2, Math.floor(cats.length / 6)));
+    /* when each category was last shown — everything gets a turn before
+       anything comes round again */
+    const lastSeen = new Map<string, number>();
 
     const viewWidth = () => {
       const w = frameRef.current?.clientWidth ?? 0;
@@ -345,7 +346,7 @@ export default function MobileHexBelt({
         return Math.abs(s.x - x) >= need * slack;
       });
 
-    const candidates = (row: number, relax: 0 | 1, wide: boolean) => {
+    const candidates = (row: number, wide: boolean) => {
       const viewW = viewWidth();
       const left = -offset.current;
       /* normally we stay clear of the edges; when the middle is busy we
@@ -358,14 +359,13 @@ export default function MobileHexBelt({
         if (showing.some((s) => s.row === c.row)) return false;
         if (showing.some((s) => s.name === c.cat!.name)) return false;
         if (c.x <= from || c.x >= to) return false;
-        if (relax === 0) return !recent.includes(c.cat!.name) && roomFor(c.x, row, 1);
         return roomFor(c.x, row, 1); // spacing is never relaxed — no overlaps
       });
     };
 
     const place = (c: (typeof named)[number]) => {
       const name = c.cat!.name;
-      recent = [...recent, name].slice(-RECENT);
+      lastSeen.set(name, performance.now());
       showing = [...showing, { name, x: c.x, row: c.row }];
       const mine = ++id;
 
@@ -395,19 +395,23 @@ export default function MobileHexBelt({
       for (const wide of [false, true]) {
         for (let attempt = 0; attempt < order.length; attempt++) {
           const row = order[(turn + attempt) % order.length];
-          let pool: typeof named = [];
-          for (const relax of [0, 1] as const) {
-            pool = candidates(row, relax, wide);
-            if (pool.length > 0) break;
-          }
+          const pool = candidates(row, wide);
           if (pool.length === 0) continue;
+
+          /* first prefer whatever has waited longest since it last showed,
+             then, among those, whatever sits nicely on screen */
+          const now = performance.now();
+          const seenAt = (c: (typeof pool)[number]) =>
+            lastSeen.get(c.cat!.name) ?? -Infinity; // never shown wins
+          const byAge = [...pool].sort((a, b) => seenAt(a) - seenAt(b));
+          const freshest = byAge.slice(0, Math.max(1, Math.ceil(byAge.length * 0.5)));
 
           const vw = viewWidth();
           const aim = -offset.current + vw * 0.58;
-          const ranked = [...pool].sort(
+          const ranked = freshest.sort(
             (a, b) => Math.abs(a.x - aim) - Math.abs(b.x - aim)
           );
-          const reach = Math.max(1, Math.ceil(ranked.length * 0.75));
+          const reach = Math.max(1, Math.ceil(ranked.length * 0.7));
           place(ranked[Math.floor(Math.random() * reach)]);
           turn = (turn + attempt + 1) % order.length;
           return;
