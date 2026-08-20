@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { Download, Hexagon, Image as ImageIcon, Plus, Power, Save, Trash2, Type } from "lucide-react";
 import AccountShell from "@/components/AccountShell";
 import { Card, SectionTitle } from "@/components/account/Bits";
-import CategoryIcon from "@/components/CategoryIcon";
+import BeltIcon from "@/components/BeltIcons";
 import EditCategoryModal from "@/components/admin/EditCategoryModal";
 import IconPicker from "@/components/admin/IconPicker";
 import { adminNav } from "@/lib/nav";
@@ -11,7 +11,9 @@ import { db } from "@/lib/server/db";
 import { currentUser } from "@/lib/server/auth";
 import { getHoneycombMap, getSiteSettings } from "@/lib/server/settings";
 import { categories as baseCategories } from "@/lib/data";
-import { createCategory, deleteCategory, saveHoneycomb, saveSiteSettings, seedCategories, toggleCategory } from "@/app/actions/admin";
+import {
+  createCategory, deleteCategory, saveHoneycomb, saveSiteSettings, seedCategories, toggleCategory,
+} from "@/app/actions/admin";
 import { DEFAULT_SERVICES, CELL_LABELS } from "@/lib/honeycomb-slots";
 
 export const dynamic = "force-dynamic";
@@ -27,8 +29,9 @@ export default async function AdminCategoriesPage() {
     getHoneycombMap(),
   ]);
 
-  const options = cats.filter((c) => c.active).length > 0
-    ? cats.filter((c) => c.active).map((c) => ({ slug: c.slug, name: c.name }))
+  const active = cats.filter((c) => c.active);
+  const options = active.length > 0
+    ? active.map((c) => ({ slug: c.slug, name: c.name }))
     : baseCategories.map((c) => ({ slug: c.slug, name: c.name }));
 
   const current = combMap ?? DEFAULT_SERVICES;
@@ -37,16 +40,13 @@ export default async function AdminCategoriesPage() {
   return (
     <AccountShell
       title="Kategoritë & Faqja"
-      subtitle="Menaxho kategoritë, tekstet e faqes dhe hojet — të gjitha në një vend."
+      subtitle="Menaxho kategoritë, ikonat, tekstet e faqes dhe hojet."
       nav={adminNav}
       user={shellUser}
     >
-      {/* ------------------------------------------------ categories */}
       {cats.length === 0 && (
         <Card>
-          <p className="text-sm text-muted">
-            Databaza nuk ka ende kategori. Importo listën bazë me një klikim:
-          </p>
+          <p className="text-sm text-muted">Databaza nuk ka ende kategori. Importo listën bazë:</p>
           <form action={seedCategories} className="mt-4">
             <button className="flex items-center gap-2 rounded-full bg-gold px-6 py-2.5 text-sm font-bold text-ink hover:bg-gold-dark">
               <Download size={15} /> Importo kategoritë bazë
@@ -55,27 +55,38 @@ export default async function AdminCategoriesPage() {
         </Card>
       )}
 
+      {/* add a category, with its own icon */}
       <Card className={cats.length === 0 ? "mt-6" : ""}>
         <SectionTitle>
           <span className="flex items-center gap-2">
             <Plus size={18} className="text-gold-dark" /> Shto kategori të re
           </span>
         </SectionTitle>
-        <form action={createCategory} className="grid gap-3 sm:grid-cols-[1.5fr_1fr_auto]">
-          <input
-            name="name"
-            required
-            placeholder="Emri (p.sh. Veteriner)"
-            className="rounded-xl border border-line bg-cream px-4 py-2.5 text-sm outline-none focus:border-gold"
-          />
-          <IconPicker name="icon" />
+        <form action={createCategory} className="space-y-4">
+          <div>
+            <label className="text-sm font-semibold text-ink" htmlFor="new-cat-name">Emri</label>
+            <input
+              id="new-cat-name"
+              name="name"
+              required
+              placeholder="p.sh. Veteriner"
+              className="mt-1.5 w-full rounded-xl border border-line bg-cream px-4 py-2.5 text-sm outline-none focus:border-gold sm:max-w-sm"
+            />
+          </div>
+          <div>
+            <label className="text-sm font-semibold text-ink">Ikona</label>
+            <div className="mt-1.5 sm:max-w-md">
+              <IconPicker name="icon" />
+            </div>
+          </div>
           <button className="rounded-full bg-gold px-6 py-2.5 text-sm font-bold text-ink hover:bg-gold-dark">
-            Shto
+            Shto kategorinë
           </button>
+          <p className="text-xs text-muted">Linku (slug) krijohet vetë nga emri.</p>
         </form>
-        <p className="mt-2 text-xs text-muted">Linku (slug) krijohet vetë nga emri.</p>
       </Card>
 
+      {/* the list */}
       {cats.length > 0 && (
         <Card className="mt-6">
           <SectionTitle>Të gjitha kategoritë ({cats.length})</SectionTitle>
@@ -83,8 +94,8 @@ export default async function AdminCategoriesPage() {
             {cats.map((c) => (
               <li key={c.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
                 <div className="flex items-center gap-3">
-                  <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-honey text-gold-dark">
-                    <CategoryIcon name={c.icon} size={18} />
+                  <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-honey text-gold-dark">
+                    <BeltIcon name={c.icon} size={20} />
                   </span>
                   <div>
                     <p className={`text-sm font-bold ${c.active ? "text-ink" : "text-muted line-through"}`}>{c.name}</p>
@@ -118,7 +129,7 @@ export default async function AdminCategoriesPage() {
         </Card>
       )}
 
-      {/* -------------------------------------------------- site texts */}
+      {/* site texts + logo */}
       <Card className="mt-6">
         <SectionTitle>
           <span className="flex items-center gap-2">
@@ -154,10 +165,10 @@ export default async function AdminCategoriesPage() {
           </div>
           <div>
             <label className="flex items-center gap-1.5 text-sm font-semibold text-ink" htmlFor="logoUrl">
-              <ImageIcon size={14} /> URL e logos së faqes (opsionale)
+              <ImageIcon size={14} /> URL e logos (opsionale)
             </label>
             <input
-              id="logoUrl" name="logoUrl" placeholder="https://…/logo.png — lëre bosh për logon me bletë"
+              id="logoUrl" name="logoUrl" placeholder="https://…/logo.png"
               defaultValue={site?.logoUrl ?? ""}
               className="mt-1.5 w-full rounded-xl border border-line bg-cream px-4 py-3 text-sm outline-none focus:border-gold"
             />
@@ -168,7 +179,7 @@ export default async function AdminCategoriesPage() {
         </form>
       </Card>
 
-      {/* ---------------------------------------------- honeycomb cells */}
+      {/* honeycomb cells */}
       <Card className="mt-6">
         <SectionTitle>
           <span className="flex items-center gap-2">
@@ -176,20 +187,19 @@ export default async function AdminCategoriesPage() {
           </span>
         </SectionTitle>
         <p className="mb-4 text-sm text-muted">
-          Zgjidh cilën kategori e mban secila qelizë. Qelizat renditen nga
-          poshtë-majtas (afër kutisë së kërkimit) drejt lart-djathtas.
+          Zgjidh cilën kategori mban secila qelizë e hojeve (versioni për kompjuter).
         </p>
         <form action={saveHoneycomb}>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {Object.keys(DEFAULT_SERVICES).map((cell) => (
-              <div key={cell} className="rounded-xl border border-line bg-cream p-3">
-                <label className="text-xs font-bold uppercase tracking-wide text-muted" htmlFor={`cell-${cell}`}>
-                  {CELL_LABELS[cell] ?? `Qeliza ${cell}`}
+            {Object.keys(DEFAULT_SERVICES).map((c) => (
+              <div key={c} className="rounded-xl border border-line bg-cream p-3">
+                <label className="text-xs font-bold uppercase tracking-wide text-muted" htmlFor={`cell-${c}`}>
+                  {CELL_LABELS[c] ?? `Qeliza ${c}`}
                 </label>
                 <select
-                  id={`cell-${cell}`}
-                  name={`cell:${cell}`}
-                  defaultValue={current[cell] ?? DEFAULT_SERVICES[cell]}
+                  id={`cell-${c}`}
+                  name={`cell:${c}`}
+                  defaultValue={current[c] ?? DEFAULT_SERVICES[c]}
                   className="mt-1.5 w-full rounded-lg border border-line bg-white px-3 py-2 text-sm outline-none focus:border-gold"
                 >
                   {options.map((o) => (
