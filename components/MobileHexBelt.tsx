@@ -26,11 +26,11 @@ const TOP_ROOM = 66;
 const BOTTOM_ROOM = 54;
 const TOP_ROOM_SHORT = 46;
 const BOTTOM_ROOM_SHORT = 38;
-const HOLD_MS = 2400;   // a slow swell, a pause on the name, a slow settle
-const MAX_LIVE = 4;
+const HOLD_MS = 1900;   // swell, hold the name, settle — then the next one
+const MAX_LIVE = 3;
 const LABEL_W = 96;          // a grown cell plus its name
-const GAP_SAME_ROW = 132;    // two swollen cells on one row (~80px each)
-const GAP_ANY = 76;          // different rows are offset vertically too
+const GAP_SAME_ROW = 116;    // two swollen cells on one row
+const GAP_ANY = 66;          // different rows are offset vertically too
 
 /* The hexes never change once laid out, so they render in their own
    memoised layer — call-outs coming and going can't make them re-render,
@@ -125,7 +125,7 @@ function GrowCell({
     if (el === null) return;
 
     const ease = (t: number) => 1 - Math.pow(1 - t, 3);
-    const PEAK = 1.55;
+    const PEAK = 1.48;
     const start = performance.now();
     let raf = 0;
 
@@ -335,7 +335,7 @@ export default function MobileHexBelt({
        the belt can't ping-pong between the same couple of icons. */
     const shownAt = new Map<string, number>();
     let seq = 0;
-    const COOLDOWN = Math.max(6, Math.min(16, cats.length - 4));
+    const COOLDOWN = Math.max(8, Math.min(22, cats.length - 4));
 
     const viewWidth = () => {
       const w = frameRef.current?.clientWidth ?? 0;
@@ -398,11 +398,9 @@ export default function MobileHexBelt({
       /* Sweep: keep the full rest period first, widen the search area
          next, and only shorten the rest as a last resort. */
       const passes: { band: number; cooldown: number }[] = [
-        { band: 0.34, cooldown: COOLDOWN },              // right of centre
-        { band: 0.22, cooldown: COOLDOWN },              // reach further left
-        { band: 0.12, cooldown: COOLDOWN },              // most of the width
-        { band: 0.12, cooldown: Math.ceil(COOLDOWN / 2) },
-        { band: 0.1, cooldown: 3 },
+        { band: 0.14, cooldown: COOLDOWN },
+        { band: 0.14, cooldown: Math.ceil(COOLDOWN * 0.6) },
+        { band: 0.11, cooldown: 5 },
       ];
 
       for (const pass of passes) {
@@ -411,19 +409,20 @@ export default function MobileHexBelt({
           const pool = candidates(row, pass.band, pass.cooldown);
           if (pool.length === 0) continue;
 
-          /* longest-rested first, then whatever sits nicely on screen */
-          const restedAt = (c: (typeof pool)[number]) =>
-            shownAt.get(c.cat!.name) ?? -Infinity; // never shown wins
-          const byRest = [...pool].sort((a, b) => restedAt(a) - restedAt(b));
-          const freshest = byRest.slice(0, Math.max(1, Math.ceil(byRest.length * 0.6)));
-
+          /* strictly the longest-rested candidate — never shown beats
+             everything, and among equals the more central cell wins */
           const vw = viewWidth();
-          const aim = -offset.current + vw * 0.7;
-          const ranked = freshest.sort(
-            (a, b) => Math.abs(a.x - aim) - Math.abs(b.x - aim)
-          );
-          const reach = Math.max(1, Math.ceil(ranked.length * 0.7));
-          place(ranked[Math.floor(Math.random() * reach)]);
+          const aim = -offset.current + vw * 0.62;
+          const restedAt = (c: (typeof pool)[number]) =>
+            shownAt.get(c.cat!.name) ?? -Infinity;
+          const byRest = [...pool].sort((a, b) => {
+            const d = restedAt(a) - restedAt(b);
+            if (d !== 0) return d;
+            return Math.abs(a.x - aim) - Math.abs(b.x - aim);
+          });
+          const pick =
+            byRest.length > 1 && Math.random() < 0.35 ? byRest[1] : byRest[0];
+          place(pick);
           turn = (turn + attempt + 1) % order.length;
           return;
         }
