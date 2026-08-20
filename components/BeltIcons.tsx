@@ -222,9 +222,42 @@ const CUSTOM: Record<string, (p: { size?: number }) => React.ReactElement> = {
   carpenter: Carpenter,
 };
 
-/* Draw whichever icon a category asks for: ours first, then the shared set. */
+/* The names of every icon we draw ourselves, for the admin picker. */
+export const CUSTOM_ICON_KEYS = Object.keys(CUSTOM);
+
+/* Draw whichever icon a category asks for. The stored value can be:
+   - one of our own drawings ("chef", "towtruck", …)
+   - a name from the shared set ("wrench", "leaf", …)
+   - a link to an image you uploaded (https://…svg | .png)
+   - raw SVG code pasted straight in ("<svg …>…</svg>") */
 export default function BeltIcon({ name, size = 21 }: { name: string; size?: number }) {
-  const Custom = CUSTOM[name];
+  const value = (name ?? "").trim();
+
+  if (value.startsWith("<svg")) {
+    return (
+      <span
+        className="inline-flex items-center justify-center [&>svg]:h-full [&>svg]:w-full"
+        style={{ width: size, height: size }}
+        dangerouslySetInnerHTML={{ __html: value }}
+      />
+    );
+  }
+
+  if (/^https?:\/\//i.test(value)) {
+    return (
+      /* eslint-disable-next-line @next/next/no-img-element */
+      <img
+        src={value}
+        alt=""
+        width={size}
+        height={size}
+        className="object-contain"
+        style={{ width: size, height: size }}
+      />
+    );
+  }
+
+  const Custom = CUSTOM[value];
   if (Custom) return <Custom size={size} />;
-  return <CategoryIcon name={name} size={size} strokeWidth={1.8} className="text-gold-dark" />;
+  return <CategoryIcon name={value} size={size} strokeWidth={1.8} className="text-gold-dark" />;
 }

@@ -19,14 +19,13 @@ export default function EditCategoryModal({
         onClick={() => setOpen(true)}
         className="flex items-center gap-1.5 rounded-full border border-line px-3.5 py-1.5 text-xs font-semibold text-ink transition-colors hover:border-gold hover:text-gold-dark"
       >
-        <Pencil size={12} />
-        Modifiko
+        <Pencil size={12} /> Modifiko
       </button>
 
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true">
           <button type="button" className="absolute inset-0 bg-ink/40" onClick={() => setOpen(false)} aria-label="Mbyll" tabIndex={-1} />
-          <div className="relative z-10 w-full max-w-md rounded-3xl bg-white p-6 shadow-lift sm:p-8">
+          <div className="relative z-10 max-h-[90vh] w-full max-w-md overflow-y-auto rounded-3xl bg-white p-6 shadow-lift sm:p-8">
             <button
               type="button"
               onClick={() => setOpen(false)}
@@ -54,7 +53,7 @@ export default function EditCategoryModal({
                 />
               </div>
               <div>
-                <label className="text-sm font-semibold text-ink">Logo / ikona</label>
+                <label className="text-sm font-semibold text-ink">Ikona</label>
                 <div className="mt-1.5">
                   <IconPicker name="icon" defaultValue={cat.icon} />
                 </div>
