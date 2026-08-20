@@ -330,9 +330,12 @@ export default function MobileHexBelt({
 
     let id = 0;
     let showing: { name: string; x: number; row: number }[] = [];
-    /* when each category was last shown — everything gets a turn before
-       anything comes round again */
-    const lastSeen = new Map<string, number>();
+    /* Position in the run when each category last showed. A category is
+       locked out until a good number of others have had their turn, so
+       the belt can't ping-pong between the same couple of icons. */
+    const shownAt = new Map<string, number>();
+    let seq = 0;
+    const COOLDOWN = Math.max(6, Math.min(16, cats.length - 4));
 
     const viewWidth = () => {
       const w = frameRef.current?.clientWidth ?? 0;
@@ -346,7 +349,7 @@ export default function MobileHexBelt({
         return Math.abs(s.x - x) >= need * slack;
       });
 
-    const candidates = (row: number, wide: boolean) => {
+    const candidates = (row: number, wide: boolean, cooldown: number) => {
       const viewW = viewWidth();
       const left = -offset.current;
       /* normally we stay clear of the edges; when the middle is busy we
@@ -359,13 +362,15 @@ export default function MobileHexBelt({
         if (showing.some((s) => s.row === c.row)) return false;
         if (showing.some((s) => s.name === c.cat!.name)) return false;
         if (c.x <= from || c.x >= to) return false;
+        const since = seq - (shownAt.get(c.cat!.name) ?? -Infinity);
+        if (since < cooldown) return false;         // still resting
         return roomFor(c.x, row, 1); // spacing is never relaxed — no overlaps
       });
     };
 
     const place = (c: (typeof named)[number]) => {
       const name = c.cat!.name;
-      lastSeen.set(name, performance.now());
+      shownAt.set(name, ++seq);
       showing = [...showing, { name, x: c.x, row: c.row }];
       const mine = ++id;
 
@@ -390,21 +395,26 @@ export default function MobileHexBelt({
     const spawn = () => {
       if (showing.length >= MAX_LIVE) return;
 
-      /* walk the row order, then widen the search — one of these will
-         land, so the belt keeps popping at a steady rate */
-      for (const wide of [false, true]) {
+      /* Sweep: keep the full rest period first, widen the search area
+         next, and only shorten the rest as a last resort. */
+      const passes: { wide: boolean; cooldown: number }[] = [
+        { wide: false, cooldown: COOLDOWN },
+        { wide: true, cooldown: COOLDOWN },
+        { wide: true, cooldown: Math.ceil(COOLDOWN / 2) },
+        { wide: true, cooldown: 3 },
+      ];
+
+      for (const pass of passes) {
         for (let attempt = 0; attempt < order.length; attempt++) {
           const row = order[(turn + attempt) % order.length];
-          const pool = candidates(row, wide);
+          const pool = candidates(row, pass.wide, pass.cooldown);
           if (pool.length === 0) continue;
 
-          /* first prefer whatever has waited longest since it last showed,
-             then, among those, whatever sits nicely on screen */
-          const now = performance.now();
-          const seenAt = (c: (typeof pool)[number]) =>
-            lastSeen.get(c.cat!.name) ?? -Infinity; // never shown wins
-          const byAge = [...pool].sort((a, b) => seenAt(a) - seenAt(b));
-          const freshest = byAge.slice(0, Math.max(1, Math.ceil(byAge.length * 0.5)));
+          /* longest-rested first, then whatever sits nicely on screen */
+          const restedAt = (c: (typeof pool)[number]) =>
+            shownAt.get(c.cat!.name) ?? -Infinity; // never shown wins
+          const byRest = [...pool].sort((a, b) => restedAt(a) - restedAt(b));
+          const freshest = byRest.slice(0, Math.max(1, Math.ceil(byRest.length * 0.6)));
 
           const vw = viewWidth();
           const aim = -offset.current + vw * 0.58;
