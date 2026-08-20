@@ -20,7 +20,7 @@ function Svg({ size, children, ratio = 1 }: { size: number; children: React.Reac
 }
 
 /* siren with rays */
-export const Alarm = ({ size = 21 }) => (
+export const Alarm = ({ size = 21 }: { size?: number }) => (
   <Svg size={size}>
     <path d="M8 15a4 4 0 0 1 8 0" />
     <path d="M6 15h12v2.4H6z" />
@@ -30,7 +30,7 @@ export const Alarm = ({ size = 21 }) => (
 );
 
 /* document with a stamp */
-export const Notary = ({ size = 21 }) => (
+export const Notary = ({ size = 21 }: { size?: number }) => (
   <Svg size={size}>
     <path d="M4.6 3.4h7.2L15 6.6v8.9a1 1 0 0 1-1 1H5.6a1 1 0 0 1-1-1z" />
     <path d="M11.6 3.4v3.4H15" />
@@ -41,7 +41,7 @@ export const Notary = ({ size = 21 }) => (
 );
 
 /* set square and compass */
-export const Architect = ({ size = 21 }) => (
+export const Architect = ({ size = 21 }: { size?: number }) => (
   <Svg size={size}>
     <path d="M4.4 19.4h9.2L4.4 8.6z" />
     <path d="M6.6 16.9h1.6M8.6 14.6h1.6" />
@@ -52,7 +52,7 @@ export const Architect = ({ size = 21 }) => (
 );
 
 /* fork and knife */
-export const Cutlery = ({ size = 21 }) => (
+export const Cutlery = ({ size = 21 }: { size?: number }) => (
   <Svg size={size}>
     <path d="M6.6 3.2v4M8.6 3.2v4M10.6 3.2v4" />
     <path d="M6.6 7.2h4v1a2 2 0 0 1-4 0z" />
@@ -63,7 +63,7 @@ export const Cutlery = ({ size = 21 }) => (
 );
 
 /* chef's hat */
-export const Chef = ({ size = 21 }) => (
+export const Chef = ({ size = 21 }: { size?: number }) => (
   <Svg size={size}>
     <path d="M7 14a3.6 3.6 0 1 1 1.5-6.9 4.2 4.2 0 0 1 7 0A3.6 3.6 0 1 1 17 14z" />
     <path d="M7 14v4.2a.8.8 0 0 0 .8.8h8.4a.8.8 0 0 0 .8-.8V14" />
@@ -72,7 +72,7 @@ export const Chef = ({ size = 21 }) => (
 );
 
 /* paw with a medical cross */
-export const Vet = ({ size = 21 }) => (
+export const Vet = ({ size = 21 }: { size?: number }) => (
   <Svg size={size}>
     <ellipse cx="7.6" cy="8.4" rx="1.7" ry="2.2" />
     <ellipse cx="12" cy="6.8" rx="1.7" ry="2.2" />
@@ -84,7 +84,7 @@ export const Vet = ({ size = 21 }) => (
 );
 
 /* welding mask with sparks */
-export const Welding = ({ size = 21 }) => (
+export const Welding = ({ size = 21 }: { size?: number }) => (
   <Svg size={size}>
     <path d="M7 4.4h6.6a2.4 2.4 0 0 1 2.4 2.4v6.4a4.4 4.4 0 0 1-4.4 4.4H9a4.4 4.4 0 0 1-4.4-4.4V6.8A2.4 2.4 0 0 1 7 4.4Z" />
     <path d="M7 8.6h6.4v2.8H7z" />
@@ -93,7 +93,7 @@ export const Welding = ({ size = 21 }) => (
 );
 
 /* dog's head with a heart */
-export const DogHeart = ({ size = 21 }) => (
+export const DogHeart = ({ size = 21 }: { size?: number }) => (
   <Svg size={size}>
     <path d="M5.6 7.4c0-2.4 1.4-3.6 2.6-3.6 1.4 0 2 1.4 2 2.8" />
     <path d="M10.2 6.6h4.4a3 3 0 0 1 3 3v.6l2 .8-2 1v1.2a2.6 2.6 0 0 1-2.6 2.6h-1.2" />
@@ -104,7 +104,7 @@ export const DogHeart = ({ size = 21 }) => (
 );
 
 /* tow truck lifting a car */
-export const TowTruck = ({ size = 21 }) => (
+export const TowTruck = ({ size = 21 }: { size?: number }) => (
   <Svg size={size}>
     <path d="M2.6 14.4v-2.2l1.4-2h3.2l1.4 2v2.2" />
     <circle cx="4.6" cy="16.2" r="1.5" />
@@ -117,14 +117,14 @@ export const TowTruck = ({ size = 21 }) => (
 );
 
 /* medical cross */
-export const Medical = ({ size = 21 }) => (
+export const Medical = ({ size = 21 }: { size?: number }) => (
   <Svg size={size}>
     <path d="M9.4 3.6h5.2v5.8h5.8v5.2h-5.8v5.8H9.4v-5.8H3.6V9.4h5.8Z" />
   </Svg>
 );
 
 /* nail polish and brush */
-export const Nails = ({ size = 21 }) => (
+export const Nails = ({ size = 21 }: { size?: number }) => (
   <Svg size={size}>
     <path d="M9 3.4h3.4v2.8H9z" />
     <path d="M7.8 6.2h5.8v12.6a1.6 1.6 0 0 1-1.6 1.6H9.4a1.6 1.6 0 0 1-1.6-1.6z" />
@@ -136,7 +136,7 @@ export const Nails = ({ size = 21 }) => (
 );
 
 /* headphones */
-export const Headphones = ({ size = 21 }) => (
+export const Headphones = ({ size = 21 }: { size?: number }) => (
   <Svg size={size}>
     <path d="M4.6 15.2v-2.6a7.4 7.4 0 0 1 14.8 0v2.6" />
     <path d="M4.6 13.8h1.6a1.4 1.4 0 0 1 1.4 1.4v3a1.4 1.4 0 0 1-1.4 1.4H4.6a1.4 1.4 0 0 1-1.4-1.4v-3a1.4 1.4 0 0 1 1.4-1.4Z" />
@@ -145,7 +145,7 @@ export const Headphones = ({ size = 21 }) => (
 );
 
 /* shoulder camera */
-export const Camcorder = ({ size = 21 }) => (
+export const Camcorder = ({ size = 21 }: { size?: number }) => (
   <Svg size={size}>
     <path d="M3.4 9.6h10.2v7.8H3.4z" />
     <path d="M13.6 12.4 19 9.8v7.4l-5.4-2.6z" />
@@ -155,7 +155,7 @@ export const Camcorder = ({ size = 21 }) => (
 );
 
 /* pen tool with anchor points */
-export const PenTool = ({ size = 21 }) => (
+export const PenTool = ({ size = 21 }: { size?: number }) => (
   <Svg size={size}>
     <path d="M12 20.4 9.2 13.6h5.6z" />
     <path d="M12 13.6V9.8" />
@@ -170,7 +170,7 @@ export const PenTool = ({ size = 21 }) => (
 );
 
 /* dancer mid-turn */
-export const Dancer = ({ size = 21 }) => (
+export const Dancer = ({ size = 21 }: { size?: number }) => (
   <Svg size={size}>
     <circle cx="12.6" cy="4.2" r="1.7" />
     <path d="M12.4 6.6 10.8 11l3.2 2-1 4.4" />
@@ -182,7 +182,7 @@ export const Dancer = ({ size = 21 }) => (
 );
 
 /* pointe shoes with a ribbon */
-export const Pointe = ({ size = 21 }) => (
+export const Pointe = ({ size = 21 }: { size?: number }) => (
   <Svg size={size}>
     <path d="M12 4.6c-1 -1.4-3.4-1.4-3.4.4 0 1.2 1.8 1.6 3.4 1.6" />
     <path d="M12 4.6c1-1.4 3.4-1.4 3.4.4 0 1.2-1.8 1.6-3.4 1.6" />
@@ -193,7 +193,7 @@ export const Pointe = ({ size = 21 }) => (
 );
 
 /* hammer and plank */
-export const Carpenter = ({ size = 21 }) => (
+export const Carpenter = ({ size = 21 }: { size?: number }) => (
   <Svg size={size}>
     <path d="M14.6 3.6c-2 0-3.4 1.2-3.8 2.8l2 .8-.8 1.8 3.4 1.4.8-1.8 2 .8c.6-1.6.4-3.4-1-4.6" />
     <path d="M12.6 9.4 5.4 19a1.4 1.4 0 0 0 2.2 1.7l6.6-9.4" />
@@ -202,7 +202,7 @@ export const Carpenter = ({ size = 21 }) => (
   </Svg>
 );
 
-const CUSTOM: Record<string, (p: { size?: number }) => JSX.Element> = {
+const CUSTOM: Record<string, (p: { size?: number }) => React.ReactElement> = {
   alarm: Alarm,
   notary: Notary,
   architect: Architect,

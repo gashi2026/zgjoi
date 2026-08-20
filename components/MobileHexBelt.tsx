@@ -8,6 +8,193 @@ import { HEX_D, HEX_RATIO as RATIO } from "@/lib/hex";
 
 type Cat = { slug: string; name: string; icon: string };
 
+type Placed = {
+  key: string;
+  cat: Cat | null;  // null = a bee cell
+  decor?: boolean;  // bees, purely decorative
+  x: number;
+  y: number;
+  row: number;
+  honey: boolean;
+};
+
+type Callout = { id: number; name: string; icon: string; x: number; y: number; dir: "up" | "down" };
+
+const ROWS_TALL = 4;
+const ROWS_SHORT = 3;   // phone held sideways — less height to play with
+const TOP_ROOM = 66;
+const BOTTOM_ROOM = 54;
+const TOP_ROOM_SHORT = 46;
+const BOTTOM_ROOM_SHORT = 38;
+const HOLD_MS = 2400;   // a slow swell, a pause on the name, a slow settle
+const MAX_LIVE = 4;
+const LABEL_W = 96;          // a grown cell plus its name
+const GAP_SAME_ROW = 132;    // two swollen cells on one row (~80px each)
+const GAP_ANY = 76;          // different rows are offset vertically too
+
+/* The hexes never change once laid out, so they render in their own
+   memoised layer — call-outs coming and going can't make them re-render,
+   which is what made dragging feel sticky. */
+const Cells = memo(function Cells({
+  cells, size, h,
+}: {
+  cells: Placed[];
+  size: number;
+  h: number;
+}) {
+  return (
+    <>
+      {cells.map((c) =>
+        c.decor ? (
+          <div
+            key={c.key}
+            className="absolute z-10"
+            style={{ left: c.x, top: c.y, width: size, height: h }}
+            aria-hidden="true"
+          >
+            <svg
+              viewBox="0 0 100 115.47"
+              width={size}
+              height={h}
+              className="drop-shadow-[0_4px_10px_rgba(232,157,0,0.12)]"
+            >
+              <path
+                d={HEX_D}
+                fill="#FFF3CF"
+                stroke="#FFB800"
+                strokeWidth={2.5}
+                strokeLinejoin="round"
+              />
+            </svg>
+            <span className="absolute inset-0 flex items-center justify-center">
+              <Bee size={Math.round(size * 0.46)} />
+            </span>
+          </div>
+        ) : (
+          <Link
+            key={c.key}
+            href={`/kerko?kategoria=${c.cat!.slug}`}
+            aria-label={`${c.cat!.name} — shiko profesionistët`}
+            draggable={false}
+            className="absolute z-10"
+            style={{ left: c.x, top: c.y, width: size, height: h }}
+          >
+            <svg
+              viewBox="0 0 100 115.47"
+              width={size}
+              height={h}
+              className="drop-shadow-[0_4px_10px_rgba(232,157,0,0.12)]"
+              aria-hidden="true"
+            >
+              <path
+                d={HEX_D}
+                fill={c.honey ? "#FFF3CF" : "#FFFFFF"}
+                stroke="#FFB800"
+                strokeWidth={2.5}
+                strokeLinejoin="round"
+              />
+            </svg>
+            <span className="absolute inset-0 flex items-center justify-center text-gold-dark">
+              <BeltIcon name={c.cat!.icon} size={21} />
+            </span>
+          </Link>
+        )
+      )}
+    </>
+  );
+});
+
+
+/* One swelling cell. It animates itself frame by frame, so it does not
+   depend on any stylesheet being present, and it starts already visible
+   at full size in case the animation cannot run at all. */
+function GrowCell({
+  co, cell, h, duration,
+}: {
+  co: Callout;
+  cell: number;
+  h: number;
+  duration: number;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const nameRef = useRef<HTMLSpanElement>(null);
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    const label = nameRef.current;
+    if (el === null) return;
+
+    const ease = (t: number) => 1 - Math.pow(1 - t, 3);
+    const PEAK = 1.55;
+    const start = performance.now();
+    let raf = 0;
+
+    const tick = (now: number) => {
+      const p = Math.min(1, (now - start) / duration);
+
+      let k: number;
+      if (p < 0.34) k = 1 + (PEAK - 1) * ease(p / 0.34);           // slow swell
+      else if (p < 0.66) k = PEAK;                                  // hold
+      else k = 1 + (PEAK - 1) * (1 - ease((p - 0.66) / 0.34));      // slow settle
+
+      const fade = p > 0.94 ? (1 - p) / 0.06 : 1;
+
+      el.style.transform = `scale(${k})`;
+      el.style.opacity = String(Math.max(0, Math.min(1, fade)));
+      if (label) {
+        const inP = Math.min(1, Math.max(0, (p - 0.26) / 0.14));
+        const outP = Math.min(1, Math.max(0, (p - 0.74) / 0.14));
+        label.style.opacity = String(inP * (1 - outP));
+      }
+
+      if (p < 1) raf = requestAnimationFrame(tick);
+    };
+
+    tick(start);                       // set frame zero before first paint
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [duration]);
+
+  return (
+    <div
+      ref={ref}
+      className="pointer-events-none absolute z-30"
+      style={{
+        left: co.x,
+        top: co.y,
+        width: cell,
+        height: h,
+        transformOrigin: "center center",
+        transform: "scale(1)",
+        opacity: 1,
+        backfaceVisibility: "hidden",
+        willChange: "transform, opacity",
+      }}
+      aria-hidden="true"
+    >
+      <svg
+        viewBox="0 0 100 115.47"
+        width={cell}
+        height={h}
+        className="drop-shadow-[0_6px_16px_rgba(232,157,0,0.32)]"
+      >
+        <path d={HEX_D} fill="#FFE9A8" stroke="#E89D00" strokeWidth={3} strokeLinejoin="round" />
+      </svg>
+      <span className="absolute inset-0 flex items-center justify-center text-gold-dark">
+        <BeltIcon name={co.icon} size={21} />
+      </span>
+      {/* the name always rides on top of the icon */}
+      <span
+        ref={nameRef}
+        className="absolute bottom-full left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md bg-gold px-1.5 py-[1px] text-[9px] font-extrabold tracking-tight text-ink shadow-[0_2px_6px_rgba(232,157,0,0.35)]"
+        style={{ marginBottom: -6, opacity: 0 }}
+      >
+        {co.name}
+      </span>
+    </div>
+  );
+}
+
 export default function MobileHexBelt({
   cats,
   size = 52,
