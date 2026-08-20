@@ -342,29 +342,39 @@ export default function MobileHexBelt({
       return w > 40 ? w : 360;
     };
 
+    /* Where a cell sits on screen right now. The belt is two copies of
+       the same strip on a loop, so positions wrap around groupWidth —
+       without this, everything near the seam becomes invisible to the
+       scheduler and the pops die out once per loop. */
+    const screenX = (x: number) => {
+      let sx = (x + offset.current) % groupWidth;
+      if (sx < 0) sx += groupWidth;
+      return sx;
+    };
+
     /* no swollen cell may sit close enough to touch another */
-    const roomFor = (x: number, row: number, slack: number) =>
+    const roomFor = (sx: number, row: number, slack: number) =>
       showing.every((s) => {
         const need = s.row === row ? GAP_SAME_ROW : GAP_ANY;
-        return Math.abs(s.x - x) >= need * slack;
+        return Math.abs(screenX(s.x) - sx) >= need * slack;
       });
 
     const candidates = (row: number, band: number, cooldown: number) => {
       const viewW = viewWidth();
-      const left = -offset.current;
-      /* normally we stay clear of the edges; when the middle is busy we
-         reach further out rather than skipping a turn */
-      const from = left + viewW * band;
-      const to = left + viewW - LABEL_W - 4;
+      /* the window is in screen coordinates — cells are checked through
+         screenX so the loop seam never hides them */
+      const from = viewW * band;
+      const to = viewW - LABEL_W - 4;
 
       return named.filter((c) => {
         if (c.row !== row) return false;
         if (showing.some((s) => s.row === c.row)) return false;
         if (showing.some((s) => s.name === c.cat!.name)) return false;
-        if (c.x <= from || c.x >= to) return false;
+        const sx = screenX(c.x);
+        if (sx <= from || sx >= to) return false;
         const since = seq - (shownAt.get(c.cat!.name) ?? -Infinity);
         if (since < cooldown) return false;         // still resting
-        return roomFor(c.x, row, 1); // spacing is never relaxed — no overlaps
+        return roomFor(sx, row, 1); // spacing is never relaxed — no overlaps
       });
     };
 
@@ -411,14 +421,13 @@ export default function MobileHexBelt({
 
           /* strictly the longest-rested candidate — never shown beats
              everything, and among equals the more central cell wins */
-          const vw = viewWidth();
-          const aim = -offset.current + vw * 0.62;
+          const aim = viewWidth() * 0.62;
           const restedAt = (c: (typeof pool)[number]) =>
             shownAt.get(c.cat!.name) ?? -Infinity;
           const byRest = [...pool].sort((a, b) => {
             const d = restedAt(a) - restedAt(b);
             if (d !== 0) return d;
-            return Math.abs(a.x - aim) - Math.abs(b.x - aim);
+            return Math.abs(screenX(a.x) - aim) - Math.abs(screenX(b.x) - aim);
           });
           const pick =
             byRest.length > 1 && Math.random() < 0.35 ? byRest[1] : byRest[0];
