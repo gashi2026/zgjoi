@@ -243,7 +243,7 @@ export default function BeltIcon({ name, size = 21 }: { name: string; size?: num
     );
   }
 
-  if (/^https?:\/\//i.test(value)) {
+  if (/^(https?:\/\/|data:image\/)/i.test(value)) {
     return (
       /* eslint-disable-next-line @next/next/no-img-element */
       <img
