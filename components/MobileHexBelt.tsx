@@ -27,10 +27,10 @@ const BOTTOM_ROOM = 54;
 const TOP_ROOM_SHORT = 46;
 const BOTTOM_ROOM_SHORT = 38;
 const HOLD_MS = 2600;   // a slow swell, a pause on the name, a slow settle
-const MAX_LIVE = 3;
+const MAX_LIVE = 4;
 const LABEL_W = 96;          // a grown cell plus its name
-const GAP_SAME_ROW = 170;    // two swollen cells on one row
-const GAP_ANY = 124;         // any two swollen cells, whatever the row
+const GAP_SAME_ROW = 168;    // two swollen cells on one row
+const GAP_ANY = 96;          // neighbouring rows sit lower, so they need less
 
 /* The hexes never change once laid out, so they render in their own
    memoised layer — call-outs coming and going can't make them re-render,
@@ -354,8 +354,7 @@ export default function MobileHexBelt({
         if (c.x <= left + viewW * 0.14) return false;
         if (c.x >= left + viewW - LABEL_W - viewW * 0.06) return false;
         if (relax === 0) return !recent.includes(c.cat!.name) && roomFor(c.x, row, 1);
-        if (relax === 1) return roomFor(c.x, row, 1);
-        return roomFor(c.x, row, 0.85); // never fully drop the spacing rule
+        return roomFor(c.x, row, 1); // spacing is never relaxed — no overlaps
       });
     };
 
@@ -372,12 +371,14 @@ export default function MobileHexBelt({
         }
         if (pool.length === 0) continue;
 
-        /* of what's eligible, lean toward whatever is nearest the middle */
-        const centre = -offset.current + viewWidth() / 2;
+        /* aim around the middle, biased a touch to the right, where a
+           cell still has plenty of screen time ahead of it */
+        const vw = viewWidth();
+        const aim = -offset.current + vw * 0.58;
         const ranked = [...pool].sort(
-          (a, b) => Math.abs(a.x - centre) - Math.abs(b.x - centre)
+          (a, b) => Math.abs(a.x - aim) - Math.abs(b.x - aim)
         );
-        const reach = Math.max(1, Math.ceil(ranked.length * 0.8));
+        const reach = Math.max(1, Math.ceil(ranked.length * 0.75));
         const c = ranked[Math.floor(Math.random() * reach)];
         const name = c.cat!.name;
         recent = [...recent, name].slice(-RECENT);
