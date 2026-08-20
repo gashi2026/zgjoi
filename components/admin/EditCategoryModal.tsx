@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Pencil, X } from "lucide-react";
-import { updateCategory } from "@/app/actions/admin";
+import { saveCategory } from "@/app/actions/categories";
 import IconPicker from "./IconPicker";
 
 export default function EditCategoryModal({
@@ -39,7 +39,7 @@ export default function EditCategoryModal({
             <p className="mt-1 text-sm text-muted">/{cat.slug}</p>
 
             <form
-              action={async (fd) => { await updateCategory(fd); setOpen(false); }}
+              action={saveCategory}
               className="mt-5 space-y-4"
             >
               <input type="hidden" name="id" value={cat.id} />
