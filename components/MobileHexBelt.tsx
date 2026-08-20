@@ -26,11 +26,11 @@ const TOP_ROOM = 66;
 const BOTTOM_ROOM = 54;
 const TOP_ROOM_SHORT = 46;
 const BOTTOM_ROOM_SHORT = 38;
-const HOLD_MS = 2200;   // grow, hold the name, shrink back
-const MAX_LIVE = 4;
-const LABEL_W = 96;     // a grown cell plus its name
-const SAME_SIDE_GAP = 118;  // two grown cells in the same band
-const CROSS_GAP = 64;       // one in the upper band, one in the lower
+const HOLD_MS = 3000;   // a slow swell, a pause on the name, a slow settle
+const MAX_LIVE = 3;
+const LABEL_W = 96;          // a grown cell plus its name
+const GAP_SAME_ROW = 170;    // two swollen cells on one row
+const GAP_ANY = 124;         // any two swollen cells, whatever the row
 
 /* The hexes never change once laid out, so they render in their own
    memoised layer — call-outs coming and going can't make them re-render,
@@ -134,16 +134,16 @@ function GrowCell({
       const p = Math.min(1, (now - start) / duration);
 
       let k: number;
-      if (p < 0.22) k = 1 + (PEAK - 1) * ease(p / 0.22);          // grow
-      else if (p < 0.78) k = PEAK;                                 // hold
-      else k = 1 + (PEAK - 1) * (1 - ease((p - 0.78) / 0.22));     // shrink
+      if (p < 0.34) k = 1 + (PEAK - 1) * ease(p / 0.34);           // slow swell
+      else if (p < 0.66) k = PEAK;                                  // hold
+      else k = 1 + (PEAK - 1) * (1 - ease((p - 0.66) / 0.34));      // slow settle
 
-      const fade = p < 0.1 ? p / 0.1 : p > 0.92 ? (1 - p) / 0.08 : 1;
+      const fade = p < 0.12 ? p / 0.12 : p > 0.94 ? (1 - p) / 0.06 : 1;
 
       el.style.transform = `scale(${k})`;
       el.style.opacity = String(Math.max(0, Math.min(1, fade)));
       if (label) {
-        const lf = p < 0.2 ? 0 : p > 0.85 ? 0 : 1;
+        const lf = p < 0.3 ? 0 : p > 0.78 ? 0 : 1;
         label.style.opacity = String(lf);
       }
 
@@ -319,81 +319,90 @@ export default function MobileHexBelt({
     const named = cells.filter((c) => c.cat !== null);
     if (named.length === 0) return;
 
+    /* Rows take turns in this order, so the pops travel around the belt
+       instead of clustering: top, bottom, second, third. */
+    const order = ROWS === 3 ? [0, 2, 1] : [0, 3, 1, 2];
+    let turn = 0;
+
     let id = 0;
     let recent: string[] = [];
-    /* one live cell per row at most, up to four across the belt */
     let showing: { name: string; x: number; row: number }[] = [];
     const RECENT = Math.min(5, Math.max(2, Math.floor(cats.length / 6)));
 
     const viewWidth = () => {
       const w = frameRef.current?.clientWidth ?? 0;
-      return w > 40 ? w : 360; // never trust a zero measurement
+      return w > 40 ? w : 360;
     };
 
-    const farEnough = (x: number, slack: number) =>
-      showing.every((s) => Math.abs(s.x - x) >= SAME_SIDE_GAP * slack);
+    /* no swollen cell may sit close enough to touch another */
+    const roomFor = (x: number, row: number, slack: number) =>
+      showing.every((s) => {
+        const need = s.row === row ? GAP_SAME_ROW : GAP_ANY;
+        return Math.abs(s.x - x) >= need * slack;
+      });
 
-    const candidates = (relax: 0 | 1 | 2 | 3) => {
+    const candidates = (row: number, relax: 0 | 1 | 2) => {
       const viewW = viewWidth();
       const left = -offset.current;
       return named.filter((c) => {
-        // hard rules: never two from one row, never the same name twice
+        if (c.row !== row) return false;
         if (showing.some((s) => s.row === c.row)) return false;
         if (showing.some((s) => s.name === c.cat!.name)) return false;
-
-        const onScreen = c.x > left + 8 && c.x < left + viewW - LABEL_W;
-        if (relax < 3 && !onScreen) return false;
-        if (relax === 0) return !recent.includes(c.cat!.name) && farEnough(c.x, 1);
-        if (relax === 1) return farEnough(c.x, 1);
-        if (relax === 2) return farEnough(c.x, 0.55);
-        return true;
+        if (c.x <= left + 8 || c.x >= left + viewW - LABEL_W) return false;
+        if (relax === 0) return !recent.includes(c.cat!.name) && roomFor(c.x, row, 1);
+        if (relax === 1) return roomFor(c.x, row, 1);
+        return roomFor(c.x, row, 0.85); // never fully drop the spacing rule
       });
     };
 
     const spawn = () => {
       if (showing.length >= MAX_LIVE) return;
 
-      let pool: typeof named = [];
-      for (const relax of [0, 1, 2, 3] as const) {
-        pool = candidates(relax);
-        if (pool.length > 0) break;
+      /* walk the row order until one of them has somewhere to pop */
+      for (let attempt = 0; attempt < order.length; attempt++) {
+        const row = order[(turn + attempt) % order.length];
+        let pool: typeof named = [];
+        for (const relax of [0, 1, 2] as const) {
+          pool = candidates(row, relax);
+          if (pool.length > 0) break;
+        }
+        if (pool.length === 0) continue;
+
+        const c = pool[Math.floor(Math.random() * pool.length)];
+        const name = c.cat!.name;
+        recent = [...recent, name].slice(-RECENT);
+        showing = [...showing, { name, x: c.x, row: c.row }];
+        turn = (turn + attempt + 1) % order.length;
+        const mine = ++id;
+
+        setLive((v) => [
+          ...v,
+          {
+            id: mine,
+            name,
+            icon: c.cat!.icon,
+            x: c.x,
+            y: c.y,
+            dir: c.row < ROWS / 2 ? "up" : "down",
+          },
+        ]);
+
+        window.setTimeout(() => {
+          showing = showing.filter((s) => s.name !== name);
+          setLive((v) => v.filter((co) => co.id !== mine));
+        }, HOLD_MS);
+        return;
       }
-      if (pool.length === 0) return;
-
-      const c = pool[Math.floor(Math.random() * pool.length)];
-      const name = c.cat!.name;
-      recent = [...recent, name].slice(-RECENT);
-      showing = [...showing, { name, x: c.x, row: c.row }];
-      const mine = ++id;
-
-      setLive((v) => [
-        ...v,
-        {
-          id: mine,
-          name,
-          icon: c.cat!.icon,
-          x: c.x,
-          y: c.y,
-          dir: c.row < ROWS / 2 ? "up" : "down",
-        },
-      ]);
-
-      window.setTimeout(() => {
-        showing = showing.filter((s) => s.name !== name);
-        setLive((v) => v.filter((co) => co.id !== mine));
-      }, HOLD_MS);
     };
 
-    /* keep the belt lively — top back up to three, reach for a fourth */
     const beat = () => {
-      if (showing.length < 3) spawn();
-      else if (Math.random() < 0.5) spawn();
+      if (showing.length < MAX_LIVE) spawn();
     };
 
     const t1 = window.setTimeout(spawn, 250);
-    const t2 = window.setTimeout(spawn, 650);
-    const t3 = window.setTimeout(spawn, 1050);
-    const loop = window.setInterval(beat, 420);
+    const t2 = window.setTimeout(spawn, 1000);
+    const t3 = window.setTimeout(spawn, 1750);
+    const loop = window.setInterval(beat, 500);
     return () => {
       window.clearTimeout(t1);
       window.clearTimeout(t2);
