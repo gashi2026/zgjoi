@@ -12,14 +12,19 @@ import { currentUser } from "@/lib/server/auth";
 import { getHoneycombMap, getSiteSettings } from "@/lib/server/settings";
 import { categories as baseCategories } from "@/lib/data";
 import {
-  createCategory, deleteCategory, saveHoneycomb, saveSiteSettings, seedCategories, toggleCategory,
+  deleteCategory, saveHoneycomb, saveSiteSettings, seedCategories, toggleCategory,
 } from "@/app/actions/admin";
+import { addCategory } from "@/app/actions/categories";
 import { DEFAULT_SERVICES, CELL_LABELS } from "@/lib/honeycomb-slots";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Kategoritë & Faqja — Admin" };
 
-export default async function AdminCategoriesPage() {
+export default async function AdminCategoriesPage({
+  searchParams,
+}: {
+  searchParams?: { ok?: string; err?: string };
+}) {
   const me = await currentUser();
   if (!me || me.role !== "ADMIN") redirect("/hyr?next=/admin/kategorite");
 
@@ -44,6 +49,17 @@ export default async function AdminCategoriesPage() {
       nav={adminNav}
       user={shellUser}
     >
+      {searchParams?.ok && (
+        <div className="mb-5 rounded-2xl border border-gold bg-honey px-5 py-3.5 text-sm font-semibold text-ink">
+          {searchParams.ok}
+        </div>
+      )}
+      {searchParams?.err && (
+        <div className="mb-5 rounded-2xl border border-red-200 bg-red-50 px-5 py-3.5 text-sm font-semibold text-red-600">
+          {searchParams.err}
+        </div>
+      )}
+
       {cats.length === 0 && (
         <Card>
           <p className="text-sm text-muted">Databaza nuk ka ende kategori. Importo listën bazë:</p>
@@ -62,7 +78,7 @@ export default async function AdminCategoriesPage() {
             <Plus size={18} className="text-gold-dark" /> Shto kategori të re
           </span>
         </SectionTitle>
-        <form action={createCategory} className="space-y-4">
+        <form action={addCategory} className="space-y-4">
           <div>
             <label className="text-sm font-semibold text-ink" htmlFor="new-cat-name">Emri</label>
             <input
