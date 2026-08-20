@@ -18,7 +18,7 @@ type Placed = {
   honey: boolean;
 };
 
-type Callout = { id: number; name: string; x: number; y: number; dir: "up" | "down" };
+type Callout = { id: number; name: string; icon: string; x: number; y: number; dir: "up" | "down" };
 
 const ROWS_TALL = 4;
 const ROWS_SHORT = 3;   // phone held sideways — less height to play with
@@ -26,11 +26,11 @@ const TOP_ROOM = 66;
 const BOTTOM_ROOM = 54;
 const TOP_ROOM_SHORT = 46;
 const BOTTOM_ROOM_SHORT = 38;
-const HOLD_MS = 2000;   // every name stays exactly two seconds
-const MAX_LIVE = 3;
-const LABEL_W = 150;    // how much room a call-out takes across
-const SAME_SIDE_GAP = LABEL_W + 30; // side by side on the same side of the belt
-const CROSS_GAP = 40;               // one above, one below — they can sit closer
+const HOLD_MS = 2200;   // grow, hold the name, shrink back
+const MAX_LIVE = 4;
+const LABEL_W = 96;     // a grown cell plus its name
+const SAME_SIDE_GAP = 118;  // two grown cells in the same band
+const CROSS_GAP = 64;       // one in the upper band, one in the lower
 
 /* The hexes never change once laid out, so they render in their own
    memoised layer — call-outs coming and going can't make them re-render,
@@ -276,7 +276,7 @@ export default function MobileHexBelt({
       showing = [...showing, { name, x: c.x, dir }];
       const mine = ++id;
 
-      setLive((v) => [...v, { id: mine, name, x: c.x, y: c.y, dir }]);
+      setLive((v) => [...v, { id: mine, name, icon: c.cat!.icon, x: c.x, y: c.y, dir }]);
 
       window.setTimeout(() => {
         showing = showing.filter((s) => s.name !== name);
@@ -287,8 +287,8 @@ export default function MobileHexBelt({
     /* A quick heartbeat: always top back up to two, and reach for a third
        now and then, so the belt is never silent. */
     const beat = () => {
-      if (showing.length < 2) spawn();
-      else if (Math.random() < 0.55) spawn();
+      if (showing.length < 3) spawn();
+      else if (Math.random() < 0.5) spawn();
     };
 
     const first = window.setTimeout(spawn, 300);
@@ -348,52 +348,37 @@ export default function MobileHexBelt({
     dragMoved.current = 0;
   };
 
-  const renderCallout = (co: Callout) => {
-    const up = co.dir === "up";
+  /* A cell that swells out of the belt, shows its name, then settles
+     back — drawn over the top of the real cell so the memoised layer
+     underneath never re-renders. */
+  const renderHighlight = (co: Callout, shift: number) => {
+    const above = co.dir === "up";
     return (
       <div
-        key={co.id}
+        key={`${co.id}-${shift}`}
         className="pointer-events-none absolute z-30"
         style={{
-          left: co.x + cell / 2,
-          top: up ? co.y - 60 : co.y + h - 10,
-          width: 150,
-          height: 68,
-          animation: "callout-in 240ms ease-out both",
+          left: co.x + shift,
+          top: co.y,
+          width: cell,
+          height: h,
+          transformOrigin: "center center",
+          animation: `cell-grow ${HOLD_MS}ms cubic-bezier(0.22, 1, 0.36, 1) both`,
         }}
+        aria-hidden="true"
       >
-        <svg
-          width="150"
-          height="68"
-          viewBox="0 0 150 68"
-          className="absolute inset-0"
-          style={{ animation: "callout-glow 1.6s ease-in-out infinite" }}
-          aria-hidden="true"
-        >
-          <defs>
-            <linearGradient id={`shine-${up ? "u" : "d"}`} x1="0" y1={up ? "1" : "0"} x2="1" y2={up ? "0" : "1"}>
-              <stop offset="0%" stopColor="#E89D00" />
-              <stop offset="55%" stopColor="#FFD466" />
-              <stop offset="100%" stopColor="#FFFFFF" />
-            </linearGradient>
-          </defs>
-          <path
-            d={up ? "M6 62 L34 28 L144 28" : "M6 6 L34 40 L144 40"}
-            fill="none"
-            stroke={`url(#shine-${up ? "u" : "d"})`}
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeDasharray="150"
-            style={{ animation: "callout-draw 480ms ease-out both" }}
-          />
-          <circle cx="6" cy={up ? 62 : 6} r="5" fill="#FFFFFF" stroke="#FFB800" strokeWidth="2" />
+        <svg viewBox="0 0 100 115.47" width={cell} height={h} className="drop-shadow-[0_6px_16px_rgba(232,157,0,0.3)]">
+          <path d={HEX_D} fill="#FFE9A8" stroke="#E89D00" strokeWidth={3} strokeLinejoin="round" />
         </svg>
-
-        {/* the name, lifted off the line so it reads clearly */}
+        <span className="absolute inset-0 flex items-center justify-center text-gold-dark">
+          <CategoryIcon name={co.icon} size={21} strokeWidth={1.9} className="text-gold-dark" />
+        </span>
         <span
-          className="absolute whitespace-nowrap rounded-lg border border-gold/60 bg-white px-2 py-0.5 text-[13px] font-extrabold tracking-tight text-ink shadow-[0_3px_10px_rgba(232,157,0,0.28)]"
-          style={{ left: 34, top: up ? 28 - 25 : 40 - 25 }}
+          className="absolute left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md bg-white/95 px-1.5 py-[1px] text-[9px] font-extrabold tracking-tight text-ink shadow-[0_2px_6px_rgba(232,157,0,0.25)]"
+          style={{
+            [above ? "bottom" : "top"]: -13,
+            animation: `name-fade ${HOLD_MS}ms ease-out both`,
+          } as React.CSSProperties}
         >
           {co.name}
         </span>
@@ -425,11 +410,17 @@ export default function MobileHexBelt({
       aria-label="Kategoritë e shërbimeve"
     >
       <style>{`
-        @keyframes callout-in { from { opacity: 0 } to { opacity: 1 } }
-        @keyframes callout-draw { from { stroke-dashoffset: 150 } to { stroke-dashoffset: 0 } }
-        @keyframes callout-glow {
-          0%, 100% { filter: drop-shadow(0 0 3px rgba(255,184,0,0.8)) }
-          50%      { filter: drop-shadow(0 0 8px rgba(255,184,0,1)) }
+        @keyframes cell-grow {
+          0%   { transform: scale(1);    opacity: 0 }
+          10%  { opacity: 1 }
+          26%  { transform: scale(1.55) }
+          74%  { transform: scale(1.55) }
+          100% { transform: scale(1);    opacity: 0 }
+        }
+        @keyframes name-fade {
+          0%, 14%   { opacity: 0 }
+          28%, 76%  { opacity: 1 }
+          100%      { opacity: 0 }
         }
       `}</style>
 
@@ -443,7 +434,8 @@ export default function MobileHexBelt({
           <Cells cells={cells} size={cell} h={h} />
         </div>
 
-        {live.map(renderCallout)}
+        {live.map((co) => renderHighlight(co, 0))}
+        {live.map((co) => renderHighlight(co, groupWidth))}
       </div>
     </div>
   );
