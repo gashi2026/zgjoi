@@ -3,10 +3,6 @@
 import { useState } from "react";
 import { Lock, ArrowRight } from "lucide-react";
 
-// ⬇️ Change this to match your logo's filename in the /public folder.
-//    A file at public/logo.png is written here as "/logo.png".
-const LOGO_SRC = "/logo.png";
-
 export default function SeShpejtiPage() {
   const [showLogin, setShowLogin] = useState(false);
   const [fjalekalimi, setFjalekalimi] = useState("");
@@ -39,29 +35,42 @@ export default function SeShpejtiPage() {
   return (
     <main className="flex min-h-screen flex-col items-center justify-center bg-[#FFFCF5] px-6">
       <div className="flex w-full max-w-md flex-col items-center text-center">
-        {/* Your logo */}
-        <img
-          src={LOGO_SRC}
-          alt="Zgjoi"
-          className="mb-8 h-24 w-auto object-contain"
-        />
+        {/* Zgjoi honeycomb mark — drawn inline, no image file needed */}
+        <svg
+          viewBox="-22 -22 390 394"
+          role="img"
+          aria-label="Zgjoi"
+          className="mb-7 h-28 w-auto"
+        >
+          <g
+            fill="none"
+            stroke="#E9A93A"
+            strokeWidth="26"
+            strokeLinejoin="round"
+          >
+            {/* bottom cell, filled */}
+            <polygon
+              points="173.2,150 259.8,200 259.8,300 173.2,350 86.6,300 86.6,200"
+              fill="#FBEDBE"
+            />
+            {/* top-left cell */}
+            <polygon points="86.6,0 173.2,50 173.2,150 86.6,200 0,150 0,50" />
+            {/* top-right cell */}
+            <polygon points="259.8,0 346.4,50 346.4,150 259.8,200 173.2,150 173.2,50" />
+          </g>
+        </svg>
 
-        <h1 className="text-4xl font-extrabold tracking-tight text-neutral-900 sm:text-5xl">
+        {/* Gold wordmark */}
+        <h1 className="text-5xl font-extrabold tracking-tight text-[#E9A93A] sm:text-6xl">
           Zgjoi
         </h1>
 
-        <div className="mt-3 h-1 w-16 rounded-full bg-[#FFB800]" />
-
-        <p className="mt-6 text-xl font-semibold text-neutral-800">
-          Po vjen së shpejti
-        </p>
-        <p className="mt-3 max-w-sm text-sm leading-relaxed text-neutral-500">
-          Zgjoi po ndërtohet — platforma që ju lidh me profesionistë të
-          verifikuar vendorë në Kosovë. Na vizitoni përsëri së shpejti.
+        <p className="mt-5 text-lg font-medium text-neutral-500">
+          Së shpejti
         </p>
 
         {/* Discreet team access */}
-        <div className="mt-12 w-full">
+        <div className="mt-14 w-full">
           {!showLogin ? (
             <button
               onClick={() => setShowLogin(true)}
