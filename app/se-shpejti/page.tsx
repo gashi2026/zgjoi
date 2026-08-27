@@ -33,7 +33,7 @@ export default function SeShpejtiPage() {
   }
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center bg-[#FFFCF5] px-6">
+    <main className="fixed inset-0 z-[2147483647] flex flex-col items-center justify-center overflow-y-auto bg-[#FFFCF5] px-6">
       <div className="flex w-full max-w-md flex-col items-center text-center">
         {/* Zgjoi honeycomb mark — drawn inline, no image file needed */}
         <svg
@@ -60,12 +60,11 @@ export default function SeShpejtiPage() {
           </g>
         </svg>
 
-        {/* Gold wordmark */}
-        <h1 className="text-5xl font-extrabold tracking-tight text-[#E9A93A] sm:text-6xl">
+        <h1 className="text-5xl font-extrabold tracking-tight text-neutral-900 sm:text-6xl">
           Zgjoi
         </h1>
 
-        <p className="mt-5 text-lg font-medium text-neutral-500">
+        <p className="mt-5 text-xl font-semibold text-[#E9A93A]">
           Së shpejti
         </p>
 
