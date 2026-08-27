@@ -3,6 +3,10 @@
 import { useState } from "react";
 import { Lock, ArrowRight } from "lucide-react";
 
+// ⬇️ Change this to match your logo's filename in the /public folder.
+//    A file at public/logo.png is written here as "/logo.png".
+const LOGO_SRC = "/logo.png";
+
 export default function SeShpejtiPage() {
   const [showLogin, setShowLogin] = useState(false);
   const [fjalekalimi, setFjalekalimi] = useState("");
@@ -33,55 +37,14 @@ export default function SeShpejtiPage() {
   }
 
   return (
-    <main className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-[#FFFCF5] px-6">
-      {/* Honeycomb background pattern */}
-      <svg
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0 h-full w-full opacity-[0.06]"
-      >
-        <defs>
-          <pattern
-            id="hoje"
-            width="56"
-            height="97"
-            patternUnits="userSpaceOnUse"
-            patternTransform="scale(1.4)"
-          >
-            <path
-              d="M28 0 L56 16 L56 48 L28 64 L0 48 L0 16 Z M28 64 L56 80 L56 97 M28 64 L0 80 L0 97"
-              fill="none"
-              stroke="#FFB800"
-              strokeWidth="2"
-            />
-          </pattern>
-        </defs>
-        <rect width="100%" height="100%" fill="url(#hoje)" />
-      </svg>
-
-      <div className="relative flex w-full max-w-md flex-col items-center text-center">
-        {/* Hexagon logo mark */}
-        <div className="mb-8 flex h-20 w-20 items-center justify-center">
-          <svg viewBox="0 0 80 80" className="h-full w-full">
-            <path
-              d="M40 4 L72 22 L72 58 L40 76 L8 58 L8 22 Z"
-              fill="#FFB800"
-            />
-            <path
-              d="M40 14 L63 27 L63 53 L40 66 L17 53 L17 27 Z"
-              fill="#FFF3CF"
-            />
-            <text
-              x="40"
-              y="49"
-              textAnchor="middle"
-              fontSize="28"
-              fontWeight="800"
-              fill="#1a1a1a"
-            >
-              Z
-            </text>
-          </svg>
-        </div>
+    <main className="flex min-h-screen flex-col items-center justify-center bg-[#FFFCF5] px-6">
+      <div className="flex w-full max-w-md flex-col items-center text-center">
+        {/* Your logo */}
+        <img
+          src={LOGO_SRC}
+          alt="Zgjoi"
+          className="mb-8 h-24 w-auto object-contain"
+        />
 
         <h1 className="text-4xl font-extrabold tracking-tight text-neutral-900 sm:text-5xl">
           Zgjoi
