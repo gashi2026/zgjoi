@@ -1,0 +1,140 @@
+"use client";
+
+import { useState } from "react";
+import { Lock, ArrowRight } from "lucide-react";
+
+export default function SeShpejtiPage() {
+  const [showLogin, setShowLogin] = useState(false);
+  const [fjalekalimi, setFjalekalimi] = useState("");
+  const [gabim, setGabim] = useState("");
+  const [duke, setDuke] = useState(false);
+
+  async function hyr() {
+    if (!fjalekalimi || duke) return;
+    setDuke(true);
+    setGabim("");
+    try {
+      const res = await fetch("/api/hyrje", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fjalekalimi }),
+      });
+      if (res.ok) {
+        window.location.href = "/";
+      } else {
+        const data = await res.json().catch(() => null);
+        setGabim(data?.mesazhi ?? "Fjalëkalimi nuk është i saktë.");
+        setDuke(false);
+      }
+    } catch {
+      setGabim("Diçka shkoi keq. Provoni përsëri.");
+      setDuke(false);
+    }
+  }
+
+  return (
+    <main className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-[#FFFCF5] px-6">
+      {/* Honeycomb background pattern */}
+      <svg
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 h-full w-full opacity-[0.06]"
+      >
+        <defs>
+          <pattern
+            id="hoje"
+            width="56"
+            height="97"
+            patternUnits="userSpaceOnUse"
+            patternTransform="scale(1.4)"
+          >
+            <path
+              d="M28 0 L56 16 L56 48 L28 64 L0 48 L0 16 Z M28 64 L56 80 L56 97 M28 64 L0 80 L0 97"
+              fill="none"
+              stroke="#FFB800"
+              strokeWidth="2"
+            />
+          </pattern>
+        </defs>
+        <rect width="100%" height="100%" fill="url(#hoje)" />
+      </svg>
+
+      <div className="relative flex w-full max-w-md flex-col items-center text-center">
+        {/* Hexagon logo mark */}
+        <div className="mb-8 flex h-20 w-20 items-center justify-center">
+          <svg viewBox="0 0 80 80" className="h-full w-full">
+            <path
+              d="M40 4 L72 22 L72 58 L40 76 L8 58 L8 22 Z"
+              fill="#FFB800"
+            />
+            <path
+              d="M40 14 L63 27 L63 53 L40 66 L17 53 L17 27 Z"
+              fill="#FFF3CF"
+            />
+            <text
+              x="40"
+              y="49"
+              textAnchor="middle"
+              fontSize="28"
+              fontWeight="800"
+              fill="#1a1a1a"
+            >
+              Z
+            </text>
+          </svg>
+        </div>
+
+        <h1 className="text-4xl font-extrabold tracking-tight text-neutral-900 sm:text-5xl">
+          Zgjoi
+        </h1>
+
+        <div className="mt-3 h-1 w-16 rounded-full bg-[#FFB800]" />
+
+        <p className="mt-6 text-xl font-semibold text-neutral-800">
+          Po vjen së shpejti
+        </p>
+        <p className="mt-3 max-w-sm text-sm leading-relaxed text-neutral-500">
+          Zgjoi po ndërtohet — platforma që ju lidh me profesionistë të
+          verifikuar vendorë në Kosovë. Na vizitoni përsëri së shpejti.
+        </p>
+
+        {/* Discreet team access */}
+        <div className="mt-12 w-full">
+          {!showLogin ? (
+            <button
+              onClick={() => setShowLogin(true)}
+              className="inline-flex items-center gap-2 text-xs font-medium text-neutral-400 transition-colors hover:text-neutral-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#FFB800] focus-visible:ring-offset-2"
+            >
+              <Lock className="h-3.5 w-3.5" />
+              Hyrje për ekipin
+            </button>
+          ) : (
+            <div className="mx-auto flex w-full max-w-xs flex-col gap-3">
+              <div className="flex overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm focus-within:border-[#FFB800] focus-within:ring-2 focus-within:ring-[#FFB800]/30">
+                <input
+                  type="password"
+                  autoFocus
+                  value={fjalekalimi}
+                  onChange={(e) => setFjalekalimi(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && hyr()}
+                  placeholder="Fjalëkalimi"
+                  className="w-full bg-transparent px-4 py-3 text-sm text-neutral-900 placeholder-neutral-400 focus:outline-none"
+                />
+                <button
+                  onClick={hyr}
+                  disabled={duke}
+                  aria-label="Hyr"
+                  className="flex items-center bg-[#FFB800] px-4 text-neutral-900 transition-opacity hover:opacity-90 disabled:opacity-50"
+                >
+                  <ArrowRight className="h-4 w-4" />
+                </button>
+              </div>
+              {gabim && (
+                <p className="text-xs font-medium text-red-600">{gabim}</p>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </main>
+  );
+}
