@@ -1,140 +1,134 @@
-# Zgjoi — si ta ngresh online
+# Zgjoi deployment runbook
 
-Ky është një projekt Next.js 14 (App Router). Nuk ka bazë të dhënash dhe as
-backend — të gjitha të dhënat vijnë nga skedarët në `lib/`. Kjo do të thotë se
-mund të ngrihet online pa konfigurim shtesë.
+The site has a Next.js server, Prisma database access and partly connected APIs.
+A successful deployment does not prove the marketplace or payments work. Keep the
+site's coming-soon lock enabled until the launch gates in
+[docs/LAUNCH-ROADMAP.md](docs/LAUNCH-ROADMAP.md) pass.
 
----
+## Build contract
 
-## 1. Provoje lokalisht (5 minuta)
-
-Të duhet Node.js 18.17 ose më i ri: https://nodejs.org
-
-```bash
-cd zgjoi
-npm install
-npm run dev
-```
-
-Hape http://localhost:3000
-
-Për të provuar versionin e prodhimit:
+Use Node.js 24 (`.nvmrc` and `package.json`) and the committed npm lockfile:
 
 ```bash
+npm ci
 npm run build
-npm start
+npm run typecheck
+npm run test:smoke
 ```
 
-Nëse `npm run build` kalon pa gabime, deploy-i do të kalojë gjithashtu.
+`npm ci` generates the Prisma client; it does not migrate a database. The build
+runs ESLint, generates the Prisma client and compiles Next.js with Webpack. Type
+errors stop the build. Webpack is retained for this framework upgrade to keep the
+existing bundler behavior. Dependency installation/generation failures must stop
+installation; there is no success fallback.
 
----
+The CI job uses intentionally unreachable localhost database URLs and no project
+secrets. Its HTTP checks exercise the production build with synthetic local
+configuration. They do not prove production login, messaging or payment behavior.
 
-## 2. Ngrite online me Vercel (rekomandohet)
+Never add schema pushes, migrations, seeds or data-reset commands to install,
+build, preview deployment or the startup command. In particular, the former build
+step `prisma db push --accept-data-loss` has been removed entirely.
 
-Vercel është kompania që e ndërton Next.js; plani falas mjafton për demo.
+## Existing Vercel project
 
-### Varianti A — përmes GitHub (më i mirë për punë të vazhdueshme)
+The existing project is `zgjoi`, connected to `gashi2026/zgjoi`, with `main` as the
+production branch. Make changes in a feature branch and review its pull request.
+The first commit published on a new branch must already contain the safe build
+configuration because a branch push can start a preview automatically.
 
-1. Krijo një repo të ri në https://github.com/new (p.sh. `zgjoi`).
-2. Nga dosja e projektit:
+`vercel.json` defines:
 
-```bash
-git init
-git add .
-git commit -m "Zgjoi — versioni i parë"
-git branch -M main
-git remote add origin https://github.com/EMRI-YT/zgjoi.git
-git push -u origin main
-```
+| Setting | Value |
+| --- | --- |
+| Framework | Next.js |
+| Install command | `npm ci` |
+| Build command | `npm run build` |
+| Output directory | Next.js default; do not set a static export folder |
+| Node.js | 24.x, matching `package.json` |
 
-3. Shko te https://vercel.com → **Add New → Project** → lidh llogarinë e
-   GitHub → zgjidh repo-n `zgjoi`.
-4. Vercel e njeh vetë Next.js. Mos ndrysho asgjë:
-   - Framework: **Next.js**
-   - Build command: `next build`
-   - Output: automatik
-   - Environment variables: **asnjë**
-5. Kliko **Deploy**. Pas ~2 minutash merr një adresë si
-   `https://zgjoi.vercel.app`.
+Check the deployment logs against those commands. Repository configuration is now
+explicit, but dashboard settings, environment values and deployment success still
+need live verification. A preview should use a separate development/staging
+database. The screenshots showed database variable names assigned to both
+Production and Preview; they did not establish whether their values differ.
 
-Çdo `git push` më vonë e rifreskon faqen automatikisht.
+Do not merge or promote the framework upgrade until CI and Vercel checks pass,
+the preview database is isolated, and a controlled login/logout test with a staging
+account succeeds. Keep the current production deployment as the rollback target.
+A code rollback does not undo database mutations; this change requires no new
+production schema migration.
 
-### Varianti B — pa GitHub, direkt nga kompjuteri
+## Environment settings
 
-```bash
-npm i -g vercel
-cd zgjoi
-vercel
-```
+Copy `.env.example` to `.env` only for local work. Use provider dashboards for
+actual deployment secrets; never commit or paste passwords into issues or logs.
 
-Përgjigju pyetjeve (`Set up and deploy? Y`, scope-i yt, emri i projektit).
-Për versionin publik final:
+| Variable | Use and requirement |
+| --- | --- |
+| `DATABASE_URL` | Runtime PostgreSQL URL from the intended Supabase project; use the project's supported pooled connection settings for Prisma. |
+| `DIRECT_URL` | Direct/session connection for database administration when supported by the host network. No migrations run in this build. |
+| `ENCRYPTION_KEY` | Existing 32-byte key represented as 64 hex characters. Keep it stable; replacing it prevents decryption of existing protected data. |
+| `ZGJOI_PASSWORD` | Existing coming-soon lock. Keep production restricted during development. This is not customer authentication. |
+| `CRON_SECRET` | Independent random secret for scheduled jobs. The existing job still needs its fail-closed authorization and payment-state audit completed (P03/P14/P25). |
+| `STRIPE_SECRET_KEY` | Only provider test credentials in an isolated test environment until Kosovo company/payout support and the money workflow are approved and verified. |
+| `STRIPE_WEBHOOK_SECRET` | Signing secret for the matching provider test webhook endpoint. No live-money sign-off is implied by configuring it. |
 
-```bash
-vercel --prod
-```
+Generate new encryption/cron secrets locally with `openssl rand -hex 32`. Do not
+regenerate an existing production encryption key as a routine setup step. The app
+uses custom Prisma-backed sessions; adding Supabase Auth settings will not wire
+its registration forms or fix ownership checks.
 
----
+Do not run the legacy seed against production. It still contains unsafe admin
+creation/promotion and credential logging behavior that must be fixed under P05.
 
-## 3. Alternativa
+## Existing Supabase database
 
-| Host | Si |
-|---|---|
-| **Netlify** | New site → import repo → build: `npm run build`, publish: `.next`, shto plugin-in zyrtar `@netlify/plugin-nextjs` |
-| **Cloudflare Pages** | Framework preset: Next.js, build: `npm run build` |
-| **Render / Railway** | Web Service → build: `npm install && npm run build`, start: `npm start` |
-| **VPS (Hetzner, DigitalOcean)** | `npm ci && npm run build && npm start` pas një reverse proxy si Nginx; përdor `pm2` për ta mbajtur gjallë |
+The tables already exist. Public API access was restricted by the migration in
+[supabase/migrations](supabase/migrations). That change has already been applied;
+this pull request records it in source control and does not require applying it
+again. Supabase and Prisma maintain separate migration histories.
 
----
+Before any structural database change:
 
-## 4. Domeni yt (p.sh. zgjoi.com)
+1. Create a full database backup through the approved database administration
+   workflow and test restoration into an isolated environment. The previous
+   structure/permission checkpoint is not a full data backup.
+2. Compare the restored schema with `prisma/schema.prisma`, including foreign
+   keys, indexes, enums, table grants, default privileges and RLS.
+3. Prepare a reviewed baseline for the existing tables and reconcile migration
+   histories. Do not execute initial CREATE TABLE statements against existing
+   production tables or mark an unverified schema as applied.
+4. Review and test each migration on the restored environment. Record its ID,
+   verification, rollback limitations and corresponding roadmap task before a
+   separately controlled production application.
 
-1. Blej domenin (Namecheap, Cloudflare, GoDaddy…).
-2. Në Vercel: **Project → Settings → Domains → Add** → shkruaj domenin.
-3. Te regjistruesi i domenit shto rekordet që të jep Vercel:
-   - `A` për `@` → `76.76.21.21`
-   - `CNAME` për `www` → `cname.vercel-dns.com`
-4. Prit 5–60 minuta. HTTPS vendoset automatikisht.
+Do not use database reset commands or prototype schema pushes on the existing
+project. The current public API roles deliberately lack application-table
+permissions; trusted server access still needs application ownership checks.
 
----
+## Domain and release checks
 
-## 5. Çfarë funksionon dhe çfarë jo
+`zgjoi.com` is already listed in the supplied Vercel screenshot. In the existing
+project's Domains screen, verify its current configuration and HTTPS. Use the DNS
+records shown for this project; do not copy old hardcoded IP addresses from an
+outdated guide. Choose the canonical host and verify the other host redirects.
 
-**Funksionon plotësisht (pamje dhe ndërveprim):**
-- Të 34 faqet, navigimi, kërkimi me filtra, ballina me rripat e hojeve
-- Formularët me validim, hapat e regjistrimit, kalkulimi i komisionit
-- Bisedat: mesazhi që shkruan shfaqet menjëherë
+After a reviewed release, verify the deployed commit, lock behavior, login/logout
+on test accounts, database connectivity, error logs and rollback target. Payment
+collection, webhooks, completion and payout require separate staging tests. The
+site lock currently also affects machine endpoints; resolve that deliberately
+with authorization tests before enabling scheduled/payment operations.
 
-**Nuk funksionon ende (kërkon backend):**
-- Ruajtja e të dhënave — çdo rifreskim i kthen gjërat në gjendjen fillestare
-- Hyrja/regjistrimi: nuk ka llogari reale dhe **asnjë faqe nuk është e mbrojtur**
-  — `/admin` hapet nga kushdo që di adresën
-- Pagesat: forma e kartës është vetëm pamje, nuk lidhet me asnjë procesor
-- Emailet, njoftimet, ngarkimi i dokumenteve
+## References checked on 6 September 2026
 
-> **Backend-i tashmë është ndërtuar** — shih `BACKEND.md` për ngritjen e
-> bazës së të dhënave, autentikimit, pagesave dhe mbështetjes live.
+- [Next.js 16 upgrade guide](https://nextjs.org/docs/app/guides/upgrading/version-16)
+- [Next.js support policy](https://nextjs.org/support-policy)
+- [August 2026 security release](https://nextjs.org/blog/august-2026-security-release)
+- [Vercel project configuration](https://vercel.com/docs/project-configuration)
+- [Vercel environment variables](https://vercel.com/docs/environment-variables)
+- [Vercel domains](https://vercel.com/docs/domains/working-with-domains/add-a-domain)
+- [Supabase with Prisma](https://supabase.com/docs/guides/database/prisma)
 
-### Hapat e radhës kur të vendosësh ta bësh real
-1. **Auth** — Clerk, Auth.js ose Supabase Auth; pastaj mbroji `/admin`, `/pro/*`
-   dhe `/llogaria/*` me middleware.
-2. **Bazë të dhënash** — Supabase, Neon ose PlanetScale; zëvendëso
-   `lib/data.ts`, `lib/account.ts`, `lib/admin.ts` me thirrje reale.
-3. **Pagesat** — Stripe Connect (escrow + komision automatik) ose një ofrues i
-   licencuar në Kosovë. Mos i prek kurrë të dhënat e kartës vetë.
-4. **Ligji** — mbajtja e parave të klientëve është veprimtari e rregulluar.
-   Konsulto një jurist para se të pranosh pagesa reale.
-
----
-
-## 6. Ku ndryshohen gjërat më të shpeshta
-
-| Çfarë | Skedari |
-|---|---|
-| Komisioni (15%) | vetëm `KOMISIONI` në `lib/account.ts` — faqet publike nuk e përmendin shifrën |
-| Kategoritë, qytetet, profesionistët | `lib/data.ts` |
-| Pyetjet e formularit sipas kategorisë | `lib/wizard.ts` |
-| Ngjyrat e markës | `tailwind.config.ts` |
-| Hojet në ballinë | `components/Honeycomb.tsx` |
-| Rripat lëvizës | `components/Marquee.tsx` |
-| Teksti i ballinës | `components/Hero.tsx` |
+This repository remains on Prisma 5.22.0. Do not paste newer Prisma-major setup
+instructions into it without a separately tested upgrade.

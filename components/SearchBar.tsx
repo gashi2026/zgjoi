@@ -17,29 +17,18 @@ export default function SearchBar({
   const router = useRouter();
   const [query, setQuery] = useState(initialQuery);
   const [city, setCity] = useState(initialCity);
-  const [querySuggestions, setQuerySuggestions] = useState<string[]>([]);
-  const [citySuggestions, setCitySuggestions] = useState<string[]>([]);
   const [showQuery, setShowQuery] = useState(false);
   const [showCity, setShowCity] = useState(false);
   const queryRef = useRef<HTMLDivElement>(null);
   const cityRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (query.trim().length < 1) { setQuerySuggestions([]); return; }
-    const q = query.toLowerCase();
-    const matches = categories
-      .filter((c) => c.name.toLowerCase().startsWith(q))
-      .slice(0, 6)
-      .map((c) => c.name);
-    setQuerySuggestions(matches);
-  }, [query]);
-
-  useEffect(() => {
-    if (city.trim().length < 1) { setCitySuggestions([]); return; }
-    const q = city.toLowerCase();
-    const matches = cities.filter((c) => c.toLowerCase().startsWith(q)).slice(0, 6);
-    setCitySuggestions(matches);
-  }, [city]);
+  const querySuggestions = query.trim()
+    ? categories.filter((c) => c.name.toLowerCase().startsWith(query.toLowerCase()))
+        .slice(0, 6).map((c) => c.name)
+    : [];
+  const citySuggestions = city.trim()
+    ? cities.filter((c) => c.toLowerCase().startsWith(city.toLowerCase())).slice(0, 6)
+    : [];
 
   // close dropdowns when clicking outside
   useEffect(() => {
@@ -63,13 +52,11 @@ export default function SearchBar({
 
   function pickQuery(s: string) {
     setQuery(s);
-    setQuerySuggestions([]);
     setShowQuery(false);
   }
 
   function pickCity(c: string) {
     setCity(c);
-    setCitySuggestions([]);
     setShowCity(false);
   }
 

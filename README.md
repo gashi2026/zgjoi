@@ -1,97 +1,60 @@
-# Zgjoi 🐝
+# Zgjoi
 
-Zgjoi ("beehive" in Albanian) is a Kosovo-based service marketplace where
-customers find trusted local professionals — electricians, plumbers, cleaners,
-painters, builders, gardeners, movers and repair specialists.
+Zgjoi is a Kosovo service marketplace. The intended journey is: choose one
+professional, send private job details, receive an official offer with price,
+scope, timing and expiration, accept it, then pay. Funds are released after the
+customer confirms completion, less commission. Reviews are optional and separate
+from completion. There is no public bidding or paid lead unlocking in this model.
 
-Built with **Next.js 14 (App Router) + React + TypeScript + Tailwind CSS +
-lucide-react**, entirely in Albanian, with a premium white-and-gold honeycomb
-visual identity.
+## Current state
 
-## Run locally
+The repository contains reusable Albanian-language UI, custom authentication,
+Prisma models and partly connected admin/support APIs. Much of the customer and
+professional journey still uses fixtures or local-only interactions. Search,
+requests, offers, checkout, completion and payouts are not an operational paid
+marketplace yet. Database RLS does not fix application-level ownership bugs.
+
+**Real-money beta is not ready.** Track verified work and remaining gates in
+[docs/LAUNCH-ROADMAP.md](docs/LAUNCH-ROADMAP.md). The initial audit covered all 143
+files at commit `4e6c58a21984b7ed7f6d9bf22d1c755c8512ef82`; their blob hashes matched
+the supplied ZIP exactly. Do not interpret existing demo counters or payment
+success screens as evidence of real transactions.
+
+## Stack and directories
+
+| Location | Purpose |
+| --- | --- |
+| `app/` | Next.js App Router pages, route handlers and server actions |
+| `components/` | React UI, including customer/pro/admin screens |
+| `lib/` | Display fixtures and shared definitions |
+| `lib/server/` | Prisma, custom sessions, settings, encryption and payment helpers |
+| `prisma/` | PostgreSQL schema and legacy seed; do not seed production |
+| `supabase/migrations/` | Recorded database permission repair; not a complete schema bootstrap |
+| `scripts/` | Local production-build smoke checks |
+| `.github/workflows/` | CI using no production credentials |
+
+Framework: Next.js 16.3.4, React 19.2.8, TypeScript 5.9.3, Tailwind CSS 3 and Prisma
+5.22.0. PostgreSQL is hosted on Supabase; the web app runs on Vercel. Next.js builds
+use Webpack during this upgrade. Dependencies are recorded in `package-lock.json`.
+
+## Development and verification
+
+Use Node.js 24. For database-connected local work, copy `.env.example` to `.env`
+and configure an isolated database. No production secrets are needed to build.
 
 ```bash
-npm install
+npm ci
 npm run dev
 ```
 
-Then open http://localhost:3000
+For the verification sequence:
 
-## Backend
+```bash
+npm run build
+npm run typecheck
+npm run test:smoke
+```
 
-The database, authentication, escrow payments and live support chat are
-scaffolded and documented in **BACKEND.md** — read that before deploying with
-real data.
-
-## Deploying
-
-See **DEPLOY.md** for step-by-step hosting instructions (Vercel, Netlify,
-Cloudflare, VPS) and what still needs a backend.
-
-Static design previews (open directly in a browser, no install) are in
-`preview/`.
-
-## Routes (34 pages)
-
-### Public site
-| Route | Page |
-|---|---|
-| `/` | Homepage — hero honeycomb, category belt, steps, pro belt, reviews |
-| `/kategorite` | All service categories |
-| `/kerko` | Search with filters, sorting, loading and empty states |
-| `/si-funksionon` | How it works |
-| `/profesionistet` | For professionals — commission, escrow, banking |
-| `/rreth-nesh` | About, the idea, founder profile |
-| `/hyr` | Login (client / professional toggle) |
-| `/regjistrohu` | Client signup |
-| `/regjistrohu-profesionist` | Professional signup — 3-step wizard |
-| `/profesionisti/[id]` | Public professional profile |
-
-### Customer portal
-| Route | Page |
-|---|---|
-| `/llogaria` | Dashboard |
-| `/kerkesa-e-re` | Service request wizard (questions vary by category) |
-| `/llogaria/kerkesat` | My requests |
-| `/llogaria/ofertat` | Compare quotes side by side |
-| `/llogaria/mesazhet` | Inbox / chat |
-| `/llogaria/rezervimi` | Booking — schedule, address, milestones |
-| `/llogaria/pagesa` | Checkout, invoice, escrow |
-| `/llogaria/vleresim` | Review and rating (releases payment) |
-| `/llogaria/te-preferuarit` | Saved professionals |
-| `/llogaria/cilesimet` | Account settings |
-
-### Professional portal
-| Route | Page |
-|---|---|
-| `/pro/paneli` | Dashboard |
-| `/pro/kerkesat` | Lead board |
-| `/pro/oferta` | Quote builder with commission preview |
-| `/pro/punet` | Jobs and payout status |
-| `/pro/kalendari` | Month calendar and working hours |
-| `/pro/mesazhet` | Inbox |
-| `/pro/te-ardhurat` | Earnings, commission split, bank details |
-| `/pro/buxheti` | Weekly lead budget and targeting |
-| `/pro/profili` | Profile, services, reviews |
-
-### Admin
-| Route | Page |
-|---|---|
-| `/admin` | Volume, growth, pending verifications |
-| `/admin/perdoruesit` | User and pro management |
-| `/admin/kategorite` | Categories and dynamic questionnaires |
-| `/admin/transaksionet` | Ledger, commissions, disputes |
-| `/admin/vleresimet` | Review moderation queue |
-
-## Data
-
-All content is mock data in `lib/`:
-`data.ts` (categories, cities, professionals, reviews),
-`account.ts` (dashboards, quotes, chat, bookings, payouts),
-`admin.ts` (platform metrics, users, transactions, flagged reviews),
-`wizard.ts` (per-category questionnaires).
-
-## Not yet built
-
-No authentication, database, payment processing or email. Every page is
-publicly reachable by URL, including `/admin`. See DEPLOY.md section 5.
+See [DEPLOY.md](DEPLOY.md) before changing Vercel, environment configuration or the
+database. Build and install commands never migrate, seed or reset a database.
+See [BACKEND.md](BACKEND.md) for the current backend boundaries and known gaps.

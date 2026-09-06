@@ -18,7 +18,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, skipped: "stripe not configured" });
   }
 
-  const signature = headers().get("stripe-signature");
+  const signature = (await headers()).get("stripe-signature");
   const secret = process.env.STRIPE_WEBHOOK_SECRET;
   if (!signature || !secret) {
     return NextResponse.json({ error: "missing signature" }, { status: 400 });

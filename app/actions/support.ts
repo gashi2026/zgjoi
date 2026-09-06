@@ -25,7 +25,7 @@ export async function sendSupportMessage(input: {
   guestName?: string;
   guestEmail?: string;
 }): Promise<SupportReply> {
-  const ip = headers().get("x-forwarded-for") ?? "local";
+  const ip = (await headers()).get("x-forwarded-for") ?? "local";
   if (!rateLimit(`support:${ip}`, 20, 60_000).ok) {
     return { ok: false, error: "Shumë mesazhe njëherësh. Prisni pak." };
   }

@@ -17,12 +17,12 @@ export const metadata: Metadata = { title: "Përdoruesit — Admin" };
 export default async function AdminUsersPage({
   searchParams,
 }: {
-  searchParams: { q?: string };
+  searchParams: Promise<{ q?: string }>;
 }) {
   const me = await currentUser();
   if (!me || me.role !== "ADMIN") redirect("/hyr?next=/admin/perdoruesit");
 
-  const q = (searchParams.q ?? "").trim();
+  const q = ((await searchParams).q ?? "").trim();
 
   const users = await db.user.findMany({
     where: q

@@ -103,7 +103,7 @@ export async function registerPro(_: ActionState, formData: FormData): Promise<A
 /* -------------------------------------------------------------- login */
 
 export async function login(_: ActionState, formData: FormData): Promise<ActionState> {
-  const ip = headers().get("x-forwarded-for") ?? "local";
+  const ip = (await headers()).get("x-forwarded-for") ?? "local";
   const limit = rateLimit(`login:${ip}`, 8, 15 * 60_000);
   if (!limit.ok) {
     return { ok: false, message: "Shumë përpjekje. Provoni sërish pas pak minutash." };

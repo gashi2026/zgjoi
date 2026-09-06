@@ -1,0 +1,55 @@
+{
+  "verified_on": "2026-09-06",
+  "project_ref": "jxddfakvakropstpfrvx",
+  "project_name": "zgjoi-staging",
+  "region": "ca-central-1",
+  "bootstrap_migration": "20260906225844",
+  "schema_sha256": "937b1764a75a8cf7e58ed0a5825c9f6520118814882f692887c3ec28e51002c5",
+  "schema": {
+    "application_tables": 22,
+    "tables_with_rls": 22,
+    "enum_types": 9,
+    "foreign_keys": 25,
+    "indexes_including_primary_keys": 60,
+    "tables_different_from_audited_schema": 0
+  },
+  "access_checks": {
+    "denied_api_reads": 44,
+    "allowed_trusted_reads": 44,
+    "application_rows_returned_by_read_probes": 0,
+    "denied_api_delete_probes": 44,
+    "trusted_session_crud_checks": 2,
+    "duplicate_email_rejected": true,
+    "orphan_session_rejected": true,
+    "fixture_relations_valid": true,
+    "private_credential_hash_matches": 4,
+    "write_probe_changes_retained": false
+  },
+  "final_counts": {
+    "users": 4,
+    "categories": 3,
+    "professional_profiles": 1,
+    "professional_services": 1,
+    "availability_rows": 1,
+    "support_tickets": 1,
+    "support_messages": 2,
+    "settings": 1,
+    "sessions": 0,
+    "service_requests": 0,
+    "payments": 0,
+    "payouts": 0
+  },
+  "security_advisor": {
+    "errors": 0,
+    "warnings": 0,
+    "intentional_rls_enabled_no_policy_info": 22
+  },
+  "limits": {
+    "vercel_preview_connection_verified": false,
+    "website_login_verified": false,
+    "application_authorization_fixed": false,
+    "production_backup_restored": false,
+    "production_records_copied": false,
+    "real_payment_journey_verified": false
+  }
+}
