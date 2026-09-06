@@ -24,9 +24,16 @@ outside the approved model.
   limited UI state cleanup, CI and corrected operating documentation.
 - Local production build, type checking and 18 HTTP smoke checks passed. See
   [BUILD-VERIFICATION.md](BUILD-VERIFICATION.md) for scope and remaining checks.
-- Review gates: remote CI, Vercel preview/configuration, staging database isolation,
-  authenticated regression tests and browser/device checks. Production main still
-  needs the reviewed change; do not assume publishing a branch updates zgjoi.com.
+- GitHub CI and Vercel Preview build/log inspection passed on foundation commit
+  `c56de204`. Later SQL/documentation commits require their own remote checks.
+- Created and verified `zgjoi-staging` in Canada Central under the existing
+  organization, with a quoted project cost of $0/month at creation. Its 22 tables
+  match the audited schema; public API access restrictions and four synthetic
+  test accounts have database-level evidence. See [STAGING-SETUP.md](STAGING-SETUP.md).
+- Review gates: effective Vercel Preview database connection, full production
+  backup/restore and migration baseline, authenticated regression tests and
+  browser/device checks. Main and production remain at the original source;
+  a passing Preview build does not prove a working marketplace.
 
 ## Work packages
 
@@ -36,8 +43,8 @@ account setup can add calendar time. No whole package is marked done yet.
 
 | ID | Work package | Current status | Initial effort |
 | --- | --- | --- | --- |
-| P01 | Safe deployments, migration baseline and staging separation | IN PROGRESS: safe build prepared; baseline/restore/isolation pending | 1–2 days |
-| P02 | Supported dependencies, type/lint checks and reproducible builds | IN PROGRESS: local checks pass; remote/visual verification pending | 2–4 days |
+| P01 | Safe deployments, migration baseline and staging separation | IN PROGRESS: safe build verified in Preview; staging database ready; Preview wiring and baseline/restore pending | 1–2 days |
+| P02 | Supported dependencies, type/lint checks and reproducible builds | IN PROGRESS: local/remote foundation checks pass; authenticated/visual verification and maintenance follow-up pending | 2–4 days |
 | P03 | Roles and ownership on every private page/action/API | IN PROGRESS: database API restriction done; application checks pending | 3–5 days |
 | P04 | Guest/account support privacy | NOT STARTED | 2–4 days |
 | P05 | Session, rate-limit, secret and seed safety | NOT STARTED | 2–4 days |
@@ -60,7 +67,7 @@ account setup can add calendar time. No whole package is marked done yet.
 | P22 | Accurate metrics, categories and settings | NOT STARTED | 3–5 days |
 | P23 | Mobile, accessibility and performance | IN PROGRESS: limited state fixes; device/visual testing pending | 3–5 days |
 | P24 | Truthful public content, localization, policies and SEO | NOT STARTED | 3–5 days |
-| P25 | Full journey tests, monitoring, recovery and pilot sign-off | IN PROGRESS: database checks and local HTTP tests; full journey pending | 6–10 days |
+| P25 | Full journey tests, monitoring, recovery and pilot sign-off | IN PROGRESS: staging integrity/access checks and CI HTTP tests pass; website login, full journey and restore pending | 6–10 days |
 
 Work through P01–P05 first while the founder resolves P06. Then implement
 P07–P12 before connecting payments. Do not simply connect the existing unsafe
