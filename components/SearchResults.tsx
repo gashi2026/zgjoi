@@ -153,18 +153,6 @@ function FilterPanel({
   );
 }
 
-function SkeletonCard() {
-  return (
-    <div className="animate-pulse rounded-2xl border border-line bg-white p-5">
-      <div className="mx-auto h-[72px] w-[72px] rounded-full bg-cream" />
-      <div className="mx-auto mt-4 h-4 w-2/3 rounded bg-cream" />
-      <div className="mx-auto mt-2 h-3 w-1/2 rounded bg-cream" />
-      <div className="mx-auto mt-3 h-3 w-3/4 rounded bg-cream" />
-      <div className="mt-5 h-10 rounded-full bg-cream" />
-    </div>
-  );
-}
-
 export default function SearchResults() {
   const params = useSearchParams();
 
@@ -176,21 +164,16 @@ export default function SearchResults() {
   const [avail, setAvail] = useState<string[]>([]);
   const [sort, setSort] = useState<Sort>("vleresimi");
   const [drawer, setDrawer] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const queryString = params.toString();
+  const [previousQueryString, setPreviousQueryString] = useState(queryString);
 
-  // Sync state from URL params
-  useEffect(() => {
+  // Reset URL-derived filters before rendering children when navigation changes.
+  if (previousQueryString !== queryString) {
+    setPreviousQueryString(queryString);
     setQuery(params.get("q") ?? "");
     setCategory(params.get("kategoria") ?? "");
     setCity(params.get("qyteti") ?? "");
-  }, [params]);
-
-  // Brief simulated loading state on any filter change
-  useEffect(() => {
-    setLoading(true);
-    const t = window.setTimeout(() => setLoading(false), 400);
-    return () => window.clearTimeout(t);
-  }, [query, category, city, minRating, maxPrice, avail, sort]);
+  }
 
   useEffect(() => {
     document.body.style.overflow = drawer ? "hidden" : "";
@@ -252,7 +235,7 @@ export default function SearchResults() {
   return (
     <div className="bg-cream">
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        <SearchBar initialQuery={query} initialCity={city} compact />
+        <SearchBar key={queryString} initialQuery={query} initialCity={city} compact />
 
         <div className="mt-8 grid gap-8 lg:grid-cols-[280px_1fr]">
           {/* Desktop filters */}
@@ -265,14 +248,8 @@ export default function SearchResults() {
           <div>
             <div className="flex items-center justify-between gap-3">
               <p className="text-sm text-muted" aria-live="polite">
-                {loading ? (
-                  "Duke kërkuar..."
-                ) : (
-                  <>
-                    <span className="font-bold text-ink">{results.length}</span>{" "}
-                    profesionistë u gjetën
-                  </>
-                )}
+                <span className="font-bold text-ink">{results.length}</span>{" "}
+                profesionistë u gjetën
               </p>
 
               <div className="flex items-center gap-2">
@@ -307,13 +284,7 @@ export default function SearchResults() {
             </div>
 
             <div className="mt-6">
-              {loading ? (
-                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                  {Array.from({ length: 6 }).map((_, i) => (
-                    <SkeletonCard key={i} />
-                  ))}
-                </div>
-              ) : results.length === 0 ? (
+              {results.length === 0 ? (
                 <div className="flex flex-col items-center rounded-2xl border border-dashed border-line bg-white px-6 py-16 text-center">
                   <span className="flex h-16 w-16 items-center justify-center rounded-full bg-honey">
                     <SearchX size={28} className="text-gold-dark" />

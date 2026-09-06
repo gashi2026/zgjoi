@@ -20,7 +20,7 @@ export async function createSession(userId: string) {
 
   await db.session.create({ data: { userId, token, expiresAt } });
 
-  cookies().set(COOKIE, token, {
+  (await cookies()).set(COOKIE, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
@@ -30,9 +30,9 @@ export async function createSession(userId: string) {
 }
 
 export async function destroySession() {
-  const token = cookies().get(COOKIE)?.value;
+  const token = (await cookies()).get(COOKIE)?.value;
   if (token) await db.session.deleteMany({ where: { token } });
-  cookies().delete(COOKIE);
+  (await cookies()).delete(COOKIE);
 }
 
 /**
@@ -40,7 +40,7 @@ export async function destroySession() {
  * render don't hit the database again.
  */
 export const currentUser = cache(async () => {
-  const token = cookies().get(COOKIE)?.value;
+  const token = (await cookies()).get(COOKIE)?.value;
   if (!token) return null;
 
   const session = await db.session.findUnique({

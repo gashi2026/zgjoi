@@ -12,28 +12,29 @@ type Me = { name: string; role: "CLIENT" | "PRO" | "ADMIN" | "SUPPORT" } | null;
 const ACCOUNT_PREFIXES = ["/llogaria", "/pro", "/admin"];
 
 export default function MobileBottomNav() {
-  const [me, setMe] = useState<Me>(null);
   const pathname = usePathname();
 
   const onAccountPage = ACCOUNT_PREFIXES.some(
     (p) => pathname === p || pathname.startsWith(`${p}/`)
   );
 
+  if (!onAccountPage) return null;
+  return <AccountBottomNav key={pathname} pathname={pathname} />;
+}
+
+function AccountBottomNav({ pathname }: { pathname: string }) {
+  const [me, setMe] = useState<Me>(null);
+
   useEffect(() => {
-    // don't even ask who's logged in on public pages
-    if (!onAccountPage) {
-      setMe(null);
-      return;
-    }
     let alive = true;
     fetch("/api/auth/me", { cache: "no-store" })
       .then((r) => r.json())
       .then((d) => { if (alive) setMe(d.user ?? null); })
       .catch(() => { if (alive) setMe(null); });
     return () => { alive = false; };
-  }, [pathname, onAccountPage]);
+  }, [pathname]);
 
-  if (!onAccountPage || !me) return null;
+  if (!me) return null;
 
   const items =
     me.role === "ADMIN" || me.role === "SUPPORT"

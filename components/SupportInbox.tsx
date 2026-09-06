@@ -29,17 +29,15 @@ export default function SupportInbox() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"ALL" | "OPEN" | "WAITING" | "RESOLVED">("ALL");
 
-  async function loadTickets() {
-    try {
-      const res = await fetch("/api/support/tickets", { cache: "no-store" });
-      const data = await res.json();
-      setTickets(data.tickets ?? []);
-      if (!active && data.tickets?.[0]) setActive(data.tickets[0].id);
-    } catch {
-      /* ignore */
-    } finally {
-      setLoading(false);
-    }
+  function loadTickets() {
+    return fetch("/api/support/tickets", { cache: "no-store" })
+      .then((res) => res.json())
+      .then((data) => {
+        setTickets(data.tickets ?? []);
+        if (!active && data.tickets?.[0]) setActive(data.tickets[0].id);
+      })
+      .catch(() => { /* offline */ })
+      .finally(() => setLoading(false));
   }
 
   useEffect(() => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { MessageCircle, Send, X } from "lucide-react";
 
 type Msg = { id: string; body: string; fromAgent: boolean; time: string };
@@ -14,10 +14,73 @@ const HOURS_LABEL = "E hënë–e premte, 09:00–17:00";
 const BTN = 56;
 const MARGIN = 12;
 
+const subscribeHydration = () => () => {};
+const clientSnapshot = () => true;
+const serverSnapshot = () => false;
+
 export default function SupportChat() {
+  const hydrated = useSyncExternalStore(subscribeHydration, clientSnapshot, serverSnapshot);
+  return hydrated ? <SupportChatClient /> : null;
+}
+
+const bounds = () => ({
+  maxX: window.innerWidth - BTN - MARGIN,
+  maxY: window.innerHeight - BTN - MARGIN,
+});
+
+const clamp = (p: Pos): Pos => {
+  const { maxX, maxY } = bounds();
+  return {
+    x: Math.max(MARGIN, Math.min(maxX, p.x)),
+    y: Math.max(MARGIN, Math.min(maxY, p.y)),
+  };
+};
+
+/* nearest edge — left, right, top or bottom */
+const snap = (p: Pos): Pos => {
+  const { maxX, maxY } = bounds();
+  const c = clamp(p);
+  const d = {
+    left: c.x - MARGIN,
+    right: maxX - c.x,
+    top: c.y - MARGIN,
+    bottom: maxY - c.y,
+  };
+  const nearest = (Object.keys(d) as (keyof typeof d)[]).reduce((a, b) =>
+    d[a] <= d[b] ? a : b
+  );
+  if (nearest === "left") return { x: MARGIN, y: c.y };
+  if (nearest === "right") return { x: maxX, y: c.y };
+  if (nearest === "top") return { x: c.x, y: MARGIN };
+  return { x: c.x, y: maxY };
+};
+
+function initialPosition(): Pos {
+  const fallback = (): Pos => ({
+    x: window.innerWidth - BTN - MARGIN,
+    y: window.innerHeight - BTN - (window.innerWidth < 1024 ? 110 : 30),
+  });
+  let start = fallback();
+  try {
+    const saved = localStorage.getItem(POS_KEY);
+    if (saved) {
+      const p = JSON.parse(saved) as Pos;
+      if (typeof p.x === "number" && typeof p.y === "number") start = p;
+    }
+  } catch { /* private mode */ }
+
+  return snap(start);
+}
+
+function initialTicket(): string | null {
+  try { return sessionStorage.getItem(STORAGE_KEY); }
+  catch { return null; }
+}
+
+function SupportChatClient() {
   const [open, setOpen] = useState(false);
   const [status, setStatus] = useState<Status | null>(null);
-  const [ticketId, setTicketId] = useState<string | null>(null);
+  const [ticketId, setTicketId] = useState<string | null>(initialTicket);
   const [messages, setMessages] = useState<Msg[]>([]);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
@@ -26,44 +89,12 @@ export default function SupportChat() {
 
   /* ------------------------------------------- draggable, edge-snapped */
   const wrapRef = useRef<HTMLDivElement>(null);
-  const posRef = useRef<Pos>({ x: 0, y: 0 });
-  const [pos, setPos] = useState<Pos | null>(null); // only for anchoring the panel
-  const [view, setView] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
+  const [pos, setPos] = useState<Pos>(initialPosition);
+  const posRef = useRef<Pos>(pos);
+  const [view, setView] = useState(() => ({ w: window.innerWidth, h: window.innerHeight }));
   const dragging = useRef(false);
   const moved = useRef(0);
   const grab = useRef<Pos>({ x: 0, y: 0 });
-
-  const bounds = () => ({
-    maxX: window.innerWidth - BTN - MARGIN,
-    maxY: window.innerHeight - BTN - MARGIN,
-  });
-
-  const clamp = (p: Pos): Pos => {
-    const { maxX, maxY } = bounds();
-    return {
-      x: Math.max(MARGIN, Math.min(maxX, p.x)),
-      y: Math.max(MARGIN, Math.min(maxY, p.y)),
-    };
-  };
-
-  /* nearest edge — left, right, top or bottom */
-  const snap = (p: Pos): Pos => {
-    const { maxX, maxY } = bounds();
-    const c = clamp(p);
-    const d = {
-      left: c.x - MARGIN,
-      right: maxX - c.x,
-      top: c.y - MARGIN,
-      bottom: maxY - c.y,
-    };
-    const nearest = (Object.keys(d) as (keyof typeof d)[]).reduce((a, b) =>
-      d[a] <= d[b] ? a : b
-    );
-    if (nearest === "left") return { x: MARGIN, y: c.y };
-    if (nearest === "right") return { x: maxX, y: c.y };
-    if (nearest === "top") return { x: c.x, y: MARGIN };
-    return { x: c.x, y: maxY };
-  };
 
   /* write straight to the DOM while dragging — no React work per frame */
   const paint = (p: Pos, animate: boolean) => {
@@ -74,25 +105,7 @@ export default function SupportChat() {
   };
 
   useEffect(() => {
-    const fallback = (): Pos => ({
-      x: window.innerWidth - BTN - MARGIN,
-      y: window.innerHeight - BTN - (window.innerWidth < 1024 ? 110 : 30),
-    });
-    let start = fallback();
-    try {
-      const saved = localStorage.getItem(POS_KEY);
-      if (saved) {
-        const p = JSON.parse(saved) as Pos;
-        if (typeof p.x === "number" && typeof p.y === "number") start = p;
-      }
-    } catch { /* private mode */ }
-
-    const snapped = snap(start);
-    posRef.current = snapped;
-    setPos(snapped);
-    paint(snapped, false);
-
-    setView({ w: window.innerWidth, h: window.innerHeight });
+    paint(posRef.current, false);
 
     const onResize = () => {
       setView({ w: window.innerWidth, h: window.innerHeight });
@@ -103,7 +116,6 @@ export default function SupportChat() {
     };
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const onPointerDown = (e: React.PointerEvent) => {
@@ -139,24 +151,17 @@ export default function SupportChat() {
   };
 
   /* ------------------------------------------------------ messaging */
-  useEffect(() => {
-    try {
-      const saved = sessionStorage.getItem(STORAGE_KEY);
-      if (saved) setTicketId(saved);
-    } catch { /* private mode */ }
-  }, []);
-
-  const poll = useCallback(async () => {
-    try {
-      const url = ticketId
-        ? `/api/support/messages?ticketId=${encodeURIComponent(ticketId)}`
-        : "/api/support/messages";
-      const res = await fetch(url, { cache: "no-store" });
-      if (!res.ok) return;
-      const data = await res.json();
-      if (data.status) setStatus(data.status);
-      if (data.messages) setMessages(data.messages);
-    } catch { /* offline */ }
+  const poll = useCallback(() => {
+    const url = ticketId
+      ? `/api/support/messages?ticketId=${encodeURIComponent(ticketId)}`
+      : "/api/support/messages";
+    return fetch(url, { cache: "no-store" })
+      .then((res) => res.ok ? res.json() : null)
+      .then((data) => {
+        if (data?.status) setStatus(data.status);
+        if (data?.messages) setMessages(data.messages);
+      })
+      .catch(() => { /* offline */ });
   }, [ticketId]);
 
   useEffect(() => { poll(); }, [poll]);

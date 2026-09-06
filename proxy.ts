@@ -7,15 +7,15 @@ import { NextResponse, type NextRequest } from "next/server";
  *    shows the coming-soon page. Delete the variable to go public.
  * 2. Gatekeeper for private areas. This only checks that a session cookie
  *    exists — the real role check happens in the page/action with
- *    requireRole(), because middleware runs on the edge without database
- *    access. Cheap first line, strict second line.
+ *    requireRole(). Cookie presence alone does not validate a session;
+ *    every private page and action must also enforce authorization.
  */
 
 const LOCK_PATH = "/se-shpejti";
 
 const PROTECTED = ["/llogaria", "/pro", "/admin", "/kerkesa-e-re"];
 
-export function middleware(req: NextRequest) {
+export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   // ---- Gate 1: site lock ----------------------------------------------

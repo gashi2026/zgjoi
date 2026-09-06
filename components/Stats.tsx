@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import CategoryIcon from "./CategoryIcon";
 import { stats } from "@/lib/data";
 
@@ -14,25 +14,28 @@ function parseValue(raw: string) {
   return { target: Number.isFinite(target) ? target : null, suffix: m[2], decimals };
 }
 
+function subscribeMotion(callback: () => void) {
+  const media = window.matchMedia("(prefers-reduced-motion: reduce)");
+  media.addEventListener("change", callback);
+  return () => media.removeEventListener("change", callback);
+}
+const motionSnapshot = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+const serverMotionSnapshot = () => false;
+
 function CountUp({ value }: { value: string }) {
   const { target, suffix, decimals } = parseValue(value);
   const [display, setDisplay] = useState(target === null ? value : `0${suffix}`);
   const ref = useRef<HTMLParagraphElement>(null);
   const done = useRef(false);
+  const reduce = useSyncExternalStore(subscribeMotion, motionSnapshot, serverMotionSnapshot);
 
   useEffect(() => {
     if (target === null || done.current) return;
     const node = ref.current;
     if (!node) return;
 
-    const reduce =
-      typeof window !== "undefined" &&
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (reduce) {
-      setDisplay(value);
-      done.current = true;
-      return;
-    }
+    if (reduce) return;
+    let frame = 0;
 
     const run = () => {
       done.current = true;
@@ -44,10 +47,10 @@ function CountUp({ value }: { value: string }) {
         const eased = 1 - Math.pow(1 - p, 3);
         const current = target * eased;
         setDisplay(`${current.toFixed(decimals)}${suffix}`);
-        if (p < 1) requestAnimationFrame(tick);
+        if (p < 1) frame = requestAnimationFrame(tick);
         else setDisplay(value); // land exactly on the real figure
       };
-      requestAnimationFrame(tick);
+      frame = requestAnimationFrame(tick);
     };
 
     // only count once the numbers are actually on screen
@@ -63,15 +66,15 @@ function CountUp({ value }: { value: string }) {
       { threshold: 0.4 }
     );
     io.observe(node);
-    return () => io.disconnect();
-  }, [target, suffix, decimals, value]);
+    return () => { io.disconnect(); cancelAnimationFrame(frame); done.current = false; };
+  }, [target, suffix, decimals, value, reduce]);
 
   return (
     <p
       ref={ref}
       className="text-xl font-extrabold tracking-tight text-ink tabular-nums sm:text-2xl"
     >
-      {display}
+      {reduce ? value : display}
     </p>
   );
 }

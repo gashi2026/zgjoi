@@ -23,8 +23,9 @@ export const metadata: Metadata = { title: "Kategoritë & Faqja — Admin" };
 export default async function AdminCategoriesPage({
   searchParams,
 }: {
-  searchParams?: { ok?: string; err?: string };
+  searchParams?: Promise<{ ok?: string; err?: string }>;
 }) {
+  const feedback = await searchParams;
   const me = await currentUser();
   if (!me || me.role !== "ADMIN") redirect("/hyr?next=/admin/kategorite");
 
@@ -49,14 +50,14 @@ export default async function AdminCategoriesPage({
       nav={adminNav}
       user={shellUser}
     >
-      {searchParams?.ok && (
+      {feedback?.ok && (
         <div className="mb-5 rounded-2xl border border-gold bg-honey px-5 py-3.5 text-sm font-semibold text-ink">
-          {searchParams.ok}
+          {feedback.ok}
         </div>
       )}
-      {searchParams?.err && (
+      {feedback?.err && (
         <div className="mb-5 rounded-2xl border border-red-200 bg-red-50 px-5 py-3.5 text-sm font-semibold text-red-600">
-          {searchParams.err}
+          {feedback.err}
         </div>
       )}
 

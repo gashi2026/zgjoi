@@ -1,4 +1,5 @@
-import { db } from "./db";
+import "server-only";
+import { db } from "./server/db";
 
 /* Simple JSON key-value settings stored in the Setting table. */
 

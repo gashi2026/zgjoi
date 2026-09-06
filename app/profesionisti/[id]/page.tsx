@@ -7,12 +7,12 @@ export function generateStaticParams() {
   return professionals.map((p) => ({ id: p.id }));
 }
 
-export function generateMetadata({
+export async function generateMetadata({
   params,
 }: {
-  params: { id: string };
-}): Metadata {
-  const pro = getProfessional(params.id);
+  params: Promise<{ id: string }>;
+}): Promise<Metadata> {
+  const pro = getProfessional((await params).id);
   if (!pro) return { title: "Profesionisti — Zgjoi" };
   return {
     title: `${pro.name} — ${pro.profession} në ${pro.city} | Zgjoi`,
@@ -20,12 +20,12 @@ export function generateMetadata({
   };
 }
 
-export default function ProfesionistiPage({
+export default async function ProfesionistiPage({
   params,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }) {
-  const pro = getProfessional(params.id);
+  const pro = getProfessional((await params).id);
   if (!pro) return notFound();
 
   return <ProProfile pro={pro} reviews={getReviews(pro.id)} />;
