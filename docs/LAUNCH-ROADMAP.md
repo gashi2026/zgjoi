@@ -68,6 +68,12 @@ historical evidence for their named commits, not current feature claims.
   for known initialization messages to distinguish pooler tenant, authentication,
   network and engine failures without logging their raw content. Staging still
   has zero sessions, requests and payments; hosted isolation remains unverified.
+- Credential correction checkpoint: the founder reports that `DATABASE_URL` had
+  omitted the database password and is now saved with it; `DIRECT_URL` already
+  contained that password. This documentation commit triggers a fresh candidate
+  Preview to load the corrected environment. Verify the actual staging category
+  IDs before authentication or writes; a reported correction alone is not a
+  successful connection test. Application source and database schema are unchanged.
 
 ## Readiness reassessment — 7 September 2026
 
