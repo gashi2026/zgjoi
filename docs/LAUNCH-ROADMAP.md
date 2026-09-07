@@ -60,6 +60,14 @@ historical evidence for their named commits, not current feature claims.
 - Next: deploy this diagnostic change to Preview, identify and correct the actual
   connection failure, then repeat staging identity verification before login or
   marketplace writes. No production release or database modification is included.
+- Follow-up at `0692ffc3df94cf72da432e631734bb54ea0ed4a8`: the diagnostic
+  Preview is READY and [CI run 34127728152](https://github.com/gashi2026/zgjoi/actions/runs/34127728152)
+  passes every required step. A new catalog request still returns HTTP 503
+  (`e5215493-017e-4c70-9e83-f84576369bca`). The endpoint classification is
+  `supabase_pooler`, but Prisma supplies no error code. Added fixed categories
+  for known initialization messages to distinguish pooler tenant, authentication,
+  network and engine failures without logging their raw content. Staging still
+  has zero sessions, requests and payments; hosted isolation remains unverified.
 
 ## Readiness reassessment — 7 September 2026
 

@@ -47,8 +47,10 @@ test("database diagnostics classify failures without logging credentials or Pris
   assert.equal(logged.requestId, body.requestId);
   assert.equal(logged.databaseErrorCode, "P1001");
   assert.equal(logged.databaseEndpoint, "supabase_direct");
+  assert.equal(logged.databaseFailureReason, "unclassified");
   assert.equal(body.databaseErrorCode, undefined);
   assert.equal(body.databaseEndpoint, undefined);
+  assert.equal(body.databaseFailureReason, undefined);
   for (const secret of [
     secretUrl,
     "private-user",
@@ -84,7 +86,31 @@ test("database diagnostics reject arbitrary metadata and classify missing or inv
     process.env.DATABASE_URL = value;
     assert.deepEqual(databaseFailureDetails(error), {
       databaseEndpoint: expected,
+      databaseFailureReason: "unclassified",
     });
+  }
+  for (const [message, reason] of [
+    ["FATAL: Tenant or user not found", "pooler_tenant_or_user_not_found"],
+    ["password authentication failed for user", "authentication_failed"],
+    ["Can't reach database server", "database_unreachable"],
+    ["Error opening a TLS connection", "tls_error"],
+    ["Environment variable not found", "environment_variable_missing"],
+    ["The provided database string is invalid", "invalid_connection_string"],
+    ["FATAL: MaxClientsInSessionMode", "connection_limit"],
+    ["Timed out fetching a new connection from the connection pool", "pool_timeout"],
+    ["Prisma Client could not locate the Query Engine", "query_engine_unavailable"],
+    ["Connection attempt timed out", "connection_timeout"],
+    ["Server has closed the connection", "connection_closed"],
+  ]) {
+    const details = databaseFailureDetails(
+      new Prisma.PrismaClientInitializationError(
+        `${message}; private-password; postgresql://private:secret@example.invalid/db`,
+        "5.22.0",
+      ),
+    );
+    assert.equal(details.databaseFailureReason, reason);
+    assert(!JSON.stringify(details).includes("private"));
+    assert(!JSON.stringify(details).includes("secret"));
   }
   assert.deepEqual(
     databaseFailureDetails({ code: "P1000", message: "private" }), {},
