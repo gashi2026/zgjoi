@@ -1182,6 +1182,25 @@ test("database-backed private marketplace and authorization journey", async (t) 
       }
     }
   });
+
+  await t.test("operational health is staff-restricted, detects stalled work and discloses no message payloads", async () => {
+    ok(await http("/api/admin/health", new Map()), 401);
+    for (const jar of [aj, pj, supportj]) ok(await http("/api/admin/health", jar), 403);
+    await db.setting.upsert({ where: { key: "maintenanceHeartbeat" }, create: { key: "maintenanceHeartbeat", value: { ranAt: new Date(Date.now() - 3600000).toISOString() } }, update: { value: { ranAt: new Date(Date.now() - 3600000).toISOString() } } });
+    const health = ok(await http("/api/admin/health", adminj));
+    assert.equal(health.maintenance, "LATE");
+    assert.equal(health.emailConfigured, false);
+    assert.equal(health.documentsConfigured, false);
+    assert(health.mail.failed > 0);
+    assert(!JSON.stringify(health).includes("payloadEnc"));
+    assert(!JSON.stringify(health).includes("synthetic-ci-only"));
+    const page = await http("/admin/sistemi", adminj);
+    assert.equal(page.status, 200);
+    assert(page.text.includes("Kontrolli periodik është vonuar"));
+    assert(!page.text.includes("recipient@example.test"));
+    await db.setting.update({ where: { key: "maintenanceHeartbeat" }, data: { value: { ranAt: new Date().toISOString() } } });
+    assert.equal(ok(await http("/api/admin/health", adminj)).maintenance, "RECENT");
+  });
   await t.test(
     "suspension revokes sessions, self-demotion is blocked, and the cron requires a secret",
     async () => {

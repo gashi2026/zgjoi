@@ -326,3 +326,14 @@ test("chat reconnect never conceals a gap after more than one page of new messag
   assert.deepEqual(mergeThreadPage(complete.messages, latest, false).messages, messages);
   assert.deepEqual(mergeThreadPage(messages.slice(0, 100), messages.slice(50, 150), false).messages, messages.slice(0, 150));
 });
+
+
+test("maintenance status detects missing, stale and implausible heartbeat values", async () => {
+  const { maintenanceState } = await import("../lib/operations");
+  const now = Date.parse("2026-09-07T12:00:00Z");
+  assert.equal(maintenanceState(null, now), "UNKNOWN");
+  assert.equal(maintenanceState({ ranAt: "invalid" }, now), "UNKNOWN");
+  assert.equal(maintenanceState({ ranAt: "2026-09-07T12:10:00Z" }, now), "UNKNOWN");
+  assert.equal(maintenanceState({ ranAt: "2026-09-07T11:58:00Z" }, now), "RECENT");
+  assert.equal(maintenanceState({ ranAt: "2026-09-07T11:00:00Z" }, now), "LATE");
+});

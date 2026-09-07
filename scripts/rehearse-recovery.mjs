@@ -43,6 +43,9 @@ try {
   // Never use --clean on the source or restore over an existing database.
   pg("createdb", ["-U", "postgres", "--template=template0", target]);
   created = true;
+  // PostgreSQL creates an empty public schema even from template0. Remove only
+  // that empty schema in our newly created target so the archive restores its ACL.
+  sql(target, "DROP SCHEMA public");
   pg("pg_restore", ["-U", "postgres", "-d", target, "--exit-on-error", "--single-transaction"], dump);
   assert.deepEqual(snapshot(target), before, "Restored rows, schema, indexes, constraints and grants must match");
   assert.deepEqual(snapshot("zgjoi_test"), before, "The rehearsal must leave the source unchanged");
