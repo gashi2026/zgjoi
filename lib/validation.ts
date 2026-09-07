@@ -9,13 +9,19 @@ export const personalNo = z
 
 export const email = z
   .string()
-  .email("Shkruani një adresë email të vlefshme.")
+  .trim()
   .toLowerCase()
-  .trim();
+  .max(254)
+  .email("Shkruani një adresë email të vlefshme.");
 
 export const password = z
   .string()
-  .min(8, "Fjalëkalimi duhet të ketë të paktën 8 karaktere.");
+  .min(12, "Fjalëkalimi duhet të ketë të paktën 12 karaktere.")
+  .max(72, "Fjalëkalimi është tepër i gjatë.")
+  .refine(
+    (v) => new TextEncoder().encode(v).length <= 72,
+    "Fjalëkalimi është tepër i gjatë.",
+  );
 
 export const phone = z
   .string()
@@ -49,7 +55,8 @@ export const proSignupSchema = z.object({
 
 export const loginSchema = z.object({
   email,
-  password: z.string().min(1, "Shkruani fjalëkalimin."),
+  password: z.string().min(1, "Shkruani fjalëkalimin.").max(256),
+  secondFactor: z.string().max(50).optional(),
 });
 
 export const requestSchema = z.object({
@@ -70,7 +77,7 @@ export const quoteSchema = z.object({
         label: z.string().min(1),
         qty: z.coerce.number().int().positive(),
         price: z.coerce.number().int().nonnegative(),
-      })
+      }),
     )
     .min(1, "Shto të paktën një zë me çmim."),
   message: z.string().min(20, "Shkruaj një mesazh më të plotë për klientin."),

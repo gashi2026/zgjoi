@@ -1,0 +1,55 @@
+import AccountShell from "@/components/AccountShell";
+import { clientNav, proNav, adminNav } from "@/lib/nav";
+import type { Actor } from "@/lib/server/auth";
+import { initials } from "@/lib/server/catalog";
+import Link from "next/link";
+export function Panel({ children }: { children: React.ReactNode }) {
+  return (
+    <section className="min-w-0 break-words rounded-2xl border border-line bg-white p-4 shadow-soft sm:p-6">
+      {children}
+    </section>
+  );
+}
+export default function Frame({
+  actor,
+  title,
+  children,
+  subtitle,
+}: {
+  actor: Actor;
+  title: string;
+  children: React.ReactNode;
+  subtitle?: string;
+}) {
+  return (
+    <AccountShell
+      title={title}
+      subtitle={subtitle}
+      nav={
+        actor.role === "PRO"
+          ? proNav
+          : actor.role === "CLIENT"
+            ? clientNav
+            : actor.role === "SUPPORT"
+              ? adminNav.filter((item) => item.href === "/admin/mbeshtetja")
+              : adminNav
+      }
+      user={{
+        name: actor.name,
+        initials: initials(actor.name),
+        hue: 42,
+        caption:
+          actor.role === "PRO"
+            ? "Profesionist"
+            : actor.role === "CLIENT"
+              ? "Klient"
+              : "Administrim",
+      }}
+    >
+      <div className="space-y-6 pb-16">
+        <Link href="/siguria" className="inline-flex min-h-11 items-center text-sm font-semibold text-gold-dark">Siguria e llogarisë</Link>
+        {children}
+      </div>
+    </AccountShell>
+  );
+}

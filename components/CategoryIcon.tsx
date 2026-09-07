@@ -1,37 +1,12 @@
-import {
-  Home, Droplets, Zap, Sparkles, Paintbrush, Leaf, Truck, Wrench,
-  Hammer, Wind, Shield, Wifi, BookOpen, Globe, Music, Code,
-  Calculator, Heart, Dumbbell, Apple, Camera, Palette, Headphones,
-  Video, Car, Star, Scissors, Briefcase, Scale, Megaphone,
-  Languages, Baby, LayoutGrid, Mail, Calendar, type LucideIcon,
-} from "lucide-react";
+import BeltIcon from "./BeltIcons";
 
-const icons: Record<string, LucideIcon> = {
-  home: Home, droplets: Droplets, zap: Zap, sparkles: Sparkles,
-  paintbrush: Paintbrush, leaf: Leaf, truck: Truck, wrench: Wrench,
-  hammer: Hammer, wind: Wind, shield: Shield, wifi: Wifi,
-  bookOpen: BookOpen, globe: Globe, music: Music, code: Code,
-  calculator: Calculator, heart: Heart, dumbbell: Dumbbell,
-  apple: Apple, camera: Camera, palette: Palette,
-  headphones: Headphones, video: Video, car: Car, star: Star,
-  scissors: Scissors, briefcase: Briefcase, scale: Scale,
-  megaphone: Megaphone, languages: Languages, baby: Baby,
-  grid: LayoutGrid, sparkles2: Sparkles, mail: Mail, calendar: Calendar,
-  // aliases
-  flower: Leaf, drama: Music, shirt: Palette,
-};
-
-export default function CategoryIcon({
-  name,
-  size = 20,
-  className = "",
-  strokeWidth = 1.8,
-}: {
-  name: string;
-  size?: number;
-  className?: string;
-  strokeWidth?: number;
+/** One renderer for service icons in the hive, lists, profiles and editor. */
+export default function CategoryIcon({ name, size = 20, className = "", strokeWidth = 1.8 }: {
+  name: string; size?: number; className?: string; strokeWidth?: number;
 }) {
-  const Icon = icons[name] ?? Home;
-  return <Icon size={size} className={className} strokeWidth={strokeWidth} />;
+  return (
+    <span aria-hidden="true" className={`inline-flex shrink-0 items-center justify-center [&>svg]:h-full [&>svg]:w-full [&>img]:h-full [&>img]:w-full ${className}`} style={{ width: size, height: size }}>
+      <BeltIcon name={name} size={size} strokeWidth={strokeWidth} />
+    </span>
+  );
 }

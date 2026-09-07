@@ -4,8 +4,8 @@ import { HexOutline } from "./Brand";
 const features = [
   {
     icon: ShieldCheck,
-    title: "Profesionistë të verifikuar",
-    text: "Çdo profesionist kalon verifikim identiteti dhe kualifikimesh para se të pranohet.",
+    title: "Profile të shqyrtuara",
+    text: "Profilet profesionale shqyrtohen para se të shfaqen në kërkim.",
   },
   {
     icon: Star,
@@ -15,12 +15,12 @@ const features = [
   {
     icon: BadgeEuro,
     title: "Çmime të qarta dhe të ndershme",
-    text: "Krahaso ofertat paraprakisht — pa kosto të fshehura, pa surpriza.",
+    text: "Oferta e profesionistit përfshin çmimin, përshkrimin, orarin dhe afatin e pranimit.",
   },
   {
     icon: Headphones,
     title: "Siguri dhe mbështetje",
-    text: "Ekipi ynë është aty për ju në çdo hap, nga kërkimi deri te pagesa.",
+    text: "Përdorni bisedën e mbështetjes për pyetje dhe probleme me kërkesën tuaj.",
   },
 ];
 
@@ -35,7 +35,12 @@ export default function WhyZgjoi() {
         <div className="mt-10 grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
           {features.map(({ icon: Icon, title, text }) => (
             <div key={title} className="flex flex-col items-center text-center">
-              <HexOutline size={78} stroke="#FFB800" strokeWidth={2.5} fill="#FFFCF5">
+              <HexOutline
+                size={78}
+                stroke="#FFB800"
+                strokeWidth={2.5}
+                fill="#FFFCF5"
+              >
                 <Icon size={28} className="text-gold-dark" strokeWidth={1.8} />
               </HexOutline>
               <h3 className="mt-4 text-base font-bold text-ink">{title}</h3>

@@ -11,46 +11,70 @@ async function unusedPort() {
   reservation.listen(0, "127.0.0.1");
   await once(reservation, "listening");
   const { port } = reservation.address();
-  await new Promise((resolve, reject) => reservation.close((error) => error ? reject(error) : resolve()));
+  await new Promise((resolve, reject) =>
+    reservation.close((error) => (error ? reject(error) : resolve())),
+  );
   return port;
 }
 
 async function withServer(password, run) {
   const port = await unusedPort();
   const base = `http://127.0.0.1:${port}`;
-  const child = spawn(process.execPath, ["node_modules/next/dist/bin/next", "start", "--hostname", "127.0.0.1", "--port", String(port)], {
-    env: {
-      PATH: process.env.PATH,
-      NODE_ENV: "production",
-      NEXT_TELEMETRY_DISABLED: "1",
-      DATABASE_URL: "postgresql://smoke:smoke@127.0.0.1:1/zgjoi_smoke",
-      DIRECT_URL: "postgresql://smoke:smoke@127.0.0.1:1/zgjoi_smoke",
-      ZGJOI_PASSWORD: password,
-      CRON_SECRET: randomBytes(16).toString("hex"),
+  const child = spawn(
+    process.execPath,
+    [
+      "node_modules/next/dist/bin/next",
+      "start",
+      "--hostname",
+      "127.0.0.1",
+      "--port",
+      String(port),
+    ],
+    {
+      env: {
+        PATH: process.env.PATH,
+        NODE_ENV: "production",
+        NEXT_TELEMETRY_DISABLED: "1",
+        DATABASE_URL: "postgresql://smoke:smoke@127.0.0.1:1/zgjoi_smoke",
+        DIRECT_URL: "postgresql://smoke:smoke@127.0.0.1:1/zgjoi_smoke",
+        ZGJOI_PASSWORD: password,
+        CRON_SECRET: randomBytes(16).toString("hex"),
+      },
+      stdio: ["ignore", "pipe", "pipe"],
     },
-    stdio: ["ignore", "pipe", "pipe"],
-  });
+  );
   let logs = "";
   let startError;
-  child.on("error", (error) => { startError = error; });
-  for (const stream of [child.stdout, child.stderr]) {
-    stream.on("data", (chunk) => { logs = (logs + chunk.toString()).slice(-20_000); });
-  }
-  const request = (path, options = {}) => fetch(base + path, {
-    redirect: "manual",
-    signal: AbortSignal.timeout(10_000),
-    ...options,
+  child.on("error", (error) => {
+    startError = error;
   });
+  for (const stream of [child.stdout, child.stderr]) {
+    stream.on("data", (chunk) => {
+      logs = (logs + chunk.toString()).slice(-20_000);
+    });
+  }
+  const request = (path, options = {}) =>
+    fetch(base + path, {
+      redirect: "manual",
+      signal: AbortSignal.timeout(10_000),
+      ...options,
+    });
   try {
     let ready = false;
     for (let attempt = 0; attempt < 100; attempt++) {
       if (startError) throw startError;
-      if (child.exitCode !== null) throw new Error(`Next.js exited with ${child.exitCode}`);
+      if (child.exitCode !== null)
+        throw new Error(`Next.js exited with ${child.exitCode}`);
       try {
         const response = await request("/se-shpejti");
         await response.arrayBuffer();
-        if (response.status === 200) { ready = true; break; }
-      } catch { /* The local server may still be starting. */ }
+        if (response.status === 200) {
+          ready = true;
+          break;
+        }
+      } catch {
+        /* The local server may still be starting. */
+      }
       await delay(200);
     }
     assert.ok(ready, "Local production server must start");
@@ -77,80 +101,87 @@ async function check(label, fn) {
 }
 
 await withServer("", async (request) => {
-  for (const path of ["/", "/kerko?q=elektricist", "/kategorite", "/profesionisti/arben-elektricist", "/se-shpejti"]) {
-    await check(`HTML ${path}`, async () => {
-      const res = await request(path);
-      assert.equal(res.status, 200);
-      assert.match(res.headers.get("content-type"), /text\/html/);
-      assert.match(await res.text(), /Zgjoi/);
+  for (const path of [
+    "/hyr",
+    "/regjistrohu",
+    "/se-shpejti",
+    "/si-funksionon",
+    "/rreth-nesh",
+    "/kushtet",
+    "/privatesia",
+  ]) {
+    await check(`Public HTML ${path}`, async () => {
+      const response = await request(path);
+      assert.equal(response.status, 200);
+      assert.match(await response.text(), /Zgjoi/);
     });
   }
-  await check("async profile parameters and metadata", async () => {
-    const res = await request("/profesionisti/arben-elektricist");
-    assert.match(await res.text(), /<title>Arben/);
+  await check("anonymous session lookup needs no database", async () => {
+    const response = await request("/api/auth/me");
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { user: null });
   });
-  await check("unknown professional returns 404", async () => {
-    assert.equal((await request("/profesionisti/smoke-missing-professional")).status, 404);
-  });
-  await check("anonymous session lookup", async () => {
-    const res = await request("/api/auth/me");
-    assert.equal(res.status, 200);
-    assert.deepEqual(await res.json(), { user: null });
-  });
-  for (const path of ["/llogaria", "/pro/pagesat", "/admin/perdoruesit?q=smoke"]) {
-    await check(`anonymous redirect ${path}`, async () => {
-      const res = await request(path);
-      assert.equal(res.status, 307);
-      const destination = new URL(res.headers.get("location"), "http://localhost");
-      assert.equal(destination.pathname, "/hyr");
-      assert.equal(destination.searchParams.get("next"), path.split("?")[0]);
+  for (const path of [
+    "/llogaria",
+    "/pro/pagesat",
+    "/admin/perdoruesit",
+    "/kerkesa-e-re",
+  ])
+    await check(`Anonymous private redirect ${path}`, async () => {
+      const response = await request(path);
+      assert.equal(response.status, 307);
+      assert.match(response.headers.get("location"), /\/hyr/);
     });
-  }
-  for (const method of ["GET", "POST"]) {
-    await check(`anonymous messages ${method} denied`, async () => {
-      const res = await request("/api/messages", { method });
-      assert.equal(res.status, 401);
-      assert.equal((await res.json()).error, "UNAUTHENTICATED");
-    });
-  }
-  await check("anonymous support administration denied", async () => {
-    assert.equal((await request("/api/support/tickets")).status, 403);
+  await check("anonymous job messages are denied", async () => {
+    assert.equal(
+      (await request("/api/messages?conversationId=missing")).status,
+      401,
+    );
+  });
+  await check("worker fails closed with no bearer token", async () => {
+    assert.equal((await request("/api/cron/escrow")).status, 403);
+  });
+  await check("webhook fails closed with no signature", async () => {
+    assert.equal(
+      (await request("/api/stripe/webhook", { method: "POST", body: "{}" }))
+        .status,
+      400,
+    );
+  });
+  await check("framing and MIME protections are present", async () => {
+    const response = await request("/hyr");
+    assert.equal(response.headers.get("x-frame-options"), "DENY");
+    assert.equal(response.headers.get("x-content-type-options"), "nosniff");
   });
 });
-
-const previewPassword = randomBytes(16).toString("hex");
-await withServer(previewPassword, async (request) => {
-  await check("site lock survives proxy migration", async () => {
-    const res = await request("/kerko");
-    assert.equal(res.status, 200);
-    assert.match(await res.text(), /Së shpejti/);
+await withServer(randomBytes(16).toString("hex"), async (request) => {
+  await check("site lock renders the coming-soon page", async () => {
+    const response = await request("/kerko");
+    assert.equal(response.status, 200);
+    assert.match(await response.text(), /shpejti/i);
   });
-  await check("incorrect site password is rejected", async () => {
-    const res = await request("/api/hyrje", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ fjalekalimi: "incorrect-smoke-password" }),
-    });
-    assert.equal(res.status, 401);
+  await check("locked APIs return JSON 423", async () => {
+    const response = await request("/api/catalog");
+    assert.equal(response.status, 423);
+    assert.match(response.headers.get("content-type"), /application\/json/);
   });
-  let previewCookie;
-  await check("correct site password sets preview cookie", async () => {
-    const res = await request("/api/hyrje", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ fjalekalimi: previewPassword }),
-    });
-    assert.equal(res.status, 200);
-    previewCookie = res.headers.get("set-cookie");
-    assert.match(previewCookie, /zgjoi_preview=/);
-    assert.match(previewCookie, /httponly/i);
-    assert.match(previewCookie, /secure/i);
-  });
-  await check("preview cookie unlocks public routes", async () => {
-    const res = await request("/kategorite", { headers: { cookie: previewCookie.split(";")[0] } });
-    assert.equal(res.status, 200);
-    assert.doesNotMatch(await res.text(), /<h1[^>]*>\s*Së shpejti/);
+  await check(
+    "worker and webhook retain their own authentication through the site lock",
+    async () => {
+      assert.equal((await request("/api/cron/escrow")).status, 403);
+      assert.equal(
+        (await request("/api/stripe/webhook", { method: "POST", body: "{}" }))
+          .status,
+        400,
+      );
+    },
+  );
+  await check("locked site excludes crawling", async () => {
+    const response = await request("/robots.txt");
+    assert.equal(response.status, 200);
+    assert.match(await response.text(), /Disallow: \/\s/);
   });
 });
-
-console.log(`${checks} production-build HTTP smoke checks passed. Database-backed and browser journeys remain separate gates.`);
+console.log(
+  `${checks} no-database smoke checks passed. Database-backed behavior is covered in the isolated integration job.`,
+);

@@ -1,0 +1,13 @@
+{
+  "environment": "staging",
+  "projectRef": "jxddfakvakropstpfrvx",
+  "providerMigration": "20260907004950",
+  "checkedOn": "2026-09-07",
+  "applicationTables": 28,
+  "rlsTables": 28,
+  "tablesWithBrowserCrudGrants": 0,
+  "anonSchemaUsage": false,
+  "authenticatedSchemaUsage": false,
+  "databaseCheckConstraints": 11,
+  "applicationRuntimeVerified": false
+}

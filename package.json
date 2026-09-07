@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --webpack",
+    "dev": "node scripts/dev.mjs",
     "build": "npm run lint && prisma generate && next build --webpack",
     "start": "next start",
     "lint": "eslint .",
@@ -11,9 +11,13 @@
     "test:smoke": "node scripts/smoke-test.mjs",
     "db:seed": "prisma db seed",
     "db:studio": "prisma studio",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "test:unit": "node --conditions=react-server --import tsx --test tests/unit.test.ts tests/security.test.ts && node --import tsx --test tests/homepage-reference.test.ts",
+    "test:integration": "node scripts/run-integration.mjs"
   },
-  "engines": { "node": "24.x" },
+  "engines": {
+    "node": "24.x"
+  },
   "dependencies": {
     "lucide-react": "^0.400.0",
     "next": "16.3.4",

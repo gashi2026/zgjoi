@@ -27,7 +27,13 @@ function HexIllustration({
 }) {
   return (
     <div className="relative mx-auto" role="img" aria-label={label}>
-      <HexOutline size={170} stroke="#FFB800" strokeWidth={2.5} fill="#FFF3CF" shadow>
+      <HexOutline
+        size={170}
+        stroke="#FFB800"
+        strokeWidth={2.5}
+        fill="#FFF3CF"
+        shadow
+      >
         <div className="flex flex-col items-center gap-2 text-gold-dark">
           {icon}
         </div>
@@ -51,8 +57,8 @@ export default function DualCards() {
                 <BenefitList
                   items={[
                     "Gjej profesionistët më të vlerësuar",
-                    "Krahaso oferta dhe komente",
-                    "Paguaj vetëm pas përfundimit",
+                    "Shiko profile dhe komente",
+                    "Pagesa nis pas pranimit të ofertës",
                   ]}
                 />
                 <Link
@@ -78,7 +84,7 @@ export default function DualCards() {
                 </h2>
                 <BenefitList
                   items={[
-                    "Merr punë të reja çdo ditë",
+                    "Merr kërkesa private nga klientët",
                     "Ndërto profilin tënd profesional",
                     "Rrit të ardhurat",
                   ]}
