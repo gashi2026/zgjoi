@@ -1,8 +1,10 @@
 import "server-only";
 import { db } from "./db";
 import { maintenanceState } from "../operations";
+import { accountEmailSetup } from "./notifications";
 export async function operationalHealth() {
   const now = Date.now();
+  const emailSetup = accountEmailSetup();
   const [heartbeat, failed, overdue, processing] = await Promise.all([
     db.setting.findUnique({ where: { key: "maintenanceHeartbeat" }, select: { value: true } }),
     db.outbox.count({ where: { kind: "EMAIL", state: "FAILED" } }),
@@ -13,7 +15,8 @@ export async function operationalHealth() {
     checkedAt: new Date(now).toISOString(),
     environment: process.env.VERCEL_ENV === "preview" ? "PREVIEW" : "OTHER",
     maintenance: maintenanceState(heartbeat?.value, now),
-    emailConfigured: Boolean(process.env.EMAIL_DELIVERY_ENABLED === "true" && process.env.RESEND_API_KEY && process.env.EMAIL_FROM),
+    emailConfigured: Object.values(emailSetup).every(Boolean),
+    emailSetup,
     documentsConfigured: Boolean(process.env.DOCUMENT_UPLOADS_ENABLED === "true" && process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY),
     mail: { failed, overdue, processingExpired: processing },
   };

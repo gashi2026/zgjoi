@@ -1190,6 +1190,9 @@ test("database-backed private marketplace and authorization journey", async (t) 
     const health = ok(await http("/api/admin/health", adminj));
     assert.equal(health.maintenance, "LATE");
     assert.equal(health.emailConfigured, false);
+    assert.deepEqual(Object.keys(health.emailSetup).sort(), ["apiKeyPresent", "deliveryEnabled", "encryptionKeyValid", "linkOriginValid", "senderPresent"]);
+    assert(Object.values(health.emailSetup).every((value) => typeof value === "boolean"));
+    assert.equal(health.emailConfigured, Object.values(health.emailSetup).every(Boolean));
     assert.equal(health.documentsConfigured, false);
     assert(health.mail.failed > 0);
     assert(!JSON.stringify(health).includes("payloadEnc"));

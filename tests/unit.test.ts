@@ -337,3 +337,36 @@ test("maintenance status detects missing, stale and implausible heartbeat values
   assert.equal(maintenanceState({ ranAt: "2026-09-07T11:58:00Z" }, now), "RECENT");
   assert.equal(maintenanceState({ ranAt: "2026-09-07T11:00:00Z" }, now), "LATE");
 });
+
+test("account email readiness requires queue prerequisites and never exposes configured values", async (t) => {
+  const { accountEmailSetup } = await import("../lib/server/notifications");
+  const names = ["EMAIL_DELIVERY_ENABLED", "RESEND_API_KEY", "EMAIL_FROM", "APP_URL", "ENCRYPTION_KEY"];
+  const previous = Object.fromEntries(names.map((name) => [name, process.env[name]]));
+  t.after(() => {
+    for (const name of names) {
+      if (previous[name] === undefined) delete process.env[name];
+      else process.env[name] = previous[name];
+    }
+  });
+  for (const name of names) delete process.env[name];
+  assert.deepEqual(accountEmailSetup(), {
+    deliveryEnabled: false, apiKeyPresent: false, senderPresent: false,
+    linkOriginValid: false, encryptionKeyValid: false,
+  });
+  Object.assign(process.env, {
+    EMAIL_DELIVERY_ENABLED: "true", RESEND_API_KEY: "synthetic-private-api-value",
+    EMAIL_FROM: "Example <private-address@example.invalid>", APP_URL: "https://private-origin.example.invalid",
+    ENCRYPTION_KEY: "ab".repeat(32),
+  });
+  const ready = accountEmailSetup();
+  assert(Object.values(ready).every(Boolean));
+  for (const name of names.slice(1)) assert(!JSON.stringify(ready).includes(process.env[name]!));
+  process.env.APP_URL = "not-a-url";
+  process.env.ENCRYPTION_KEY = "invalid";
+  const incomplete = accountEmailSetup();
+  assert.equal(incomplete.linkOriginValid, false);
+  assert.equal(incomplete.encryptionKeyValid, false);
+  assert.equal(incomplete.apiKeyPresent, true);
+  assert.equal(incomplete.senderPresent, true);
+  assert.equal(Object.values(incomplete).every(Boolean), false);
+});

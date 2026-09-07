@@ -27,6 +27,17 @@ export function applicationUrl() {
   }
 }
 
+/** Administrator diagnostics expose readiness flags, never environment values. */
+export function accountEmailSetup() {
+  return {
+    deliveryEnabled: process.env.EMAIL_DELIVERY_ENABLED === "true",
+    apiKeyPresent: Boolean(process.env.RESEND_API_KEY),
+    senderPresent: Boolean(process.env.EMAIL_FROM),
+    linkOriginValid: Boolean(applicationUrl()),
+    encryptionKeyValid: /^[a-fA-F0-9]{64}$/.test(process.env.ENCRYPTION_KEY ?? ""),
+  };
+}
+
 export async function queueAccountEmail(
   tx: Prisma.TransactionClient,
   to: string,
