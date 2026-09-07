@@ -1,118 +1,97 @@
-# Autonomous implementation checkpoint — 2026-09-07
+# Zgjoi — launch roadmap
 
-Production readiness remains **27/100, NO-GO**. The candidate below is not deployed. Source-level repairs cannot be counted as a working production journey until the isolated application and provider gates pass.
-
-A new `codex/private-marketplace-beta` branch implements the private request/offer journey and replaces active demo account/search pages with database views. See [PRIVATE-MARKETPLACE-BETA.md](PRIVATE-MARKETPLACE-BETA.md) for exact scope, staging migration, verification and remaining owner/integration gates.
-
-| Priorities   | Current candidate status                                                                                               | Remaining gate                                                                               |
-| ------------ | ---------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| P01–P03      | Build foundation and staging extended; 28 tables protected; local build/type/unit checks pass                          | Production baseline/restore, staging Preview secrets and end-to-end runtime tests            |
-| P04–P05      | Hashed sessions, role/ownership checks, private support, request body/origin bounds and shared rate limits implemented | Regression CI and deployed browser security checks; admin MFA                                |
-| P07–P13      | Real signup/search/profile/private inquiry/offer/acceptance/chat/notifications and document handlers implemented       | Provider email/storage configuration, preview browser journey, copy/mobile QA                |
-| P06, P14–P17 | Live money disabled; test checkout/settlement, completion, dispute/refund/transfer preparations implemented            | Kosovo-capable provider approval, finance reconciliation, real webhook/bank/operations tests |
-| P18–P22      | Admin tools, truthful empty states/copy, private indexing, metadata and in-app events implemented                      | Owner/legal, accessibility, SEO/performance and operational review                           |
-| P23–P25      | Isolated Postgres upgrade + HTTP regression workflow authored; roadmap and evidence updated                            | Successful CI, hosted regression/rollback, release decision                                  |
-
-This checkpoint supplements the original priority definitions below; it does not renumber or close them. Automatic Preview deployment is disabled for this candidate branch until its database credentials are isolated from production.
-
----
-
-# Zgjoi launch roadmap
-
-Updated 6 September 2026. The production readiness assessment remains **27/100**:
-**no real-money beta yet**. Proposed source changes do not receive production
-readiness credit until reviewed, deployed and verified. The complete audit and
-versioned roadmap are maintained in the founder's audit report; this file tracks
-repository work using the same P01–P25 identifiers.
+Updated 7 September 2026. **Production readiness: 27/100; NO-GO for a real-money beta.**
+This is the production assessment, not a percentage of source code written. The
+implementation candidate is substantially further along, but it has not reached
+production or passed external-service/browser launch gates.
 
 ## Product contract
 
 A customer chooses one professional and sends private job details. That pro sends
 an official offer with price, scope, timing and expiration. The customer accepts
-before payment. Customer-confirmed completion triggers payout less commission.
-Review is optional. Public bidding, broadcast leads and paid lead unlocking are
-outside the approved model.
+before payment. Customer-confirmed completion precedes release less commission.
+Review is optional. There is no public bidding, broadcast lead feed or paid unlock.
 
-## Current checkpoint
+## Current evidence
 
-- Applied and verified in Supabase: migration `20260906193104` restricts public API
-  roles and enables RLS on all 22 application tables. Trusted database access was
-  preserved. Application ownership checks still need repair.
-- Prepared in this change: builds no longer change the database; Node 24, a pinned
-  lockfile, Next.js 16.3.4/React 19.2.8, async request API changes, build checks,
-  limited UI state cleanup, CI and corrected operating documentation.
-- Local production build, type checking and 18 HTTP smoke checks passed. See
-  [BUILD-VERIFICATION.md](BUILD-VERIFICATION.md) for scope and remaining checks.
-- GitHub CI and Vercel Preview build/log inspection passed on foundation commit
-  `c56de204`. Later SQL/documentation commits require their own remote checks.
-- Created and verified `zgjoi-staging` in Canada Central under the existing
-  organization, with a quoted project cost of $0/month at creation. Its 22 tables
-  match the audited schema; public API access restrictions and four synthetic
-  test accounts have database-level evidence. See [STAGING-SETUP.md](STAGING-SETUP.md).
-- Review gates: effective Vercel Preview database connection, full production
-  backup/restore and migration baseline, authenticated regression tests and
-  browser/device checks. Main and production remain at the original source;
-  a passing Preview build does not prove a working marketplace.
+- Source: [draft PR #2](https://github.com/gashi2026/zgjoi/pull/2), branch
+  `codex/private-marketplace-beta`, stacked on [foundation PR #1](https://github.com/gashi2026/zgjoi/pull/1).
+  Verified implementation commit: `d5e9759258293e583fe2b9291f6712bc2f5b3add`.
+- [CI run 34072974783](https://github.com/gashi2026/zgjoi/actions/runs/34072974783)
+  passed clean install, staging bootstrap/upgrade in disposable PostgreSQL 17,
+  build/lint, TypeScript, 6 unit tests, 21 integration scenarios (22 including the
+  parent journey), 20 no-database smoke checks and an audit reporting zero known
+  vulnerabilities. Test payment settlement is injected at the database boundary;
+  no real provider payment, email, storage upload or bank payout was tested.
+- Hosted staging `jxddfakvakropstpfrvx`: applied migration `20260907004950`,
+  following bootstrap `20260906225844`. Recheck: 28/28 tables with RLS, zero
+  browser-role table grants, no public-schema usage for anon/authenticated and
+  11 additional integrity checks. The original four synthetic accounts remain.
+- Supabase security advisors show only informational no-policy notices. This is
+  intentional server-only access; [do not open browser policies to silence these notices](https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy).
+- Production source remains `4e6c58a21984b7ed7f6d9bf22d1c755c8512ef82`.
+  The last Vercel inspection found no candidate deployment. Automatic deployment
+  of this branch is paused until staging-only Preview variables are configured.
+- The earlier production database permission repair remains recorded as migration
+  `20260906193104`. No production feature schema change or code release was made
+  during this implementation batch.
 
-## Work packages
+Full details: [implementation evidence](PRIVATE-MARKETPLACE-BETA.md),
+[owner setup steps](OWNER-SETUP.md), [backend map](../BACKEND.md) and
+[deployment runbook](../DEPLOY.md). Earlier foundation verification files are
+historical evidence for their named commits, not current feature claims.
 
-Estimates are initial engineering effort ranges, not delivery promises. One day
-means about six productive engineering hours. External provider decisions and
-account setup can add calendar time. No whole package is marked done yet.
+## Top 25 work packages
 
-| ID  | Work package                                                     | Current status                                                                                                        | Initial effort           |
-| --- | ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- | ------------------------ |
-| P01 | Safe deployments, migration baseline and staging separation      | IN PROGRESS: safe build verified in Preview; staging database ready; Preview wiring and baseline/restore pending      | 1–2 days                 |
-| P02 | Supported dependencies, type/lint checks and reproducible builds | IN PROGRESS: local/remote foundation checks pass; authenticated/visual verification and maintenance follow-up pending | 2–4 days                 |
-| P03 | Roles and ownership on every private page/action/API             | IN PROGRESS: database API restriction done; application checks pending                                                | 3–5 days                 |
-| P04 | Guest/account support privacy                                    | NOT STARTED                                                                                                           | 2–4 days                 |
-| P05 | Session, rate-limit, secret and seed safety                      | NOT STARTED                                                                                                           | 2–4 days                 |
-| P06 | Approved Kosovo payment/payout arrangement                       | BLOCKED: company/provider decision                                                                                    | 1–3 days + external wait |
-| P07 | Private selected-pro inquiry schema                              | NOT STARTED                                                                                                           | 3–5 days                 |
-| P08 | Persistent signup, login verification and recovery               | NOT STARTED                                                                                                           | 3–6 days                 |
-| P09 | Real professional catalog, search and publication                | NOT STARTED                                                                                                           | 4–7 days                 |
-| P10 | Private inquiry/chat with authorization and delivery recovery    | NOT STARTED                                                                                                           | 4–7 days                 |
-| P11 | Official offers: cents, scope, timing, expiry and versions       | NOT STARTED                                                                                                           | 3–5 days                 |
-| P12 | Atomic, idempotent offer acceptance                              | NOT STARTED                                                                                                           | 4–6 days                 |
-| P13 | Provider checkout and durable payment events                     | NOT STARTED                                                                                                           | 5–9 days                 |
-| P14 | Reconciled fund, refund and payout ledger                        | NOT STARTED                                                                                                           | 5–9 days                 |
-| P15 | Customer completion followed by optional review                  | NOT STARTED                                                                                                           | 3–5 days                 |
-| P16 | Disputes, cancellation and refunds                               | NOT STARTED                                                                                                           | 5–8 days                 |
-| P17 | Safe financial administration and settlement                     | NOT STARTED                                                                                                           | 3–5 days                 |
-| P18 | Real customer/pro dashboards and forms                           | NOT STARTED                                                                                                           | 4–7 days                 |
-| P19 | Document uploads, private access and verification                | NOT STARTED                                                                                                           | 3–6 days                 |
-| P20 | Scheduling, availability and offer timing                        | NOT STARTED                                                                                                           | 2–4 days                 |
-| P21 | Transactional notifications and retries                          | NOT STARTED                                                                                                           | 3–5 days                 |
-| P22 | Accurate metrics, categories and settings                        | NOT STARTED                                                                                                           | 3–5 days                 |
-| P23 | Mobile, accessibility and performance                            | IN PROGRESS: limited state fixes; device/visual testing pending                                                       | 3–5 days                 |
-| P24 | Truthful public content, localization, policies and SEO          | NOT STARTED                                                                                                           | 3–5 days                 |
-| P25 | Full journey tests, monitoring, recovery and pilot sign-off      | IN PROGRESS: staging integrity/access checks and CI HTTP tests pass; website login, full journey and restore pending  | 6–10 days                |
+The original estimates below are historical implementation/review ranges,
+**not remaining effort or delivery promises**: 80–141 engineer-days in the initial
+audit. One day means about six productive engineering hours; provider/legal waits
+are extra. Re-estimate the remaining work after a deployed staging run and P06.
+No whole launch package is marked production-complete solely from a draft change.
 
-Work through P01–P05 first while the founder resolves P06. Then implement
-P07–P12 before connecting payments. Do not simply connect the existing unsafe
-request/payment actions to their mock buttons. Extend the existing reusable UI
-and enforce the approved private, one-pro flow throughout.
+| ID  | Work package                                                     | Verified implementation / current status                                                                                                                             | Initial engineer-days | Next action / remaining gate                                                                                                                                          |
+| --- | ---------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| P01 | Safe deployments, migration baseline and staging separation      | IN PROGRESS — Safe builds and isolated staging bootstrap/upgrade verified; candidate auto-deployment paused.                                                         | 1–2                   | Wire branch Preview credentials, prove database isolation, then rehearse production backup/restore and prepare the production baseline/upgrade.                       |
+| P02 | Supported dependencies, type/lint checks and reproducible builds | IN PROGRESS — Pinned Next/React/Node/lockfile; clean build, lint, TypeScript and zero-known-vulnerability audit pass in CI.                                          | 2–4                   | Verify the candidate build on isolated Vercel Preview and retain the required CI gate before release.                                                                 |
+| P03 | Roles and ownership on every private page/action/API             | IN PROGRESS — Shared active-session guards, explicit roles and record ownership; negative HTTP/DB scenarios pass.                                                    | 3–5                   | Repeat the role/ownership matrix against the configured Preview, including server actions and browser account switching.                                              |
+| P04 | Guest/account support privacy                                    | IN PROGRESS — Owner/staff/guest-capability access, account-switch denial and concurrent ticket/reply deduplication pass in CI.                                       | 2–4                   | Verify widget focus, multi-tab/account changes, guest-cookie loss and retry UX in the isolated browser deployment.                                                    |
+| P05 | Session, rate-limit, secret and seed safety                      | IN PROGRESS — Hashed session tokens, atomic DB rate limits, password revocation, input/origin bounds and catalog-only guarded seed implemented.                      | 2–4                   | Verify deployment cookie/secret behavior; plan the legacy-session cutover and stronger administrative authentication/recovery controls.                               |
+| P06 | Approved Kosovo payment/payout arrangement                       | BLOCKED — BLOCKED: no approved company/provider/bank arrangement; candidate rejects live money.                                                                      | 1–3 + external wait   | Owner obtains written provider eligibility for the actual company, Kosovo professionals, customer-confirmed release, EUR, commission and refunds/payouts.             |
+| P07 | Private selected-pro inquiry schema                              | IN PROGRESS — Selected pro, immutable accepted quote, versions, payment attempts, participant privacy and transitions implemented; staging has 28 restricted tables. | 3–5                   | Validate the staged app and prepare a reviewed production migration/backfill from the real existing schema; retain the one-pro private model.                         |
+| P08 | Persistent signup, verification and recovery                     | IN PROGRESS — Real customer/pro signup, profile changes, one-use verification/reset tokens and session revocation pass in CI.                                        | 3–6                   | Configure and prove sender/domain delivery, replay/expiry UX and post-login navigation in Preview.                                                                    |
+| P09 | Real catalog, search and professional publication                | IN PROGRESS — Database category/city/text filters, ordering, paging, approved profiles and favorites replace fixtures; CI checks publication privacy.                | 4–7                   | Load real approved pilot profiles, check search quality, query timing, empty results and category/city coverage with the owner.                                       |
+| P10 | Private inquiry/chat and delivery recovery                       | IN PROGRESS — Private requests and scoped chat persist; latest-100/cursor history, duplicate writes, contact controls and 305-message paging pass.                   | 4–7                   | Verify browser reconnection, long offline gaps, read indicators and retained drafts; refine abuse controls without promising guaranteed anonymity.                    |
+| P11 | Official offers: cents, scope, timing, expiry and versions       | IN PROGRESS — Pro-only immutable revisions, exact cents, description/timing/expiry checks and superseded-offer rejection pass.                                       | 3–5                   | Confirm offer defaults and schedule wording with the owner; verify date/time entry and expired-offer UX on Kosovo devices.                                            |
+| P12 | Atomic, idempotent offer acceptance                              | IN PROGRESS — Simultaneous accept attempts create one accepted quote and one pending amount/commission snapshot; no pre-acceptance charge.                           | 4–6                   | Verify decline/retry/late-provider-event behavior with the approved test provider and actual deployed UI.                                                             |
+| P13 | Provider checkout and durable payment events                     | IN PROGRESS — PARTIAL: Stripe test-only hosted checkout/signature checks and settlement deduplication prepared; injected DB-boundary cases pass.                     | 5–9                   | Complete approved provider onboarding and real sandbox checkout/webhook tests, including declines, authentication, delayed/duplicate callbacks and lost responses.    |
+| P14 | Reconciled fund, refund and payout ledger                        | IN PROGRESS — PARTIAL: unique payout obligation, money constraints and guarded transfer/refund operations; transfer is not bank payout.                              | 5–9                   | Implement immutable money movements, provider fee/refund/chargeback/reversal/bank-payout events, reconciliation and recovery for uncertain operations.                |
+| P15 | Customer completion followed by optional review                  | IN PROGRESS — Customer-only completion creates one payout obligation; optional owner review and moderation aggregates pass independently.                            | 3–5                   | Verify deployed UX and the actual provider release flow; agree customer nonresponse policy without time-based automatic release.                                      |
+| P16 | Disputes, cancellation and refunds                               | IN PROGRESS — PARTIAL: dispute intake freezes held payment; basic pre-acceptance cancellation and test full-refund preparation implemented.                          | 5–8                   | Agree cancellation/nonresponse/refund rules; implement accepted-but-unfunded changes, evidence, partial refunds and provider-confirmed resolution/reconciliation.     |
+| P17 | Safe financial administration and settlement                     | IN PROGRESS — PARTIAL: audited admin commands, self/last-admin protection, no fake bank receipts, transfer/refund guards and provider charge precheck.               | 3–5                   | Complete financial operations review, stronger admin authentication, statement reconciliation and explicit bank payout/failure handling.                              |
+| P18 | Real customer/pro dashboards and forms                           | IN PROGRESS — Real requests, job details, chat, notifications, saved pros, profile, availability and earnings replace demo screens.                                  | 4–7                   | Finish browser/device journey checks, pagination/empty/error states and release the candidate only with its matching schema.                                          |
+| P19 | Private documents and professional verification                  | IN PROGRESS — PARTIAL: private file endpoints, owner/admin authorization, 3 MB signature/type bounds and short signed-link preparation.                              | 3–6                   | Configure and verify private staging bucket/service key; implement agreed retention/deletion/scanning and test cleanup of failed/orphan uploads.                      |
+| P20 | Scheduling, availability and offer timing                        | IN PROGRESS — Weekly availability persists; duplicate/invalid days rejected; official start/expiry dates and duration saved.                                         | 2–4                   | Confirm Kosovo timezone and appointment rules; add agreed rescheduling and conflict checks and test DST/device timezone cases.                                        |
+| P21 | Transactional notifications and retries                          | IN PROGRESS — PARTIAL: in-app job notifications and encrypted account-email outbox; expiry/use checks, leases and bounded retries implemented.                       | 3–5                   | Verify actual account email delivery and cron execution; implement agreed job email/SMS/push and notification preferences/delivery monitoring.                        |
+| P22 | Accurate admin metrics, categories and settings                  | IN PROGRESS — Real database aggregates and audited category/site settings replace fake counters; operational event counts and heartbeat are visible.                 | 3–5                   | Verify analytics definitions and conversion funnel/consent, alerting and efficient aggregate queries using realistic pilot volume.                                    |
+| P23 | Mobile, accessibility and performance                            | IN PROGRESS — Keyboard labels/focus, error/loading states, mobile input sizes, reduced motion and responsive account pages implemented.                              | 3–5                   | Complete real browser/device, keyboard/screen-reader and performance checks; visual QA remains unverified because browser access was blocked.                         |
+| P24 | Truthful content, localization, policies and SEO                 | IN PROGRESS — Private-offer copy, removal of fake traction, Albanian formatting, canonical metadata, private/Preview noindex and public sitemap implemented.         | 3–5                   | Owner/legal review real operator/terms/privacy/refund/invoice details; Albanian proofreading, canonical www/DNS and search-indexing checks before release.            |
+| P25 | Journey tests, monitoring, recovery and pilot sign-off           | IN PROGRESS — Clean CI passes: 6 unit tests, 21 HTTP/DB scenarios (22 including parent), 20 smoke checks; staged schema/RLS independently verified.                  | 6–10                  | Connect Preview, verify browser/email/storage/provider flows, implement monitoring with a real alert owner, rehearse restore/rollback and reconcile an invited pilot. |
 
-## Required launch evidence
+## Next sequence
 
-- Reproducible clean build; isolated preview database; backup and demonstrated restore.
-- Rejection of anonymous, forged, expired, suspended and wrong-role sessions;
-  nonparticipants cannot read or write messages, offers, tickets or money records.
-- A new customer and approved pro complete a private inquiry, official offer,
-  acceptance, provider test payment, customer confirmation, payout and optional review.
-- Double acceptance, stale/duplicate webhooks, failed/declined payments, disputes,
-  refunds and failed/duplicate payouts recover without inconsistent balances.
-- Real-device/keyboard checks, truthful policies/SEO, notification delivery and
-  operational reconciliation/alerts have evidence and an accountable owner.
+1. Owner enters staging-only Preview connection strings/secrets using the linked
+   setup guide. Engineering then enables the candidate Preview and tests the
+   real website, keeping payments/email/document integrations initially disabled.
+2. Configure and verify account email/private storage with synthetic documents and
+   explicitly authorized test recipients. Complete mobile/accessibility testing.
+3. Resolve P06 while finishing provider-independent operational work. Integrate and
+   test the approved payment/refund/chargeback/payout system and ledger.
+4. Rehearse production migration/backup/restore/rollback; publish accurate policies;
+   verify monitoring and complete an invited, reconciled pilot before opening.
 
 ## Update protocol
 
-After each authorized change, record the source revision, affected P IDs, actual
-behavior, checks and limits. Separate proposed, merged, deployed and verified
-states. Preserve old evidence, reopen affected downstream gates and update the
-founder's full roadmap as well. These files are not an automatic monitoring system.
-
-The founder still needs to confirm provider/company onboarding, commission and
-fee allocation, cancellation/dispute/nonresponse rules, invoice responsibility,
-necessary identity documents and pilot operations. Technical access does not
-approve these business decisions.
+After every change, preserve P01–P25 IDs and append the source commit, changed
+behavior, test result, target environment and remaining dependency. Reopen affected
+gates when a contract changes. Update the founder's full versioned roadmap as well.
+This protocol is not an automatic background watcher.

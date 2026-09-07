@@ -1,20 +1,20 @@
 # Private marketplace beta implementation
 
-Status: implementation candidate, not deployed to production. Builds locally; integration results are recorded below after CI completes. This change is stacked on the safe build/staging foundation PR.
+Status: implementation candidate, not deployed to production. The build and isolated HTTP/database journey pass in GitHub CI; external integrations and browser/device behavior remain unverified. This change is stacked on the safe build/staging foundation PR.
 
 The journey is customer → select one professional → private inquiry and chat → versioned official offer (scope, cents, schedule, expiry) → acceptance → payment → customer confirmation → transfer less commission → optional review. There is no public request feed, lead purchase, bidding broadcast or automatic offer generation.
 
 ## Implemented in this branch
 
 - One hashed-session authentication service for routes and server actions. Each private page, API and action checks the current account and role. Suspended users lose access. Shared database rate limits replace process memory limits.
-- Customer and professional signup, profile changes, password change/recovery and email verification. Only a reviewed, active professional in an active category is searchable. Recovery mail uses encrypted queued payloads and one-use hashed tokens.
+- Customer and professional signup, profile changes, password change/recovery and email verification. Only a reviewed, active professional in an active category is searchable. Recovery mail uses encrypted queued payloads and one-use hashed tokens; the worker discards consumed or expired links before contacting the provider.
 - Database search, approved professional profiles, favorites, request lists, messages, offers, job status, availability, earnings and notifications. Empty states replace invented marketplace activity.
 - Every inquiry belongs to one selected professional. Pre-booking contact patterns are rejected in inquiry/message/offer text; client name is reduced to initials and address is hidden until funding. Obfuscation is an abuse-control limitation, not a guaranteed anonymity promise.
 - Immutable offer revisions, expiry checks, optimistic version checks, serializable acceptance and an idempotency key. Acceptance creates one pending amount snapshot, not a charge.
-- Participant-scoped chat and owner/capability-scoped support with bounded bodies and cursor pagination. Guest support capability is ignored when a different user logs in.
+- Participant-scoped chat and owner/capability-scoped support with bounded bodies, cursor pagination and concurrent retry deduplication for new tickets and staff replies. Guest support capability is ignored when a different user logs in.
 - Separate customer completion and review actions; a confirmed completion creates one payout obligation. A review never releases money. Moderation recalculates published rating aggregates.
 - Admin user management, suspension instead of hard deletion, profile/document review, support and audit records. No manual “money received” switch.
-- Stripe **test-only** checkout and verified settlement recording; live keys and missing configuration fail closed. Full-refund and transfer preparations use provider idempotency and hold uncertain operations for reconciliation. A transfer is distinct from a confirmed bank payout.
+- Stripe **test-only** checkout and verified settlement recording; live keys and missing configuration fail closed. Full-refund and transfer preparations use provider idempotency and hold uncertain operations for reconciliation. Before transfer, the provider charge is rechecked for refunds/disputes. A successful refund cancels any scheduled payout obligation (recorded FAILED with a cancellation reference). A transfer is distinct from a confirmed bank payout.
 - Private PDF/JPEG/PNG document endpoints with ownership, size/signature checks and 60-second download URLs. Uploads are disabled until a private bucket and server-only key are configured. A signature check does not replace malware scanning.
 - In-app notifications, opt-in transactional email worker, authenticated maintenance, error/loading/empty states, keyboard labels and focus, mobile form sizes, reduced motion, metadata, private/preview indexing rules, sitemap and basic security headers.
 - Public copy now describes the actual private-offer flow. Fake testimonials, fake totals, newsletter confirmation, payment-after-completion and automatic seven-day release promises are removed. Draft test-use/privacy notices remain an owner/legal launch dependency.
@@ -35,14 +35,18 @@ Project: `jxddfakvakropstpfrvx`, separate from production `pfckeaicvexyaybptgfn`
 - Local ESLint: passed at the current implementation checkpoint.
 - Local production build: passed without a reachable database.
 - Six local unit tests: passed (money bounds, hashed tokens, guest/account separation, signup roles, availability, contact/file validation and JSON/origin/body boundaries).
-- GitHub workflow installs an isolated Postgres 17 service, applies the **old bootstrap then the new upgrade**, builds the app and runs HTTP/database regressions. Result: pending first run.
+- GitHub workflow installs an isolated Postgres 17 service, applies the **old bootstrap then the new upgrade**, builds the app and runs HTTP/database regressions. **Passed on source commit `d5e9759258293e583fe2b9291f6712bc2f5b3add`**, [run 34072974783](https://github.com/gashi2026/zgjoi/actions/runs/34072974783). All **21 integration scenarios** pass (Node reports 22 including the parent journey), plus **6 unit tests** and **20 no-database smoke checks**. Clean install, build/lint, TypeScript and dependency audit pass; the audit reported **0 known vulnerabilities** at that run.
 - Browser visual/mobile testing, live Supabase application login, email delivery, signed storage upload/download, real provider webhooks and bank payout are **not yet verified**. Database boundary tests use synthetic settlement inputs after the signature-verification boundary; they do not prove a provider integration.
+
+The integration scenarios include actual HTTP login/signup/verification/recovery, expired/suspended/wrong-role sessions, concurrent support retries, private inquiry/chat/offer ownership, 305-message history, stale/duplicate acceptance, mismatched/replayed settlement data, customer-only completion, optional review/moderation, dispute freezes, favorites, availability, real HTML records and database constraints. No production accounts or customer records are used. Earlier failed runs exposed a case-normalization error in a synthetic test fixture and an incorrect HTTP-status assertion for Next streaming redirects; both were corrected. The redirect test now checks the actual redirect target and absence of admin content.
+
+A fresh hosted staging check on 7 September confirmed the same 28/28 RLS and zero browser-role grants. Supabase security advisors returned only 28 informational no-policy notices, consistent with the intentional server-only architecture. Do not create permissive policies to silence them. See [the advisory explanation](https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy).
 
 ## Deployment guard and configuration
 
 Automatic Vercel deployment is disabled for `codex/private-marketplace-beta` in `vercel.json`. The available connector cannot set branch-specific Preview secrets, and Preview database isolation has not been established. After the dedicated staging credentials are configured, remove that one branch rule and deploy a Preview. The rule does not disable other branches.
 
-Required staging variables (names only; never paste secrets in chat):
+Follow [OWNER-SETUP.md](OWNER-SETUP.md) for dashboard steps and the actual remaining owner inputs. Required staging variables (names only; never paste secrets in chat):
 
 | Variable                                                                | Purpose                                                                                                                            |
 | ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
