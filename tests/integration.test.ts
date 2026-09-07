@@ -80,7 +80,7 @@ test("database-backed private marketplace and authorization journey", async (t) 
     return db.user.create({
       data: {
         id: randomUUID(),
-        email: `${label}-${randomUUID()}@ci.zgjoi.invalid`,
+        email: `${label.toLowerCase()}-${randomUUID()}@ci.zgjoi.invalid`,
         passwordHash,
         name: `Test ${label}`,
         city: "Prishtinë",
