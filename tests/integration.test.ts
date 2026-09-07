@@ -1491,17 +1491,18 @@ test("database-backed private marketplace and authorization journey", async (t) 
   });
   await t.test("cohort metrics count requests beyond page limits, ignore repeated offers and retain historical funded milestones after refunds", async () => {
     const since = new Date("2020-01-01T00:00:00Z"), until = new Date("2020-02-01T00:00:00Z");
+    const client = await account("CLIENT", "MetricsClient"), professional = await account("PRO", "MetricsPro");
     const ids = Array.from({ length: 63 }, () => randomUUID());
-    await db.serviceRequest.createMany({ data: ids.map((id, i) => ({ id, clientId: a.id, selectedProfileId: pro.proProfile!.id,
+    await db.serviceRequest.createMany({ data: ids.map((id, i) => ({ id, clientId: client.id, selectedProfileId: professional.proProfile!.id,
       categorySlug: category.slug, city: "Prishtinë", title: "Synthetic historical cohort", timing: "Historical fixture", answers: {},
       createdAt: i === 61 ? new Date(since.getTime() - 1) : i === 62 ? until : since })) });
     const quoteIds = Array.from({ length: 40 }, () => randomUUID());
     await db.quote.createMany({ data: quoteIds.flatMap((id, i) => [
-      { id, requestId: ids[i], profileId: pro.proProfile!.id, amount: 10000, lines: [], message: "Synthetic official offer", revision: 1, duration: "60 min", scheduledAt: since, state: i < 20 ? "ACCEPTED" as const : "SENT" as const },
-      { id: randomUUID(), requestId: ids[i], profileId: pro.proProfile!.id, amount: 10000, lines: [], message: "Synthetic earlier offer revision", revision: 2, duration: "60 min", scheduledAt: since, state: "WITHDRAWN" as const },
+      { id, requestId: ids[i], profileId: professional.proProfile!.id, amount: 10000, lines: [], message: "Synthetic official offer", revision: 1, duration: "60 min", scheduledAt: since, state: i < 20 ? "ACCEPTED" as const : "SENT" as const },
+      { id: randomUUID(), requestId: ids[i], profileId: professional.proProfile!.id, amount: 10000, lines: [], message: "Synthetic earlier offer revision", revision: 2, duration: "60 min", scheduledAt: since, state: "WITHDRAWN" as const },
     ]) });
     for (let i = 0; i < 20; i++) await db.serviceRequest.update({ where: { id: ids[i] }, data: {
-      acceptedQuoteId: quoteIds[i], acceptedProfileId: pro.proProfile!.id, state: i < 8 ? "COMPLETED" : "BOOKED", completedAt: i < 8 ? since : null,
+      acceptedQuoteId: quoteIds[i], acceptedProfileId: professional.proProfile!.id, state: i < 8 ? "COMPLETED" : "BOOKED", completedAt: i < 8 ? since : null,
     } });
     await db.payment.createMany({ data: ids.slice(0, 12).map((requestId, i) => ({ requestId, amount: 10000, commissionBps: 1500,
       commissionAmount: 1500, proAmount: 8500, currency: "EUR", strategy: "PLATFORM_CHARGE", provider: "disabled", heldAt: since,
