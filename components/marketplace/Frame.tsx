@@ -2,6 +2,7 @@ import AccountShell from "@/components/AccountShell";
 import { clientNav, proNav, adminNav } from "@/lib/nav";
 import type { Actor } from "@/lib/server/auth";
 import { initials } from "@/lib/server/catalog";
+import Link from "next/link";
 export function Panel({ children }: { children: React.ReactNode }) {
   return (
     <section className="rounded-2xl border border-line bg-white p-5 shadow-soft sm:p-6">
@@ -45,7 +46,10 @@ export default function Frame({
               : "Administrim",
       }}
     >
-      <div className="space-y-6 pb-16">{children}</div>
+      <div className="space-y-6 pb-16">
+        <Link href="/siguria" className="inline-flex min-h-11 items-center text-sm font-semibold text-gold-dark">Siguria e llogarisë</Link>
+        {children}
+      </div>
     </AccountShell>
   );
 }

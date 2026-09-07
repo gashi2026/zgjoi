@@ -2,11 +2,14 @@ import test, { after } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { db } from "../lib/server/db";
-import { hashPassword } from "../lib/server/auth";
+import { persistSession, hashPassword } from "../lib/server/auth";
 import { recordSettledCheckout } from "../lib/server/payments";
 import { adminCommand } from "../lib/server/admin";
 import { rateLimit } from "../lib/server/rate-limit";
-import { decrypt } from "../lib/server/crypto";
+import { encrypt, decrypt } from "../lib/server/crypto";
+import { requestAccountToken, authenticate, consumeAccountToken } from "../lib/server/accounts";
+import { uploadDocument, signedDocument } from "../lib/server/storage";
+import { hashToken } from "../lib/server/tokens";
 import { deliverOutbox } from "../lib/server/notifications";
 const database = new URL(process.env.DATABASE_URL || "");
 assert(
@@ -425,6 +428,8 @@ test("database-backed private marketplace and authorization journey", async (t) 
           (m: { body: string }) => m.body === "History message 304",
         ),
       );
+      const untouched = await db.message.count({ where: { conversationId, body: { startsWith: "History message " }, readAt: null } });
+      assert.equal(untouched, 305 - latest.messages.filter((m: { body: string }) => m.body.startsWith("History message ")).length, "The extra pagination row must remain unread");
       const previous = ok(
         await http(
           `/api/messages?conversationId=${conversationId}&before=${latest.messages[0].id}`,
@@ -922,6 +927,119 @@ test("database-backed private marketplace and authorization journey", async (t) 
       }
     },
   );
+
+  await t.test("owners can revoke other sessions without exposing credentials or affecting another account", async () => {
+    const spare: Jar = new Map();
+    ok(await http("/api/auth/login", spare, { email: a.email, password }));
+    const summary = ok(await http("/api/account/sessions", aj));
+    assert(summary.sessions.some((s: { current: boolean }) => s.current));
+    assert(summary.sessions.some((s: { current: boolean }) => !s.current));
+    for (const session of summary.sessions) assert.deepEqual(Object.keys(session).sort(), ["createdAt", "current", "expiresAt"]);
+    ok(await http("/api/account/sessions", new Map()), 401);
+    ok(await http("/api/account/sessions", aj, { currentPassword: "wrong" }), 400);
+    assert(ok(await http("/api/auth/me", spare)).user);
+    ok(await http("/api/account/sessions", aj, { currentPassword: password, userId: b.id }));
+    assert.equal(ok(await http("/api/auth/me", spare)).user, null);
+    assert(ok(await http("/api/auth/me", aj)).user);
+    assert(ok(await http("/api/auth/me", bj)).user);
+    const page = await http("/siguria", aj);
+    assert.equal(page.status, 200);
+    assert(page.text.includes("Hyrjet aktive"));
+    assert(!page.text.includes("sha256:"));
+    assert(!page.text.includes(a.passwordHash));
+    const log = await db.auditLog.findFirstOrThrow({ where: { actorId: a.id, action: "OTHER_SESSIONS_REVOKED" } });
+    assert.equal(log.target, a.id);
+  });
+  await t.test("staff sessions expire within eight hours including legacy longer sessions", async () => {
+    const staff = await account("SUPPORT", "ShortSession");
+    const jar: Jar = new Map();
+    ok(await http("/api/auth/login", jar, { email: staff.email, password }));
+    let session = await db.session.findFirstOrThrow({ where: { userId: staff.id } });
+    assert(session.expiresAt.getTime() - session.createdAt.getTime() <= 8 * 3600000 + 1000);
+    await db.session.update({ where: { id: session.id }, data: { createdAt: new Date(Date.now() - 9 * 3600000), expiresAt: new Date(Date.now() + 86400000) } });
+    assert.equal(ok(await http("/api/auth/me", jar)).user, null);
+    session = await db.session.findFirstOrThrow({ where: { userId: a.id } });
+    assert(session.expiresAt.getTime() - session.createdAt.getTime() > 29 * 86400000);
+  });
+  await t.test("concurrent recovery issuers leave one valid link and invalidate stale login proofs", async () => {
+    const user = await account("CLIENT", "RecoveryRace");
+    const proof = await authenticate({ email: user.email, password }, "127.0.0.81");
+    await Promise.all([requestAccountToken(user.id, "PASSWORD_RESET"), requestAccountToken(user.id, "PASSWORD_RESET")]);
+    const tokens = await db.authToken.findMany({ where: { userId: user.id, purpose: "PASSWORD_RESET" } });
+    assert.equal(tokens.length, 2);
+    assert.equal(tokens.filter((token) => token.usedAt === null).length, 1);
+    const used = tokens.find((token) => token.usedAt)!;
+    const fresh = tokens.find((token) => !token.usedAt)!;
+    async function tokenText(id: string) {
+      const outbox = await db.outbox.findUniqueOrThrow({ where: { key: `account-email:${id}` } });
+      return String(JSON.parse(decrypt(outbox.payloadEnc)).text).match(/#token=([a-f0-9]{64})/)![1];
+    }
+    const next = `new-${randomUUID()}`;
+    await assert.rejects(consumeAccountToken({ token: await tokenText(used.id), password: next }, "PASSWORD_RESET"));
+    const raw = await tokenText(fresh.id);
+    const results = await Promise.allSettled([
+      consumeAccountToken({ token: raw, password: next }, "PASSWORD_RESET"),
+      consumeAccountToken({ token: raw, password: next }, "PASSWORD_RESET"),
+    ]);
+    assert.equal(results.filter((result) => result.status === "fulfilled").length, 1);
+    await assert.rejects(persistSession(user.id, proof.passwordHash));
+    assert.equal(await db.session.count({ where: { userId: user.id } }), 0);
+    const valid = await authenticate({ email: user.email, password: next }, "127.0.0.82");
+    const session = await persistSession(user.id, valid.passwordHash);
+    assert.equal(await db.session.count({ where: { userId: user.id, token: hashToken(session.token) } }), 1);
+  });
+
+  await t.test("documents require private storage and owner access before signing", async () => {
+    const names = ["DOCUMENT_UPLOADS_ENABLED", "SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"] as const;
+    const saved = Object.fromEntries(names.map((name) => [name, process.env[name]]));
+    const originalFetch = globalThis.fetch;
+    process.env.DOCUMENT_UPLOADS_ENABLED = "true";
+    process.env.SUPABASE_URL = "https://synthetic.supabase.co";
+    process.env.SUPABASE_SERVICE_ROLE_KEY = "synthetic-ci-only";
+    let publicBucket = true, writes = 0, signs = 0;
+    const bucket = "zgjoi-pro-documents";
+    globalThis.fetch = async (url, init) => {
+      const parsed = new URL(String(url));
+      assert.equal(parsed.origin, "https://synthetic.supabase.co");
+      if (parsed.pathname === `/storage/v1/bucket/${bucket}`)
+        return new Response(JSON.stringify({ id: bucket, public: publicBucket }));
+      if (parsed.pathname.startsWith(`/storage/v1/object/sign/${bucket}/`)) {
+        signs++;
+        assert.deepEqual(JSON.parse(String(init?.body)), { expiresIn: 60 });
+        return new Response(JSON.stringify({ signedURL: `${parsed.pathname.replace("/storage/v1", "")}?token=synthetic-only` }));
+      }
+      assert.equal(init?.method, "POST");
+      writes++;
+      return new Response(JSON.stringify({ Key: "synthetic" }));
+    };
+    try {
+      const file = new File(["%PDF-1.7\nsynthetic-test-only"], "test.pdf", { type: "application/pdf" });
+      await assert.rejects(uploadDocument(pro, file, "CERTIFICATE"), (e: { code?: string }) => e.code === "STORAGE_NOT_PRIVATE");
+      assert.equal(writes, 0);
+      publicBucket = false;
+      const uploaded = await uploadDocument(pro, file, "CERTIFICATE");
+      assert.equal(writes, 1);
+      const document = await db.proDocument.findUniqueOrThrow({ where: { id: uploaded.id } });
+      assert.equal(document.url, "private");
+      await assert.rejects(signedDocument(otherPro, uploaded.id));
+      await assert.rejects(signedDocument(a, uploaded.id));
+      assert.equal(signs, 0);
+      const link = new URL(await signedDocument(pro, uploaded.id));
+      assert.equal(link.hostname, "synthetic.supabase.co");
+      assert.equal(link.searchParams.get("download"), "certificate.pdf");
+      await signedDocument(admin, uploaded.id);
+      assert.equal(signs, 2);
+      publicBucket = true;
+      await assert.rejects(signedDocument(pro, uploaded.id));
+      assert.equal(signs, 2);
+    } finally {
+      globalThis.fetch = originalFetch;
+      for (const name of names) {
+        if (saved[name] === undefined) delete process.env[name];
+        else process.env[name] = saved[name];
+      }
+    }
+  });
   await t.test(
     "password recovery uses expiring one-use tokens and revokes every session",
     async () => {
@@ -1009,6 +1127,61 @@ test("database-backed private marketplace and authorization journey", async (t) 
       }
     },
   );
+
+  await t.test("email delivery retries preserve deduplication and recover crashed final attempts", async () => {
+    const originalFetch = globalThis.fetch;
+    const names = ["EMAIL_DELIVERY_ENABLED", "RESEND_API_KEY", "EMAIL_FROM"] as const;
+    const saved = Object.fromEntries(names.map((name) => [name, process.env[name]]));
+    // Finish unrelated test messages, then exercise only synthetic provider responses.
+    process.env.EMAIL_DELIVERY_ENABLED = "true";
+    process.env.RESEND_API_KEY = "synthetic-ci-only";
+    process.env.EMAIL_FROM = "sender@ci.zgjoi.invalid";
+    const calls: string[] = [];
+    let mode: "failure" | "success" = "failure";
+    globalThis.fetch = async (url, init) => {
+      assert.equal(String(url), "https://api.resend.com/emails");
+      const payload = JSON.parse(String(init?.body));
+      assert.equal(payload.to[0], "recipient@example.test");
+      calls.push(new Headers(init?.headers).get("Idempotency-Key")!);
+      return new Response(JSON.stringify(mode === "failure" ? { error: "temporary" } : { id: "synthetic-receipt" }), { status: mode === "failure" ? 503 : 200 });
+    };
+    try {
+      await deliverOutbox();
+      assert.equal(calls.length, 0);
+      const key = `test-email-${randomUUID()}`;
+      const job = await db.outbox.create({ data: { key, kind: "EMAIL", payloadEnc: encrypt(JSON.stringify({ to: "recipient@example.test", subject: "CI only", text: "Synthetic" })) } });
+      await deliverOutbox();
+      let after = await db.outbox.findUniqueOrThrow({ where: { id: job.id } });
+      assert.equal(after.state, "PENDING");
+      assert.equal(after.attempts, 1);
+      assert(after.payloadEnc.length > 0);
+      assert(after.availableAt > new Date());
+      await deliverOutbox();
+      assert.equal(calls.length, 1);
+      await db.outbox.update({ where: { id: job.id }, data: { availableAt: new Date(Date.now() - 1000) } });
+      mode = "success";
+      const results = await Promise.all([deliverOutbox(), deliverOutbox()]);
+      assert.equal(results.reduce((sum, r) => sum + r.delivered, 0), 1);
+      assert.deepEqual(calls, [key, key]);
+      after = await db.outbox.findUniqueOrThrow({ where: { id: job.id } });
+      assert.equal(after.state, "SENT");
+      assert.equal(after.payloadEnc, "");
+      const stuck = await db.outbox.create({ data: { key: `stuck-${randomUUID()}`, kind: "EMAIL", state: "PROCESSING", attempts: 8, lockedAt: new Date(Date.now() - 6 * 60000), payloadEnc: "encrypted-synthetic" } });
+      await deliverOutbox();
+      const recovered = await db.outbox.findUniqueOrThrow({ where: { id: stuck.id } });
+      assert.equal(recovered.state, "FAILED");
+      assert.equal(recovered.lastError, "DELIVERY_ATTEMPTS_EXHAUSTED");
+      assert.equal(recovered.payloadEnc, "");
+      assert.equal(recovered.lockedAt, null);
+      assert.equal(calls.length, 2);
+    } finally {
+      globalThis.fetch = originalFetch;
+      for (const name of names) {
+        if (saved[name] === undefined) delete process.env[name];
+        else process.env[name] = saved[name];
+      }
+    }
+  });
   await t.test(
     "suspension revokes sessions, self-demotion is blocked, and the cron requires a secret",
     async () => {

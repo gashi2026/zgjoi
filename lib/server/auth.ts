@@ -4,36 +4,67 @@ import { cookies } from "next/headers";
 import { cache } from "react";
 import { db } from "./db";
 import { AppError } from "./errors";
+import { serializable } from "./transaction";
 import { opaqueToken, hashToken, validToken } from "./tokens";
 export type Role = "CLIENT" | "PRO" | "ADMIN" | "SUPPORT";
 
 const COOKIE = "zgjoi_session";
 const DAYS = 30;
+export const STAFF_SESSION_MS = 8 * 60 * 60_000;
 
 export const hashPassword = (pw: string) => bcrypt.hash(pw, 12);
 export const verifyPassword = (pw: string, hash: string) =>
   bcrypt.compare(pw, hash);
 
+export async function currentSessionHash() {
+  const token = (await cookies()).get(COOKIE)?.value;
+  if (!validToken(token)) throw new AuthError("UNAUTHENTICATED");
+  return hashToken(token);
+}
+
+export async function accountSessions(actor: Actor) {
+  const current = await currentSessionHash();
+  const staff = ["ADMIN", "SUPPORT"].includes(actor.role);
+  const sessions = await db.session.findMany({
+    where: { userId: actor.id, expiresAt: { gt: new Date() },
+      ...(staff ? { createdAt: { gt: new Date(Date.now() - STAFF_SESSION_MS) } } : {}),
+    },
+    select: { token: true, createdAt: true, expiresAt: true },
+    orderBy: { createdAt: "desc" }, take: 50,
+  });
+  return sessions.map((session) => ({
+    current: session.token === current,
+    createdAt: session.createdAt,
+    expiresAt: staff ? new Date(Math.min(session.expiresAt.getTime(), session.createdAt.getTime() + STAFF_SESSION_MS)) : session.expiresAt,
+  }));
+}
+
 /* ------------------------------------------------------------ sessions */
 
-export async function createSession(userId: string) {
+export async function persistSession(userId: string, expectedPasswordHash: string, old?: string) {
   const token = opaqueToken();
-  const expiresAt = new Date(Date.now() + DAYS * 864e5);
 
-  const old = (await cookies()).get(COOKIE)?.value;
-  await db.$transaction(async (tx) => {
+  const expiresAt = await serializable(async (tx) => {
     const user = await tx.user.findUnique({
       where: { id: userId },
-      select: { suspendedAt: true },
+      select: { suspendedAt: true, passwordHash: true, role: true },
     });
-    if (!user || user.suspendedAt) throw new AuthError("UNAUTHENTICATED");
+    if (!user || user.suspendedAt || user.passwordHash !== expectedPasswordHash) throw new AuthError("UNAUTHENTICATED");
+    const expiresAt = new Date(Date.now() + (["ADMIN", "SUPPORT"].includes(user.role) ? STAFF_SESSION_MS : DAYS * 864e5));
     if (old && validToken(old))
       await tx.session.deleteMany({ where: { token: hashToken(old) } });
     await tx.session.create({
       data: { userId, token: hashToken(token), expiresAt },
     });
+    return expiresAt;
   });
 
+  return { token, expiresAt };
+}
+
+export async function createSession(userId: string, expectedPasswordHash: string) {
+  const old = (await cookies()).get(COOKIE)?.value;
+  const { token, expiresAt } = await persistSession(userId, expectedPasswordHash, old);
   (await cookies()).set(COOKIE, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
@@ -83,6 +114,8 @@ export const currentUser = cache(async () => {
 
   if (!session || session.expiresAt <= new Date()) return null;
   if (session.user.suspendedAt) return null;
+  if (["ADMIN", "SUPPORT"].includes(session.user.role) &&
+      session.createdAt.getTime() + STAFF_SESSION_MS <= Date.now()) return null;
   return session.user;
 });
 

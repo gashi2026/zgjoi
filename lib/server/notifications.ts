@@ -83,14 +83,26 @@ export async function deliverOutbox() {
       lockedAt: null,
     },
   });
+  // A worker can die after claiming its final attempt. Do not strand the job
+  // or retain its account token indefinitely; a fresh recovery request is needed.
+  await db.outbox.updateMany({
+    where: {
+      kind: "EMAIL", attempts: { gte: 8 },
+      OR: [
+        { state: "PENDING" },
+        { state: "PROCESSING", lockedAt: { lt: new Date(Date.now() - 5 * 60_000) } },
+      ],
+    },
+    data: { state: "FAILED", lastError: "DELIVERY_ATTEMPTS_EXHAUSTED", payloadEnc: "", lockedAt: null },
+  });
   const jobs = await db.$queryRaw<
-    { id: string; payloadEnc: string; key: string; attempts: number }[]
+    { id: string; payloadEnc: string; key: string; attempts: number; lockedAt: Date }[]
   >`
     UPDATE public."Outbox" SET state = 'PROCESSING', "lockedAt" = NOW(), attempts = attempts + 1
     WHERE id IN (SELECT id FROM public."Outbox" WHERE kind = 'EMAIL' AND attempts < 8
       AND ((state = 'PENDING' AND "availableAt" <= NOW()) OR (state = 'PROCESSING' AND "lockedAt" < NOW() - INTERVAL '5 minutes'))
       ORDER BY "availableAt" FOR UPDATE SKIP LOCKED LIMIT 10)
-    RETURNING id, "payloadEnc", key, attempts`;
+    RETURNING id, "payloadEnc", key, attempts, "lockedAt"`;
   let delivered = 0;
   for (const job of jobs) {
     try {
@@ -129,9 +141,9 @@ export async function deliverOutbox() {
       });
       if (!response.ok) throw new Error(`EMAIL_STATUS_${response.status}`);
       const result = await response.json();
-      if (!result.id) throw new Error("EMAIL_NO_RECEIPT");
-      await db.outbox.update({
-        where: { id: job.id },
+      if (typeof result.id !== "string" || !result.id.trim()) throw new Error("EMAIL_NO_RECEIPT");
+      const saved = await db.outbox.updateMany({
+        where: { id: job.id, state: "PROCESSING", lockedAt: job.lockedAt },
         data: {
           state: "SENT",
           sentAt: new Date(),
@@ -140,7 +152,7 @@ export async function deliverOutbox() {
           lockedAt: null,
         },
       });
-      delivered++;
+      delivered += saved.count;
     } catch (error) {
       const code =
         error instanceof Error &&
@@ -149,8 +161,8 @@ export async function deliverOutbox() {
         )
           ? error.message
           : "EMAIL_DELIVERY_FAILED";
-      await db.outbox.update({
-        where: { id: job.id },
+      await db.outbox.updateMany({
+        where: { id: job.id, state: "PROCESSING", lockedAt: job.lockedAt },
         data: {
           state:
             job.attempts >= 8 ||

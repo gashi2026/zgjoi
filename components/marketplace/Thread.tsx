@@ -7,6 +7,7 @@ import {
   type FormEvent,
 } from "react";
 import { buttonClass, inputClass } from "./ApiForm";
+import { mergeThreadPage } from "@/lib/thread-pages";
 type Message = {
   id: string;
   body: string;
@@ -37,6 +38,8 @@ export default function Thread({
   const sendLock = useRef(false);
   const mounted = useRef(true);
   const identity = useRef<string | null>(null);
+  const messageSnapshot = useRef<Message[]>([]);
+  const loading = useRef(false);
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -65,7 +68,8 @@ export default function Thread({
   }, [support, initialId]);
   const load = useCallback(
     async (before?: string) => {
-      if (!id) return;
+      if (!id || loading.current) return;
+      loading.current = true;
       try {
         // A widget left open during account changes must erase the previous thread.
         if (support && !staff && !initialId) {
@@ -77,7 +81,9 @@ export default function Thread({
           if (identity.current !== data.identity) {
             if (mounted.current) {
               setMessages([]);
+              messageSnapshot.current = [];
               setBody("");
+              key.current = null;
               setId(data.ticketId ?? undefined);
               identity.current = data.identity;
             }
@@ -94,25 +100,20 @@ export default function Thread({
         );
         const data = await response.json();
         if (!response.ok) {
-          if ([401, 403, 404].includes(response.status) && mounted.current)
+          if ([401, 403, 404].includes(response.status) && mounted.current) {
             setMessages([]);
+            messageSnapshot.current = [];
+            setBody("");
+            key.current = null;
+          }
           throw new Error(data.message || "Biseda nuk u hap.");
         }
         if (!mounted.current) return;
-        setMessages((previous) => {
-          const merged = new Map(
-            (before
-              ? [...data.messages, ...previous]
-              : [...previous, ...data.messages]
-            ).map((m: Message) => [m.id, m]),
-          );
-          return [...merged.values()].sort(
-            (a, b) =>
-              a.createdAt.localeCompare(b.createdAt) ||
-              a.id.localeCompare(b.id),
-          );
-        });
-        if (before || messages.length <= 100) setHasMore(Boolean(data.hasMore));
+        const previous = messageSnapshot.current;
+        const next = mergeThreadPage<Message>(previous, data.messages, Boolean(before));
+        messageSnapshot.current = next.messages;
+        setMessages(next.messages);
+        if (before || next.reset || previous.length <= 100) setHasMore(Boolean(data.hasMore));
         setError("");
       } catch (e) {
         if (mounted.current)
@@ -121,9 +122,11 @@ export default function Thread({
               ? e.message
               : "Lidhja dështoi. Po provojmë përsëri.",
           );
+      } finally {
+        loading.current = false;
       }
     },
-    [id, support, staff, initialId, messages.length],
+    [id, support, staff, initialId],
   );
   useEffect(() => {
     const initial = setTimeout(() => {
@@ -132,9 +135,14 @@ export default function Thread({
     const timer = setInterval(() => {
       if (document.visibilityState === "visible") void load();
     }, 6000);
+    const resume = () => { if (document.visibilityState === "visible") void load(); };
+    window.addEventListener("online", resume);
+    document.addEventListener("visibilitychange", resume);
     return () => {
       clearTimeout(initial);
       clearInterval(timer);
+      window.removeEventListener("online", resume);
+      document.removeEventListener("visibilitychange", resume);
     };
   }, [load]);
   async function send(event: FormEvent<HTMLFormElement>) {

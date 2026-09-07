@@ -288,3 +288,41 @@ test("JSON boundaries reject missing origin, wrong media types, malformed JSON a
     ),
   );
 });
+
+
+test("Kosovo appointment entry ignores device timezone and rejects impossible or ambiguous clock changes", async () => {
+  const { kosovoLocalToIso } = await import("../lib/scheduling");
+  const previous = process.env.TZ;
+  try {
+    for (const zone of ["America/New_York", "UTC", "Asia/Tokyo"]) {
+      process.env.TZ = zone;
+      assert.equal(kosovoLocalToIso("2026-09-10T09:30"), "2026-09-10T07:30:00.000Z");
+      assert.equal(kosovoLocalToIso("2026-01-10T09:30"), "2026-01-10T08:30:00.000Z");
+      assert.equal(kosovoLocalToIso("2026-03-29T03:30"), "2026-03-29T01:30:00.000Z");
+      assert.equal(kosovoLocalToIso("2026-10-25T03:30"), "2026-10-25T02:30:00.000Z");
+      assert.throws(() => kosovoLocalToIso("2026-03-29T02:30"), /nuk ekziston/);
+      assert.throws(() => kosovoLocalToIso("2026-10-25T02:30"), /përsëritet/);
+    }
+    for (const value of ["2026-02-30T10:00", "2026-13-10T09:00", "2026-01-10T24:00", "2026-01-10", "invalid"])
+      assert.throws(() => kosovoLocalToIso(value));
+  } finally {
+    if (previous === undefined) delete process.env.TZ;
+    else process.env.TZ = previous;
+  }
+});
+
+
+test("chat reconnect never conceals a gap after more than one page of new messages", async () => {
+  const { mergeThreadPage } = await import("../lib/thread-pages");
+  const messages = Array.from({ length: 350 }, (_, i) => ({ id: String(i).padStart(4, "0"), createdAt: new Date(1700000000000 + i * 1000).toISOString() }));
+  const old = messages.slice(0, 100), latest = messages.slice(250);
+  const reset = mergeThreadPage(old, latest, false);
+  assert(reset.reset);
+  assert.deepEqual(reset.messages, latest);
+  const previous = mergeThreadPage(reset.messages, messages.slice(150, 250), true);
+  const earlier = mergeThreadPage(previous.messages, messages.slice(50, 150), true);
+  const complete = mergeThreadPage(earlier.messages, messages.slice(0, 50), true);
+  assert.deepEqual(complete.messages, messages);
+  assert.deepEqual(mergeThreadPage(complete.messages, latest, false).messages, messages);
+  assert.deepEqual(mergeThreadPage(messages.slice(0, 100), messages.slice(50, 150), false).messages, messages.slice(0, 150));
+});

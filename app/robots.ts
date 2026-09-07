@@ -14,6 +14,7 @@ export default function robots(): MetadataRoute.Robots {
             "/admin",
             "/pro/",
             "/llogaria",
+            "/siguria",
             "/kerkesa-e-re",
             "/hyr",
             "/rivendos-fjalekalimin",

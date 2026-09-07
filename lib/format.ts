@@ -1,3 +1,4 @@
+import { KOSOVO_TIME_ZONE } from "./scheduling";
 export const money = (cents: number) =>
   new Intl.NumberFormat("sq-XK", { style: "currency", currency: "EUR" }).format(
     cents / 100,
@@ -6,7 +7,7 @@ export const dateTime = (value: Date | string) =>
   new Intl.DateTimeFormat("sq-XK", {
     dateStyle: "medium",
     timeStyle: "short",
-    timeZone: "Europe/Belgrade",
+    timeZone: KOSOVO_TIME_ZONE,
   }).format(new Date(value));
 export const stateLabel = (state: string) =>
   ({

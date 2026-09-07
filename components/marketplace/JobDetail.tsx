@@ -173,17 +173,19 @@ export default async function JobDetail({
                 },
                 {
                   name: "expiresAt",
-                  label: "Oferta skadon",
+                  label: "Oferta skadon (ora e Kosovës)",
+                  kosovoTime: true,
                   type: "datetime-local",
                   required: true,
-                  hint: "Brenda 30 ditësh dhe para fillimit të punës. Përdoret zona kohore e pajisjes suaj.",
+                  hint: "Brenda 30 ditësh dhe para fillimit të punës. Shkruani orën lokale të Kosovës.",
                 },
                 {
                   name: "scheduledAt",
-                  label: "Fillimi i punës",
+                  label: "Fillimi i punës (ora e Kosovës)",
+                  kosovoTime: true,
                   type: "datetime-local",
                   required: true,
-                  hint: "Pas skadimit të ofertës. Përdoret zona kohore e pajisjes suaj.",
+                  hint: "Pas skadimit të ofertës. Shkruani orën lokale të Kosovës.",
                 },
               ]}
             />

@@ -9,6 +9,7 @@ import { signupInput, profileInput } from "../marketplace-validation";
 import { enforceLimit } from "./rate-limit";
 import { AppError, invariant } from "./errors";
 import { opaqueToken, hashToken, validToken } from "./tokens";
+import { serializable } from "./transaction";
 import { queueAccountEmail } from "./notifications";
 
 const dummyHash = bcrypt.hashSync(opaqueToken(), 12);
@@ -28,7 +29,7 @@ export async function authenticate(input: unknown, ip: string) {
     401,
     "Email ose fjalëkalim i pasaktë.",
   );
-  return { id: user.id, role: user.role };
+  return { id: user.id, role: user.role, passwordHash: user.passwordHash };
 }
 
 export async function signup(input: unknown, ip: string) {
@@ -46,7 +47,7 @@ export async function signup(input: unknown, ip: string) {
   }
   const passwordHash = await hashPassword(data.password);
   try {
-    const user = await db.$transaction(async (tx) => {
+    const user = await serializable(async (tx) => {
       const created = await tx.user.create({
         data: {
           name: data.name,
@@ -97,7 +98,7 @@ export async function signup(input: unknown, ip: string) {
         JSON.stringify({ event: "verification_queue_failed", userId: user.id }),
       );
     }
-    return user;
+    return { ...user, passwordHash };
   } catch (error) {
     if (
       error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -121,7 +122,9 @@ export async function requestAccountToken(
     select: { id: true, email: true },
   });
   const token = opaqueToken();
-  return db.$transaction(async (tx) => {
+  return serializable(async (tx) => {
+    // Serialize issuers even when no unused token exists yet.
+    await tx.$queryRaw`SELECT id FROM public."User" WHERE id = ${userId} FOR UPDATE`;
     await tx.authToken.updateMany({
       where: { userId, purpose, usedAt: null },
       data: { usedAt: new Date() },
@@ -180,7 +183,7 @@ export async function consumeAccountToken(
   const nextHash = data.password
     ? await hashPassword(data.password)
     : undefined;
-  await db.$transaction(async (tx) => {
+  await serializable(async (tx) => {
     const token = await tx.authToken.findUnique({
       where: { tokenHash: hashToken(data.token) },
       include: { user: { select: { suspendedAt: true } } },
@@ -231,7 +234,7 @@ export async function consumeAccountToken(
 
 export async function updateAccount(actor: Actor, input: unknown) {
   const data = profileInput.parse(input);
-  await db.$transaction(async (tx) => {
+  await serializable(async (tx) => {
     await tx.user.update({
       where: { id: actor.id },
       data: { name: data.name, city: data.city, phone: data.phone || null },
@@ -291,7 +294,7 @@ export async function changePassword(actor: Actor, input: unknown) {
     "Fjalëkalimi aktual nuk është i saktë.",
   );
   const nextHash = await hashPassword(data.password);
-  await db.$transaction(async (tx) => {
+  await serializable(async (tx) => {
     const updated = await tx.user.updateMany({
       where: {
         id: actor.id,
@@ -314,5 +317,23 @@ export async function changePassword(actor: Actor, input: unknown) {
     await tx.auditLog.create({
       data: { actorId: actor.id, action: "PASSWORD_CHANGED", target: actor.id },
     });
+  });
+}
+
+export async function revokeOtherSessions(actor: Actor, sessionHash: string, input: unknown) {
+  const data = z.object({ currentPassword: z.string().min(1).max(256) }).parse(input);
+  await enforceLimit(`session-revoke:${actor.id}`, 5, 15 * 60_000);
+  const user = await db.user.findUniqueOrThrow({ where: { id: actor.id }, select: { passwordHash: true } });
+  invariant(await verifyPassword(data.currentPassword, user.passwordHash), "CREDENTIALS", 400, "Fjalëkalimi aktual nuk është i saktë.");
+  return serializable(async (tx) => {
+    const current = await tx.session.findUnique({
+      where: { token: sessionHash }, include: { user: { select: { passwordHash: true, suspendedAt: true } } },
+    });
+    invariant(current && current.userId === actor.id && current.expiresAt > new Date() &&
+      current.user.passwordHash === user.passwordHash && !current.user.suspendedAt,
+      "UNAUTHENTICATED", 401, "Hyni përsëri në llogari.");
+    const removed = await tx.session.deleteMany({ where: { userId: actor.id, token: { not: sessionHash } } });
+    await tx.auditLog.create({ data: { actorId: actor.id, action: "OTHER_SESSIONS_REVOKED", target: actor.id, meta: { count: removed.count } } });
+    return { ok: true, message: "Hyrjet e tjera u mbyllën. Kjo hyrje mbetet aktive." };
   });
 }

@@ -1,5 +1,6 @@
 "use client";
-import { useRef, useState, type FormEvent } from "react";
+import { useId, useRef, useState, type FormEvent } from "react";
+import { kosovoLocalToIso } from "@/lib/scheduling";
 import { useRouter } from "next/navigation";
 
 export type Field = {
@@ -23,6 +24,7 @@ export type Field = {
   step?: string;
   options?: { value: string; label: string }[];
   hint?: string;
+  kosovoTime?: boolean;
   as?: "number" | "list";
   autoComplete?: string;
 };
@@ -51,6 +53,7 @@ export default function ApiForm({
   idempotent?: boolean;
 }) {
   const router = useRouter();
+  const formId = useId();
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState("");
   const [errors, setErrors] = useState<Record<string, string[]>>({});
@@ -78,7 +81,7 @@ export default function ApiForm({
             : field.as === "number"
               ? Number(raw)
               : field.type === "datetime-local"
-                ? new Date(raw).toISOString()
+                ? field.kosovoTime ? kosovoLocalToIso(raw) : new Date(raw).toISOString()
                 : field.as === "list"
                   ? raw
                       .split(",")
@@ -161,6 +164,7 @@ export default function ApiForm({
               rows={4}
               className={`${inputClass} mt-1`}
               aria-invalid={Boolean(errors[field.name])}
+              aria-describedby={[field.hint ? `${formId}-${field.name}-hint` : "", errors[field.name] ? `${formId}-${field.name}-errors` : ""].filter(Boolean).join(" ") || undefined}
             />
           ) : field.type === "select" ? (
             <select
@@ -169,6 +173,7 @@ export default function ApiForm({
               required={field.required}
               className={`${inputClass} mt-1`}
               aria-invalid={Boolean(errors[field.name])}
+              aria-describedby={[field.hint ? `${formId}-${field.name}-hint` : "", errors[field.name] ? `${formId}-${field.name}-errors` : ""].filter(Boolean).join(" ") || undefined}
             >
               <option value="">Zgjidhni</option>
               {field.options?.map((option) => (
@@ -197,18 +202,21 @@ export default function ApiForm({
                   : `${inputClass} mt-1`
               }
               aria-invalid={Boolean(errors[field.name])}
+              aria-describedby={[field.hint ? `${formId}-${field.name}-hint` : "", errors[field.name] ? `${formId}-${field.name}-errors` : ""].filter(Boolean).join(" ") || undefined}
             />
           )}
           {field.hint && (
-            <span className="mt-1 block text-xs font-normal text-muted">
+            <span id={`${formId}-${field.name}-hint`} className="mt-1 block text-sm font-normal text-muted">
               {field.hint}
             </span>
           )}
+          <span id={`${formId}-${field.name}-errors`}>
           {errors[field.name]?.map((error, i) => (
             <span key={i} className="mt-1 block text-sm text-red-700">
               {error}
             </span>
           ))}
+          </span>
         </label>
       ))}
       {message && (

@@ -17,27 +17,8 @@ import {
   availabilityInput,
 } from "../marketplace-validation";
 
-export async function serializable<T>(
-  fn: (tx: Prisma.TransactionClient) => Promise<T>,
-): Promise<T> {
-  for (let attempt = 0; ; attempt++) {
-    try {
-      return await db.$transaction(fn, {
-        isolationLevel: "Serializable",
-        maxWait: 5000,
-        timeout: 15000,
-      });
-    } catch (error) {
-      if (
-        attempt < 2 &&
-        error instanceof Prisma.PrismaClientKnownRequestError &&
-        ["P2034", "P2002"].includes(error.code)
-      )
-        continue;
-      throw error;
-    }
-  }
-}
+import { serializable } from "./transaction";
+export { serializable } from "./transaction";
 
 export function isParticipant(
   request: Pick<
@@ -546,7 +527,7 @@ export async function readJobMessages(
         conversationId,
         senderId: { not: actor.id },
         readAt: null,
-        id: { in: rows.map((m) => m.id) },
+        id: { in: rows.slice(0, 100).map((m) => m.id) },
       },
       data: { readAt: new Date() },
     });

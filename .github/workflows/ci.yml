@@ -48,5 +48,9 @@ jobs:
       - run: npm run typecheck
       - run: npm run test:unit
       - run: npm run test:integration
+      - name: Rehearse disposable database backup and restore
+        run: node scripts/rehearse-recovery.mjs
+        env:
+          PG_TEST_CONTAINER: ${{ job.services.postgres.id }}
       - run: npm run test:smoke
       - run: npm audit --omit=dev --audit-level=high

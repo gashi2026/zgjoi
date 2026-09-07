@@ -43,6 +43,14 @@ async function storage(path: string, init: RequestInit) {
     cache: "no-store",
   });
 }
+async function requirePrivateBucket() {
+  const { bucket } = storageConfig();
+  const response = await storage(`bucket/${bucket}`, { method: "GET" });
+  invariant(response.ok, "STORAGE_CONFIG", 503, "Ruajtja private e dokumenteve kërkon kontroll.");
+  const metadata = await response.json();
+  invariant(metadata.id === bucket && metadata.public === false,
+    "STORAGE_NOT_PRIVATE", 503, "Ruajtja private e dokumenteve kërkon kontroll.");
+}
 export async function uploadDocument(actor: Actor, file: File, kind: string) {
   invariant(
     actor.role === "PRO" && actor.proProfile,
@@ -82,6 +90,7 @@ export async function uploadDocument(actor: Actor, file: File, kind: string) {
   );
   const path = `${actor.id}/${randomUUID()}.${detected.extension}`;
   const filename = `${kind.toLowerCase()}.${detected.extension}`;
+  await requirePrivateBucket();
   const response = await storage(`object/${bucket}/${path}`, {
     method: "POST",
     headers: {
@@ -162,6 +171,7 @@ export async function signedDocument(actor: Actor, id: string) {
   );
   await enforceLimit(`document-read:${actor.id}`, 60, 60000);
   const { base, bucket } = storageConfig();
+  await requirePrivateBucket();
   const response = await storage(`object/sign/${bucket}/${doc.storagePath}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -171,7 +181,7 @@ export async function signedDocument(actor: Actor, id: string) {
   const result = await response.json();
   invariant(
     typeof result.signedURL === "string" &&
-      result.signedURL.startsWith(`/object/sign/${bucket}/`),
+      result.signedURL.startsWith(`/object/sign/${bucket}/${doc.storagePath}?`),
     "STORAGE",
     502,
     "Përgjigjja e dokumentit nuk është e vlefshme.",

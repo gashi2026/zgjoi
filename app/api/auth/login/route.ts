@@ -8,7 +8,7 @@ export async function POST(req: Request) {
       await readJson(req),
       requestIp(req.headers),
     );
-    await createSession(user.id);
+    await createSession(user.id, user.passwordHash);
     return { ok: true, redirect: accountHome(user.role) };
   });
 }
