@@ -43,7 +43,7 @@ function makeSwarm(seed: number): Flyer[] {
   });
 }
 
-export default function BeeCell({ size }: { size: number; height: number }) {
+export default function BeeCell({ size, height }: { size: number; height: number }) {
   const [swarm, setSwarm] = useState<Flyer[]>([]);
   const seed = useRef(0);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -52,7 +52,8 @@ export default function BeeCell({ size }: { size: number; height: number }) {
     return () => { if (timer.current) clearTimeout(timer.current); };
   }, []);
 
-  // Reduced motion shows a still heart, without cross-screen flight.
+  /* Reduced motion used to cancel this outright — now the heart still
+     forms, it simply takes its time. */
   const release = () => {
     const calm =
       typeof window !== "undefined" &&
@@ -75,13 +76,13 @@ export default function BeeCell({ size }: { size: number; height: number }) {
         onClick={release}
         aria-label="Lësho bletët"
         className="group absolute inset-0 cursor-pointer"
-        style={{ width: "100%", height: "100%" }}
+        style={{ width: size, height }}
       >
         <svg
           viewBox="0 0 100 115.47"
-          width="100%"
-          height="100%"
-          className="drop-shadow-[0_6px_14px_rgba(232,157,0,0.12)] transition-colors duration-200"
+          width={size}
+          height={height}
+          className="drop-shadow-[0_6px_14px_rgba(232,157,0,0.12)] transition-transform duration-200 group-hover:scale-[1.06] group-active:scale-95"
           aria-hidden="true"
         >
           <path
@@ -94,7 +95,7 @@ export default function BeeCell({ size }: { size: number; height: number }) {
           />
         </svg>
         <span className="absolute inset-0 flex items-center justify-center">
-          <Bee size={Math.round(size * 0.5)} className="h-1/2 w-1/2 motion-safe:animate-bee-hover" />
+          <Bee size={Math.round(size * 0.5)} className="animate-bee-hover" />
         </span>
         <span className="pointer-events-none absolute bottom-full left-1/2 z-30 -mb-1.5 -translate-x-1/2 opacity-0 transition-all duration-200 group-hover:mb-0.5 group-hover:opacity-100">
           <span className="block whitespace-nowrap rounded-full border border-gold bg-white px-3 py-1 text-xs font-bold text-ink shadow-lift">
@@ -132,11 +133,10 @@ export default function BeeCell({ size }: { size: number; height: number }) {
                 "--hy": `${f.hy}vh`,
                 "--ox": `${f.outX}vw`,
                 "--oy": `${f.outY}vh`,
-                transform: calmNow ? `translate(${f.hx}vw, ${f.hy}vh)` : undefined,
-                animation: calmNow ? "none" : `bee-journey 4.4s cubic-bezier(0.4, 0, 0.2, 1) ${f.delay}s both`,
+                animation: `bee-journey ${calmNow ? 6 : 4.4}s cubic-bezier(0.4, 0, 0.2, 1) ${f.delay}s both`,
               } as React.CSSProperties}
             >
-              <span style={{ display: "block", animation: calmNow ? "none" : "bee-wiggle 0.5s ease-in-out infinite" }}>
+              <span style={{ display: "block", animation: "bee-wiggle 0.5s ease-in-out infinite" }}>
                 <Bee size={f.size} />
               </span>
             </span>
