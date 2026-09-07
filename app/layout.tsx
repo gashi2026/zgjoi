@@ -3,6 +3,7 @@ import { Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
+import FooterSwitch from "@/components/homepage/FooterSwitch";
 import MobileBottomNav from "@/components/MobileBottomNav";
 import SupportChat from "@/components/SupportChat";
 
@@ -37,13 +38,15 @@ export default function RootLayout({
         >
           Kalo te përmbajtja
         </a>
-        <Header />
+        <Header productionHome={process.env.VERCEL_ENV === "preview"} />
         <main id="main-content" className="min-h-[60vh]">
           {children}
         </main>
-        <Footer />
+        <FooterSwitch enabled={process.env.VERCEL_ENV === "preview"}>
+          <Footer />
+        </FooterSwitch>
         <MobileBottomNav />
-        <SupportChat />
+        <SupportChat productionHome={process.env.VERCEL_ENV === "preview"} />
       </body>
     </html>
   );

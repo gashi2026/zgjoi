@@ -23,7 +23,7 @@ const dashboardFor = (role: string) =>
         ? "/pro/paneli"
         : "/llogaria";
 
-export default function Header() {
+export default function Header({ productionHome = false }: { productionHome?: boolean }) {
   const [open, setOpen] = useState(false);
   const menuButton = useRef<HTMLButtonElement>(null);
   const drawer = useRef<HTMLDivElement>(null);
@@ -32,6 +32,7 @@ export default function Header() {
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const pathname = usePathname();
   const router = useRouter();
+  const referenceHome = productionHome && (pathname === "/" || pathname === "/se-shpejti");
 
   const [menuPath, setMenuPath] = useState(pathname);
   if (menuPath !== pathname) {
@@ -45,7 +46,7 @@ export default function Header() {
     const returnFocus = menuButton.current;
     document.body.style.overflow = "hidden";
     drawer.current?.querySelector<HTMLButtonElement>("button")?.focus();
-    const desktop = window.matchMedia("(min-width: 1280px)");
+    const desktop = window.matchMedia(referenceHome ? "(min-width: 1024px)" : "(min-width: 1280px)");
     const closeOnDesktop = () => { if (desktop.matches) setOpen(false); };
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") { event.preventDefault(); setOpen(false); }
@@ -65,7 +66,7 @@ export default function Header() {
       document.removeEventListener("keydown", onKeyDown);
       returnFocus?.focus();
     };
-  }, [open]);
+  }, [open, referenceHome]);
 
   useEffect(() => {
     fetch("/api/site", { cache: "no-store" })
@@ -105,7 +106,7 @@ export default function Header() {
     }
   }
 
-  const brand = logoUrl ? (
+  const brand = logoUrl && !referenceHome ? (
     <Link href="/" aria-label="Zgjoi — kryefaqja">
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src={logoUrl} alt="Zgjoi" className="h-9 w-auto max-w-40 object-contain sm:max-w-48" />
@@ -165,7 +166,7 @@ export default function Header() {
           {brand}
 
           <nav
-            className="hidden items-center gap-6 xl:flex"
+            className={referenceHome ? "hidden items-center gap-7 lg:flex" : "hidden items-center gap-6 xl:flex"}
             aria-label="Kryesore"
           >
             {links.map((l) => (
@@ -181,13 +182,13 @@ export default function Header() {
             ))}
           </nav>
 
-          <div className="hidden items-center gap-3 xl:flex">{authArea}</div>
+          <div className={referenceHome ? "hidden items-center gap-3 lg:flex" : "hidden items-center gap-3 xl:flex"}>{authArea}</div>
 
           <button
             type="button"
             ref={menuButton}
             onClick={() => setOpen((v) => !v)}
-            className="flex h-11 w-11 items-center justify-center rounded-full text-ink xl:hidden"
+            className={`flex h-11 w-11 items-center justify-center rounded-full text-ink ${referenceHome ? "lg:hidden" : "xl:hidden"}`}
             aria-expanded={open}
             aria-controls="mobile-menu"
             aria-label={open ? "Mbyll menunë" : "Hap menunë"}
@@ -203,7 +204,7 @@ export default function Header() {
       {open && (
         <div
           id="mobile-menu" ref={drawer} role="dialog" aria-modal="true" aria-label="Menuja kryesore"
-          className="fixed inset-0 z-[70] overflow-y-auto bg-white pb-[env(safe-area-inset-bottom)] xl:hidden"
+          className={`fixed inset-0 z-[70] overflow-y-auto bg-white pb-[env(safe-area-inset-bottom)] ${referenceHome ? "lg:hidden" : "xl:hidden"}`}
         >
           <div className="flex h-16 items-center justify-between border-b border-line px-4">
             <span className="font-bold text-ink">Menuja</span>

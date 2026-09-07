@@ -1,22 +1,19 @@
-import Hero from "@/components/Hero";
-import ProductionHomepage from "@/components/homepage/ProductionHomepage";
-import Stats from "@/components/Stats";
-import Categories from "@/components/Categories";
+// Preview-only reproduction of the deployed production presentation.
+// Keep operational/payment wording in the current shared components.
+import Hero from "./Hero";
+import Stats from "./Stats";
+import Categories from "./Categories";
 import DualCards from "@/components/DualCards";
 import WhyZgjoi from "@/components/WhyZgjoi";
 import HowItWorks from "@/components/HowItWorks";
 import CTABanner from "@/components/CTABanner";
-import RecommendedPros from "@/components/RecommendedPros";
+import RecommendedPros from "./RecommendedPros";
+import Testimonials from "./Testimonials";
 
-export const dynamic = "force-dynamic";
-
-export default function HomePage() {
-  // Reproduce zgjoi.com's design on the candidate without replacing staging
-  // catalogue/account data or reintroducing marketing fixtures into API routes.
-  if (process.env.VERCEL_ENV === "preview") return <ProductionHomepage />;
+export default function ProductionHomepage() {
   return (
     <>
-      <div className="home-scale">
+      <div className="home-scale homepage-reference" data-homepage-reference="zgjoi.com">
         <Hero />
         <Stats />
         <div className="home-compact">
@@ -30,18 +27,20 @@ export default function HomePage() {
           <HowItWorks />
           <CTABanner />
           <RecommendedPros />
+          <Testimonials />
         </div>
       </div>
 
       <style
         dangerouslySetInnerHTML={{
           __html: `
+            .homepage-reference input { font-size: 0.875rem; }
             .zg-pointer-block { display: block; }
             .home-compact { zoom: 0.88; }
 
             /* computers: bigger page */
-            @media (min-width: 1024px) and (hover: hover) and (pointer: fine) {
-              .home-scale { zoom: clamp(1, calc(0.75 + 0.026vw), 1.25); }
+            @media (min-width: 641px) and (hover: hover) and (pointer: fine) {
+              .home-scale { zoom: 1.25; }
             }
 
             /* phones and tablets — regardless of zoom level */

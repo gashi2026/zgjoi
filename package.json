@@ -12,7 +12,7 @@
     "db:seed": "prisma db seed",
     "db:studio": "prisma studio",
     "postinstall": "prisma generate",
-    "test:unit": "node --conditions=react-server --import tsx --test tests/unit.test.ts",
+    "test:unit": "node --conditions=react-server --import tsx --test tests/unit.test.ts && node --import tsx --test tests/homepage-reference.test.ts",
     "test:integration": "node scripts/run-integration.mjs"
   },
   "engines": {

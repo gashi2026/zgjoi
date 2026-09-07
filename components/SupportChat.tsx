@@ -1,13 +1,23 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
-import { Headset, X } from "lucide-react";
+import { Headset, MessageCircle, X } from "lucide-react";
 import Thread from "./marketplace/Thread";
-export default function SupportChat() {
+import { supportStatus } from "@/lib/support-hours";
+export default function SupportChat({ productionHome = false }: { productionHome?: boolean }) {
   const [open, setOpen] = useState(false);
   const button = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLElement>(null);
   const path = usePathname();
+  const referenceHome = productionHome && (path === "/" || path === "/se-shpejti");
+  const [withinSupportHours, setWithinSupportHours] = useState(false);
+  useEffect(() => {
+    if (!referenceHome) return;
+    const update = () => setWithinSupportHours(supportStatus().online);
+    const frame = requestAnimationFrame(update);
+    const timer = setInterval(update, 60_000);
+    return () => { cancelAnimationFrame(frame); clearInterval(timer); };
+  }, [referenceHome]);
   useEffect(() => {
     if (open) panel.current?.focus();
   }, [open]);
@@ -16,7 +26,7 @@ export default function SupportChat() {
     button.current?.focus();
   }
   return (
-    <div className="fixed bottom-24 right-4 z-50 lg:bottom-6">
+    <div className={referenceHome ? "fixed bottom-[110px] right-3 z-50 lg:bottom-[30px]" : "fixed bottom-24 right-4 z-50 lg:bottom-6"}>
       {open && (
         <section
           ref={panel}
@@ -52,9 +62,10 @@ export default function SupportChat() {
         onClick={() => (open ? close() : setOpen(true))}
         aria-expanded={open}
         aria-label="Hap mbështetjen"
-        className="ml-auto flex h-14 w-14 items-center justify-center rounded-full border-2 border-white bg-gold text-ink shadow-lift"
+        className={`relative ml-auto flex h-14 w-14 items-center justify-center rounded-full bg-gold text-ink shadow-lift ${referenceHome ? "active:scale-95" : "border-2 border-white"}`}
       >
-        <Headset size={25} />
+        {referenceHome ? (open ? <X size={22} /> : <MessageCircle size={24} />) : <Headset size={25} />}
+        {referenceHome && !open && <span aria-hidden="true" className={`absolute right-0 top-0 h-3.5 w-3.5 rounded-full border-2 border-white ${withinSupportHours ? "bg-green-500" : "bg-gray-400"}`} />}
       </button>
     </div>
   );
