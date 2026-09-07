@@ -42,6 +42,25 @@ Full details: [implementation evidence](PRIVATE-MARKETPLACE-BETA.md),
 [deployment runbook](../DEPLOY.md). Earlier foundation verification files are
 historical evidence for their named commits, not current feature claims.
 
+## Hosted Preview connection checkpoint — 7 September 2026
+
+- Candidate `a6e1e977860576bb61800fd388327dfdd63903fa` built successfully on
+  Vercel and passed [the full CI workflow](https://github.com/gashi2026/zgjoi/actions/runs/34125392670).
+- The founder supplied authorized Preview access. The site gate correctly returns
+  HTTP 423 without its separate site cookie. With authorized site access, the
+  read-only catalog request returns HTTP 503, request ID
+  `ef63d4be-90c3-45cc-b6d8-7cace6d3ac77`; runtime logs identify a
+  `PrismaClientInitializationError`. The staging database separately responds and
+  retains its environment marker and zero sessions. Vercel-to-staging isolation
+  and authenticated journeys remain unverified; no application write was made.
+- This diagnostic change logs only a validated Prisma error code and a fixed
+  endpoint classification. Connection strings, credentials, query values and raw
+  error messages remain absent from these logs and API responses. Two regressions
+  verify redaction and classification, bringing the unit suite to eight tests.
+- Next: deploy this diagnostic change to Preview, identify and correct the actual
+  connection failure, then repeat staging identity verification before login or
+  marketplace writes. No production release or database modification is included.
+
 ## Readiness reassessment — 7 September 2026
 
 **Current development candidate: approximately 60/100, provisional.** The original
@@ -85,8 +104,8 @@ No whole launch package is marked production-complete solely from a draft change
 
 | ID  | Work package                                                     | Verified implementation / current status                                                                                                                             | Initial engineer-days | Next action / remaining gate                                                                                                                                          |
 | --- | ---------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| P01 | Safe deployments, migration baseline and staging separation      | IN PROGRESS — Safe builds and isolated staging bootstrap/upgrade verified; candidate auto-deployment paused.                                                         | 1–2                   | Wire branch Preview credentials, prove database isolation, then rehearse production backup/restore and prepare the production baseline/upgrade.                       |
-| P02 | Supported dependencies, type/lint checks and reproducible builds | IN PROGRESS — Pinned Next/React/Node/lockfile; clean build, lint, TypeScript and zero-known-vulnerability audit pass in CI.                                          | 2–4                   | Verify the candidate build on isolated Vercel Preview and retain the required CI gate before release.                                                                 |
+| P01 | Safe deployments, migration baseline and staging separation      | IN PROGRESS — Safe builds and isolated staging verified; Preview is deployed but its runtime database connection fails.                                                         | 1–2                   | Resolve the observed initialization failure, prove runtime database isolation, then rehearse backup/restore and the production migration.                       |
+| P02 | Supported dependencies, type/lint checks and reproducible builds | IN PROGRESS — Pinned Next/React/Node/lockfile; clean build, lint, TypeScript and zero-known-vulnerability audit pass in CI.                                          | 2–4                   | Candidate Vercel build verified; retain the required CI gate and distinguish a successful build from working runtime database access.                                                                 |
 | P03 | Roles and ownership on every private page/action/API             | IN PROGRESS — Shared active-session guards, explicit roles and record ownership; negative HTTP/DB scenarios pass.                                                    | 3–5                   | Repeat the role/ownership matrix against the configured Preview, including server actions and browser account switching.                                              |
 | P04 | Guest/account support privacy                                    | IN PROGRESS — Owner/staff/guest-capability access, account-switch denial and concurrent ticket/reply deduplication pass in CI.                                       | 2–4                   | Verify widget focus, multi-tab/account changes, guest-cookie loss and retry UX in the isolated browser deployment.                                                    |
 | P05 | Session, rate-limit, secret and seed safety                      | IN PROGRESS — Hashed session tokens, atomic DB rate limits, password revocation, input/origin bounds and catalog-only guarded seed implemented.                      | 2–4                   | Verify deployment cookie/secret behavior; plan the legacy-session cutover and stronger administrative authentication/recovery controls.                               |
@@ -109,13 +128,13 @@ No whole launch package is marked production-complete solely from a draft change
 | P22 | Accurate admin metrics, categories and settings                  | IN PROGRESS — Real database aggregates and audited category/site settings replace fake counters; operational event counts and heartbeat are visible.                 | 3–5                   | Verify analytics definitions and conversion funnel/consent, alerting and efficient aggregate queries using realistic pilot volume.                                    |
 | P23 | Mobile, accessibility and performance                            | IN PROGRESS — Keyboard labels/focus, error/loading states, mobile input sizes, reduced motion and responsive account pages implemented.                              | 3–5                   | Complete real browser/device, keyboard/screen-reader and performance checks; visual QA remains unverified because browser access was blocked.                         |
 | P24 | Truthful content, localization, policies and SEO                 | IN PROGRESS — Private-offer copy, removal of fake traction, Albanian formatting, canonical metadata, private/Preview noindex and public sitemap implemented.         | 3–5                   | Owner/legal review real operator/terms/privacy/refund/invoice details; Albanian proofreading, canonical www/DNS and search-indexing checks before release.            |
-| P25 | Journey tests, monitoring, recovery and pilot sign-off           | IN PROGRESS — Clean CI passes: 6 unit tests, 21 HTTP/DB scenarios (22 including parent), 20 smoke checks; staged schema/RLS independently verified.                  | 6–10                  | Connect Preview, verify browser/email/storage/provider flows, implement monitoring with a real alert owner, rehearse restore/rollback and reconcile an invited pilot. |
+| P25 | Journey tests, monitoring, recovery and pilot sign-off           | IN PROGRESS — Prior full CI passes; two new diagnostic redaction checks pass locally (8 unit tests total). Hosted journeys are blocked by DB initialization.                  | 6–10                  | Resolve hosted database initialization, verify browser/email/storage/provider flows, implement alert ownership and rehearse restore/rollback. |
 
 ## Next sequence
 
-1. Owner enters staging-only Preview connection strings/secrets using the linked
-   setup guide. Engineering then enables the candidate Preview and tests the
-   real website, keeping payments/email/document integrations initially disabled.
+1. Diagnose the hosted Preview database initialization failure and correct the
+   confirmed configuration problem. Verify effective staging identity before
+   authenticating or testing writes; payment/email/document integrations stay disabled.
 2. Configure and verify account email/private storage with synthetic documents and
    explicitly authorized test recipients. Complete mobile/accessibility testing.
 3. Resolve P06 while finishing provider-independent operational work. Integrate and

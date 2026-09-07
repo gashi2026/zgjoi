@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { Prisma } from "@prisma/client";
 import {
   euroAmount,
   signupInput,
@@ -16,7 +17,87 @@ import { splitAmount } from "../lib/server/settings";
 import { canReadTicket } from "../lib/server/support";
 import { assertNoContact } from "../lib/server/marketplace";
 import { fileKind } from "../lib/server/storage";
-import { sameOrigin, readJson } from "../lib/server/http";
+import { api, sameOrigin, readJson } from "../lib/server/http";
+import { databaseFailureDetails } from "../lib/server/error-diagnostics";
+
+test("database diagnostics classify failures without logging credentials or Prisma messages", async (t) => {
+  const originalUrl = process.env.DATABASE_URL;
+  t.after(() => {
+    if (originalUrl === undefined) delete process.env.DATABASE_URL;
+    else process.env.DATABASE_URL = originalUrl;
+  });
+  const secretUrl =
+    "postgresql://private-user:private-password@db.synthetic.supabase.co:5432/postgres";
+  process.env.DATABASE_URL = secretUrl;
+  const error = new Prisma.PrismaClientInitializationError(
+    `Cannot connect: ${secretUrl}; private-query-value`,
+    "5.22.0",
+    "P1001",
+  );
+  const log = t.mock.method(console, "error", () => {});
+  const response = await api(
+    new Request("https://zgjoi.invalid/api/catalog"),
+    async () => {
+      throw error;
+    },
+  );
+  assert.equal(response.status, 503);
+  const body = await response.json();
+  const logged = JSON.parse(String(log.mock.calls[0].arguments[0]));
+  assert.equal(logged.requestId, body.requestId);
+  assert.equal(logged.databaseErrorCode, "P1001");
+  assert.equal(logged.databaseEndpoint, "supabase_direct");
+  assert.equal(body.databaseErrorCode, undefined);
+  assert.equal(body.databaseEndpoint, undefined);
+  for (const secret of [
+    secretUrl,
+    "private-user",
+    "private-password",
+    "db.synthetic",
+    "private-query-value",
+  ])
+    assert(!JSON.stringify({ logged, body }).includes(secret));
+});
+
+test("database diagnostics reject arbitrary metadata and classify missing or invalid endpoints", (t) => {
+  const originalUrl = process.env.DATABASE_URL;
+  t.after(() => {
+    if (originalUrl === undefined) delete process.env.DATABASE_URL;
+    else process.env.DATABASE_URL = originalUrl;
+  });
+  const error = new Prisma.PrismaClientInitializationError(
+    "private", "5.22.0", "private-password",
+  );
+  for (const [value, expected] of [
+    ["", "missing"],
+    ["not-a-url", "invalid"],
+    ["https://example.invalid", "invalid"],
+    [
+      "postgres://user:secret@aws-test.pooler.supabase.com:6543/postgres",
+      "supabase_pooler",
+    ],
+    [
+      "postgres://user:secret@pooler.supabase.com.attacker.invalid:6543/postgres",
+      "other",
+    ],
+  ]) {
+    process.env.DATABASE_URL = value;
+    assert.deepEqual(databaseFailureDetails(error), {
+      databaseEndpoint: expected,
+    });
+  }
+  assert.deepEqual(
+    databaseFailureDetails({ code: "P1000", message: "private" }), {},
+  );
+  assert.deepEqual(
+    databaseFailureDetails(new Prisma.PrismaClientKnownRequestError("private", {
+      code: "P2002",
+      clientVersion: "5.22.0",
+      meta: { secret: "private" },
+    })),
+    { databaseErrorCode: "P2002" },
+  );
+});
 
 test("money parsing is exact in cents and rejects malformed/unsafe amounts", () => {
   for (const [input, cents] of [

@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 import { AppError } from "./errors";
+import { databaseFailureDetails } from "./error-diagnostics";
 
 export function sameOrigin(req: Request) {
   const origin = req.headers.get("origin");
@@ -102,6 +103,7 @@ export async function api(req: Request, handler: () => Promise<unknown>) {
         event: "request_failed",
         requestId,
         type: error instanceof Error ? error.name : "Unknown",
+        ...databaseFailureDetails(error),
       }),
     );
     return json(
