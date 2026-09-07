@@ -21,7 +21,7 @@ const clock = new Intl.DateTimeFormat("en-GB", { timeZone: KOSOVO_TIME_ZONE, wee
 const weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 /** No saved weekly hours means appointments are agreed individually in the official offer. */
 export function withinWorkingHours(start: Date, end: Date, days: WorkingDay[]) {
-  if (!Number.isFinite(start.getTime()) || end <= start || end.getTime() - start.getTime() > MAX_APPOINTMENT_MINUTES * 60_000) return false;
+  if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end <= start || end.getTime() - start.getTime() > MAX_APPOINTMENT_MINUTES * 60_000) return false;
   if (!days.length) return true;
   // Inspect each elapsed minute, including repeated DST hours. Jump only as far as
   // the current working-period boundary so even a sub-minute overflow is denied.

@@ -5,6 +5,7 @@ import { AppError } from "@/lib/server/errors";
 import { paymentsReady } from "@/lib/server/payments";
 import { commissionBps } from "@/lib/server/settings";
 import { money, stateLabel, dateTime } from "@/lib/format";
+import { appointmentEnd } from "@/lib/appointments";
 import Frame, { Panel } from "./Frame";
 import ApiForm from "./ApiForm";
 import Thread from "./Thread";
@@ -92,6 +93,7 @@ export default async function JobDetail({
             {quote.scheduledAt && (
               <p className="text-sm">
                 Fillimi: {dateTime(quote.scheduledAt)} (ora e Kosovës)
+                {appointmentEnd(quote.scheduledAt, quote.duration) && <> · Përfundimi i parashikuar: {dateTime(appointmentEnd(quote.scheduledAt, quote.duration)!)}</>}
               </p>
             )}
             {quote.expiresAt && (

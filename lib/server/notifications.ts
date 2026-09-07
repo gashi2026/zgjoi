@@ -266,9 +266,9 @@ async function submitEmailJobs(jobs: EmailJob[]) {
       await db.outbox.updateMany({
         where: { id: job.id, state: "PROCESSING", lockedAt: job.lockedAt },
         data: {
-          state: code === "MESSAGE_SUPPRESSED" ? "CANCELLED" :
+          state:
             job.attempts >= 8 ||
-            ["TEST_ADDRESS", "EXPIRED_MESSAGE"].includes(code)
+            ["TEST_ADDRESS", "EXPIRED_MESSAGE", "MESSAGE_SUPPRESSED"].includes(code)
               ? "FAILED"
               : "PENDING",
           ...(code === "MESSAGE_SUPPRESSED" || job.attempts >= 8 ||

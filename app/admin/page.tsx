@@ -5,6 +5,7 @@ import { db } from "@/lib/server/db";
 import Frame, { Panel } from "@/components/marketplace/Frame";
 import { money } from "@/lib/format";
 import { paymentsReady } from "@/lib/server/payments";
+import { bookingFunnel } from "@/lib/server/metrics";
 export default async function Page() {
   const actor = await pageGuard("ADMIN");
   const since = daysAgo(30);
@@ -20,6 +21,7 @@ export default async function Page() {
     events,
     heartbeat,
     failedMail,
+    funnel,
   ] = await Promise.all([
     db.user.count(),
     db.proProfile.count({
@@ -59,7 +61,8 @@ export default async function Page() {
       _count: true,
     }),
     db.setting.findUnique({ where: { key: "maintenanceHeartbeat" } }),
-    db.outbox.count({ where: { state: "FAILED" } }),
+    db.outbox.count({ where: { state: "FAILED", OR: [{ lastError: null }, { lastError: { not: "MESSAGE_SUPPRESSED" } }] } }),
+    bookingFunnel(since),
   ]);
   return (
     <Frame actor={actor} title="Administrimi i Zgjoi">
@@ -81,6 +84,22 @@ export default async function Page() {
           </Panel>
         ))}
       </div>
+      <Panel>
+        <h2 className="mb-3 text-lg font-bold">Ecuria e kërkesave të 30 ditëve të fundit</h2>
+        <p className="mb-4 text-sm text-muted">I njëjti grup kërkesash, sipas datës së krijimit. Çdo kërkesë numërohet vetëm një herë në secilin hap, pavarësisht sa oferta ose veprime ka. Këto janë të dhëna të këtij mjedisi.</p>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead><tr className="border-b border-line"><th className="py-3">Hapi i arritur</th><th className="py-3">Kërkesa</th><th className="py-3">Nga të gjitha</th></tr></thead>
+            <tbody>{[
+              ["Kërkesë private", funnel.inquiries], ["Të paktën një ofertë zyrtare", funnel.offered],
+              ["Ofertë e pranuar", funnel.accepted], ["Pagesë e konfirmuar ndonjëherë", funnel.funded],
+              ["Përfundim i konfirmuar nga klienti", funnel.completed],
+            ].map(([label, count]) => <tr key={label} className="border-b border-line"><th className="py-3 font-normal">{label}</th><td>{count}</td><td>{funnel.inquiries ? `${Math.round(Number(count) / funnel.inquiries * 100)}%` : "—"}</td></tr>)}</tbody>
+          </table>
+        </div>
+        <p className="mt-3 text-xs text-muted">Hapat janë historikë: rimbursimi ose anulimi i mëvonshëm nuk e fshin një hap të arritur. Kjo tabelë nuk është raport i të ardhurave ose bilanc i fondeve.</p>
+        {!funnel.coherent && <p role="alert" className="mt-3 text-sm text-red-800">Numrat kërkojnë kontroll të integritetit para interpretimit.</p>}
+      </Panel>
       <Panel>
         <Link href="/admin/perdoruesit" className="mr-5 text-gold-dark">
           {pending} profile në shqyrtim

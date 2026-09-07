@@ -9,10 +9,11 @@ import { rateLimit } from "../lib/server/rate-limit";
 import { encrypt, decrypt } from "../lib/server/crypto";
 import { requestAccountToken, authenticate, consumeAccountToken } from "../lib/server/accounts";
 import { uploadDocument, signedDocument } from "../lib/server/storage";
-import { hashToken } from "../lib/server/tokens";
+import { hashToken, opaqueToken } from "../lib/server/tokens";
 import { deliverOutbox, deliverOneVerificationEmail, notify } from "../lib/server/notifications";
 import { notificationPreferenceKey, saveNotificationPreferences } from "../lib/server/notification-preferences";
 import { expireOffers } from "../lib/server/offer-expiry";
+import { bookingFunnel } from "../lib/server/metrics";
 import { totp } from "../lib/server/totp";
 import { mfaKey, readMfa } from "../lib/server/mfa-state";
 import { kosovoLocalToIso } from "../lib/scheduling";
@@ -262,6 +263,25 @@ test("database-backed private marketplace and authorization journey", async (t) 
       await db.setting.update({ where: { key: mfaKey(user.id) }, data: { value: { enabled: true } } });
       await assert.rejects(authenticate({ email: user.email, password }, "mfa-corrupt"), { code: "MFA_CONFIG" });
       await assert.rejects(persistSession(user.id, user.passwordHash), { code: "MFA_CONFIG" });
+    },
+  );
+  await t.test(
+    "password recovery revokes sessions but cannot disable an enrolled second factor",
+    async () => {
+      const user = await account("CLIENT", "MfaReset");
+      const jar: Jar = new Map();
+      ok(await http("/api/auth/login", jar, { email: user.email, password }));
+      const setup = ok(await http("/api/account/mfa", jar, { action: "BEGIN", currentPassword: password }));
+      const enabled = ok(await http("/api/account/mfa", jar, { action: "ENABLE", currentPassword: password, code: totp(setup.secret) }));
+      const before = await readMfa(db, user.id);
+      const token = opaqueToken(), nextPassword = `reset-test-${randomUUID()}`;
+      await db.authToken.create({ data: { userId: user.id, purpose: "PASSWORD_RESET", tokenHash: hashToken(token), expiresAt: new Date(Date.now() + 600_000) } });
+      await consumeAccountToken({ token, password: nextPassword }, "PASSWORD_RESET");
+      assert.deepEqual(await readMfa(db, user.id), before);
+      await assert.rejects(authenticate({ email: user.email, password: nextPassword }, "mfa-reset"), { code: "MFA_REQUIRED" });
+      const proof = await authenticate({ email: user.email, password: nextPassword, secondFactor: enabled.recoveryCodes[0] }, "mfa-reset");
+      assert(proof.mfaVersion);
+      assert.equal(await db.session.count({ where: { userId: user.id } }), 0);
     },
   );
   await t.test(
@@ -1422,7 +1442,7 @@ test("database-backed private marketplace and authorization journey", async (t) 
       await notification();
       assert.equal(await db.outbox.count({ where: { key: { startsWith: "job-email:" } } }), 0);
       await saveNotificationPreferences(user.id, { jobEmail: true });
-      await notification("OFFER", "https://attacker.invalid");
+      await assert.rejects(notification("OFFER", "https://attacker.invalid"));
       assert.equal(await db.outbox.count({ where: { key: { startsWith: "job-email:" } } }), 0);
       await Promise.all([notification("MESSAGE"), notification("MESSAGE")]);
       const queued = await db.outbox.findMany({ where: { key: { startsWith: "job-email:" } } });
@@ -1441,7 +1461,8 @@ test("database-backed private marketplace and authorization journey", async (t) 
       await deliverOutbox();
       assert.equal(calls, 0);
       const suppressed = await db.outbox.findUniqueOrThrow({ where: { id: queued[0].id } });
-      assert.equal(suppressed.state, "CANCELLED");
+      assert.equal(suppressed.state, "FAILED");
+      assert.equal(suppressed.lastError, "MESSAGE_SUPPRESSED");
       assert.equal(suppressed.payloadEnc, "");
       await saveNotificationPreferences(user.id, { jobEmail: true });
       const fresh = await notification();
@@ -1467,6 +1488,32 @@ test("database-backed private marketplace and authorization journey", async (t) 
         if (saved[name] === undefined) delete process.env[name]; else process.env[name] = saved[name];
       }
     }
+  });
+  await t.test("cohort metrics count requests beyond page limits, ignore repeated offers and retain historical funded milestones after refunds", async () => {
+    const since = new Date("2020-01-01T00:00:00Z"), until = new Date("2020-02-01T00:00:00Z");
+    const ids = Array.from({ length: 63 }, () => randomUUID());
+    await db.serviceRequest.createMany({ data: ids.map((id, i) => ({ id, clientId: a.id, selectedProfileId: pro.proProfile!.id,
+      categorySlug: category.slug, city: "Prishtinë", title: "Synthetic historical cohort", timing: "Historical fixture", answers: {},
+      createdAt: i === 61 ? new Date(since.getTime() - 1) : i === 62 ? until : since })) });
+    const quoteIds = Array.from({ length: 40 }, () => randomUUID());
+    await db.quote.createMany({ data: quoteIds.flatMap((id, i) => [
+      { id, requestId: ids[i], profileId: pro.proProfile!.id, amount: 10000, lines: [], message: "Synthetic official offer", revision: 1, duration: "60 min", scheduledAt: since, state: i < 20 ? "ACCEPTED" as const : "SENT" as const },
+      { id: randomUUID(), requestId: ids[i], profileId: pro.proProfile!.id, amount: 10000, lines: [], message: "Synthetic earlier offer revision", revision: 2, duration: "60 min", scheduledAt: since, state: "WITHDRAWN" as const },
+    ]) });
+    for (let i = 0; i < 20; i++) await db.serviceRequest.update({ where: { id: ids[i] }, data: {
+      acceptedQuoteId: quoteIds[i], acceptedProfileId: pro.proProfile!.id, state: i < 8 ? "COMPLETED" : "BOOKED", completedAt: i < 8 ? since : null,
+    } });
+    await db.payment.createMany({ data: ids.slice(0, 12).map((requestId, i) => ({ requestId, amount: 10000, commissionBps: 1500,
+      commissionAmount: 1500, proAmount: 8500, currency: "EUR", strategy: "PLATFORM_CHARGE", provider: "disabled", heldAt: since,
+      state: i >= 8 ? "REFUNDED" : "HELD", refundedAt: i >= 8 ? new Date(since.getTime() + 86400000) : null })) });
+    const result = await bookingFunnel(since, until);
+    assert.deepEqual(result, { since: since.toISOString(), until: until.toISOString(), inquiries: 61, offered: 40, accepted: 20, funded: 12, completed: 8, coherent: true });
+    assert.equal((await bookingFunnel(new Date("2018-01-01"), new Date("2018-02-01"))).inquiries, 0);
+    await assert.rejects(bookingFunnel(until, since), { code: "METRICS_RANGE" });
+    const page = await http("/admin", adminj);
+    assert.equal(page.status, 200);
+    assert(page.text.includes("Ecuria e kërkesave të 30 ditëve të fundit"));
+    redirects(await http("/admin", aj), "/llogaria");
   });
   await t.test("operational health is staff-restricted, detects stalled work and discloses no message payloads", async () => {
     ok(await http("/api/admin/health", new Map()), 401);

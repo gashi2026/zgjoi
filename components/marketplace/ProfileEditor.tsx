@@ -149,7 +149,7 @@ export default async function ProfileEditor({ pro }: { pro: boolean }) {
             Dokumentet janë private dhe mund t’i hapni vetëm ju dhe
             administrata.
           </p>
-          <UploadDocument />
+          {process.env.DOCUMENT_UPLOADS_ENABLED === "true" ? <UploadDocument /> : <p className="text-sm text-muted">Ngarkimi ende nuk është aktiv. Mos dërgoni dokumente identiteti në bisedë ose me email.</p>}
           {profile.documents.map((d) => (
             <div className="mt-4 flex flex-wrap gap-3" key={d.id}>
               <Link

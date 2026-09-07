@@ -16,7 +16,7 @@ export async function operationalHealth() {
   const emailSetup = accountEmailSetup();
   const [heartbeat, failed, overdue, processing, staffMfa] = await Promise.all([
     db.setting.findUnique({ where: { key: "maintenanceHeartbeat" }, select: { value: true } }),
-    db.outbox.count({ where: { kind: "EMAIL", state: "FAILED" } }),
+    db.outbox.count({ where: { kind: "EMAIL", state: "FAILED", OR: [{ lastError: null }, { lastError: { not: "MESSAGE_SUPPRESSED" } }] } }),
     db.outbox.count({ where: { kind: "EMAIL", state: "PENDING", availableAt: { lte: new Date(now - 15 * 60000) } } }),
     db.outbox.count({ where: { kind: "EMAIL", state: "PROCESSING", lockedAt: { lt: new Date(now - 5 * 60000) } } }),
     staffMfaCoverage(),
