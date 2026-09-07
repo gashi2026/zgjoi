@@ -29,9 +29,27 @@ function snapshot(database) {
     const rows = sql(database, `SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text), '[]'::jsonb) FROM public."${table}" t`);
     records[table] = { count: JSON.parse(rows).length, sha256: digest(rows) };
   }
-  const schema = pg("pg_dump", ["-U", "postgres", "-d", database, "--schema-only", "--schema=public"]).toString()
-    .split("\n").filter((line) => !line.startsWith("--") && !line.startsWith("\\restrict") && !line.startsWith("\\unrestrict")).join("\n");
-  return { records, schema: digest(schema) };
+  // Compare catalog definitions instead of DDL statement order. Restoring an
+  // archive can legitimately reorder CREATE/ALTER statements in a later dump.
+  // Keep grants, policies, constraints, defaults and routines in the comparison.
+  const definitions = {
+    schemas: `SELECT nspname AS name, pg_get_userbyid(nspowner) AS owner, CASE WHEN nspacl IS NULL THEN NULL ELSE ARRAY(SELECT item::text FROM unnest(nspacl) item ORDER BY item::text) END AS acl FROM pg_namespace WHERE nspname='public'`,
+    relations: `SELECT c.relname AS name, c.relkind::text AS kind, pg_get_userbyid(c.relowner) AS owner, c.relrowsecurity AS rls, c.relforcerowsecurity AS force_rls, CASE WHEN c.relacl IS NULL THEN NULL ELSE ARRAY(SELECT item::text FROM unnest(c.relacl) item ORDER BY item::text) END AS acl, c.reloptions FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind IN ('r','p','v','m','S','f')`,
+    columns: `SELECT c.relname AS table_name, a.attname AS name, a.attnum AS position, format_type(a.atttypid,a.atttypmod) AS type, a.attnotnull AS not_null, a.attidentity::text AS identity, a.attgenerated::text AS generated, pg_get_expr(d.adbin,d.adrelid) AS default_value FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid JOIN pg_namespace n ON n.oid=c.relnamespace LEFT JOIN pg_attrdef d ON d.adrelid=c.oid AND d.adnum=a.attnum WHERE n.nspname='public' AND c.relkind IN ('r','p','v','m','S','f') AND a.attnum>0 AND NOT a.attisdropped`,
+    constraints: `SELECT c.relname AS table_name, co.conname AS name, co.contype::text AS type, co.convalidated AS validated, pg_get_constraintdef(co.oid) AS definition FROM pg_constraint co JOIN pg_class c ON c.oid=co.conrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public'`,
+    indexes: `SELECT tablename, indexname, indexdef FROM pg_indexes WHERE schemaname='public'`,
+    policies: `SELECT tablename, policyname, permissive, roles, cmd, qual, with_check FROM pg_policies WHERE schemaname='public'`,
+    enums: `SELECT t.typname AS name, e.enumlabel AS label, e.enumsortorder AS position FROM pg_type t JOIN pg_namespace n ON n.oid=t.typnamespace JOIN pg_enum e ON e.enumtypid=t.oid WHERE n.nspname='public'`,
+    routines: `SELECT p.proname AS name, pg_get_function_identity_arguments(p.oid) AS arguments, pg_get_functiondef(p.oid) AS definition, CASE WHEN p.proacl IS NULL THEN NULL ELSE ARRAY(SELECT item::text FROM unnest(p.proacl) item ORDER BY item::text) END AS acl FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.prokind IN ('f','p')`,
+    triggers: `SELECT c.relname AS table_name, t.tgname AS name, t.tgenabled::text AS enabled, pg_get_triggerdef(t.oid) AS definition FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND NOT t.tgisinternal`,
+    views: `SELECT viewname AS name, definition FROM pg_views WHERE schemaname='public'`,
+    sequences: `SELECT sequencename, sequenceowner, data_type::text, start_value, min_value, max_value, increment_by, cycle, cache_size, last_value FROM pg_sequences WHERE schemaname='public'`,
+    defaultPrivileges: `SELECT pg_get_userbyid(d.defaclrole) AS owner, COALESCE(n.nspname,'*') AS schema_name, d.defaclobjtype::text AS object_type, CASE WHEN d.defaclacl IS NULL THEN NULL ELSE ARRAY(SELECT item::text FROM unnest(d.defaclacl) item ORDER BY item::text) END AS acl FROM pg_default_acl d LEFT JOIN pg_namespace n ON n.oid=d.defaclnamespace WHERE n.nspname='public' OR d.defaclnamespace=0`,
+  };
+  const schema = {};
+  for (const [name, query] of Object.entries(definitions))
+    schema[name] = JSON.parse(sql(database, `SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text),'[]'::jsonb) FROM (${query}) t`));
+  return { records, schema };
 }
 const started = Date.now();
 let created = false;
