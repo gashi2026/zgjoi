@@ -10,7 +10,9 @@ import { encrypt, decrypt } from "../lib/server/crypto";
 import { requestAccountToken, authenticate, consumeAccountToken } from "../lib/server/accounts";
 import { uploadDocument, signedDocument } from "../lib/server/storage";
 import { hashToken } from "../lib/server/tokens";
-import { deliverOutbox, deliverOneVerificationEmail } from "../lib/server/notifications";
+import { deliverOutbox, deliverOneVerificationEmail, notify } from "../lib/server/notifications";
+import { notificationPreferenceKey, saveNotificationPreferences } from "../lib/server/notification-preferences";
+import { expireOffers } from "../lib/server/offer-expiry";
 import { totp } from "../lib/server/totp";
 import { mfaKey, readMfa } from "../lib/server/mfa-state";
 import { kosovoLocalToIso } from "../lib/scheduling";
@@ -884,6 +886,21 @@ test("database-backed private marketplace and authorization journey", async (t) 
     assert.equal(calendar.status, 200);
     assert(calendar.text.includes("Në pritje të pagesës"));
   });
+  await t.test("offer expiry reopens only unaccepted requests and notifies each participant once under concurrent workers", async () => {
+    const pending = ok(await http("/api/requests", aj, { ...inquiry, clientKey: randomUUID() }));
+    const sent = ok(await http("/api/offers", pj, { ...offer(), requestId: pending.id, clientKey: randomUUID() }));
+    await db.quote.update({ where: { id: sent.quoteId }, data: { expiresAt: new Date(Date.now() - 1000) } });
+    await Promise.all([expireOffers(), expireOffers()]);
+    assert.equal((await db.serviceRequest.findUniqueOrThrow({ where: { id: pending.id } })).state, "OPEN");
+    assert.equal((await db.serviceRequest.findUniqueOrThrow({ where: { id: pending.id } })).version, 2);
+    assert.equal((await db.quote.findUniqueOrThrow({ where: { id: sent.quoteId } })).state, "EXPIRED");
+    const notices = await db.notification.findMany({ where: { kind: "EXPIRED", href: { endsWith: `/kerkesat/${pending.id}` } } });
+    assert.equal(notices.length, 2);
+    assert.deepEqual(notices.map(n => n.userId).sort(), [a.id, pro.id].sort());
+    assert.equal(await db.payment.count({ where: { requestId: pending.id } }), 0);
+    await expireOffers();
+    assert.equal(await db.notification.count({ where: { kind: "EXPIRED", href: { endsWith: `/kerkesat/${pending.id}` } } }), 2);
+  });
   await t.test("concurrent rate limits share one atomic bucket", async () => {
     const key = `test-${randomUUID()}`;
     const results = await Promise.all(
@@ -1379,6 +1396,78 @@ test("database-backed private marketplace and authorization journey", async (t) 
     }
   });
 
+  await t.test("job email is opt-in, suppresses queued mail after opt-out and retries the same encrypted notification safely", async () => {
+    ok(await http("/api/account/notifications"), 401);
+    assert.deepEqual(ok(await http("/api/account/notifications", aj)), { jobEmail: false });
+    ok(await http("/api/account/notifications", aj, { jobEmail: true, userId: b.id }));
+    assert.deepEqual(ok(await http("/api/account/notifications", bj)), { jobEmail: false });
+    ok(await http("/api/account/notifications", aj, { jobEmail: false }));
+    const names = ["EMAIL_DELIVERY_ENABLED", "RESEND_API_KEY", "EMAIL_FROM", "JOB_EMAILS_ENABLED"] as const;
+    const saved = Object.fromEntries(names.map(name => [name, process.env[name]]));
+    const originalFetch = globalThis.fetch;
+    const originalNow = Date.now;
+    const frozen = Date.now();
+    Date.now = () => frozen;
+    let calls = 0;
+    const keys: string[] = [], bodies: string[] = [];
+    try {
+      process.env.EMAIL_DELIVERY_ENABLED = "true";
+      process.env.RESEND_API_KEY = "synthetic-ci-only";
+      process.env.EMAIL_FROM = "Zgjoi <sender@example.test>";
+      process.env.JOB_EMAILS_ENABLED = "true";
+      const user = await account("CLIENT", "JobEmail");
+      const address = `jobs-${randomUUID()}@example.test`;
+      await db.user.update({ where: { id: user.id }, data: { email: address } });
+      const notification = (kind = "OFFER", href = "/llogaria/kerkesat/test-job") => db.$transaction(tx => notify(tx, user.id, kind, "Keni një njoftim të ri", href));
+      await notification();
+      assert.equal(await db.outbox.count({ where: { key: { startsWith: "job-email:" } } }), 0);
+      await saveNotificationPreferences(user.id, { jobEmail: true });
+      await notification("OFFER", "https://attacker.invalid");
+      assert.equal(await db.outbox.count({ where: { key: { startsWith: "job-email:" } } }), 0);
+      await Promise.all([notification("MESSAGE"), notification("MESSAGE")]);
+      const queued = await db.outbox.findMany({ where: { key: { startsWith: "job-email:" } } });
+      assert.equal(queued.length, 1);
+      assert(!queued[0].payloadEnc.includes("example.test"));
+      await saveNotificationPreferences(user.id, { jobEmail: false });
+      globalThis.fetch = async (url, init) => {
+        assert.equal(String(url), "https://api.resend.com/emails");
+        assert.deepEqual(JSON.parse(String(init?.body)).to, [address]);
+        calls++;
+        keys.push(new Headers(init?.headers).get("Idempotency-Key")!);
+        bodies.push(String(init?.body));
+        if (calls === 1) throw new Error("synthetic network interruption");
+        return new Response(JSON.stringify({ id: "synthetic-job-receipt" }));
+      };
+      await deliverOutbox();
+      assert.equal(calls, 0);
+      const suppressed = await db.outbox.findUniqueOrThrow({ where: { id: queued[0].id } });
+      assert.equal(suppressed.state, "CANCELLED");
+      assert.equal(suppressed.payloadEnc, "");
+      await saveNotificationPreferences(user.id, { jobEmail: true });
+      const fresh = await notification();
+      await deliverOutbox();
+      const retry = await db.outbox.findUniqueOrThrow({ where: { key: `job-email:${fresh.id}` } });
+      assert.equal(retry.state, "PENDING");
+      assert.equal(retry.attempts, 1);
+      await db.outbox.update({ where: { id: retry.id }, data: { availableAt: new Date(frozen - 1000) } });
+      await Promise.all([deliverOutbox(), deliverOutbox()]);
+      assert.equal(calls, 2);
+      assert.equal(keys[0], keys[1]);
+      assert.equal(bodies[0], bodies[1]);
+      assert(!bodies[0].includes("token="));
+      const sent = await db.outbox.findUniqueOrThrow({ where: { id: retry.id } });
+      assert.equal(sent.state, "SENT");
+      assert.equal(sent.payloadEnc, "");
+      assert.equal(sent.attempts, 2);
+      assert.deepEqual((await db.setting.findUniqueOrThrow({ where: { key: notificationPreferenceKey(user.id) } })).value, { jobEmail: true });
+    } finally {
+      Date.now = originalNow;
+      globalThis.fetch = originalFetch;
+      for (const name of names) {
+        if (saved[name] === undefined) delete process.env[name]; else process.env[name] = saved[name];
+      }
+    }
+  });
   await t.test("operational health is staff-restricted, detects stalled work and discloses no message payloads", async () => {
     ok(await http("/api/admin/health", new Map()), 401);
     for (const jar of [aj, pj, supportj]) ok(await http("/api/admin/health", jar), 403);

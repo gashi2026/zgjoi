@@ -5,13 +5,22 @@ import Frame, { Panel } from "@/components/marketplace/Frame";
 import ApiForm from "@/components/marketplace/ApiForm";
 import MfaPanel from "@/components/marketplace/MfaPanel";
 import { mfaStatus } from "@/lib/server/mfa";
+import { notificationPreferences } from "@/lib/server/notification-preferences";
+import { db } from "@/lib/server/db";
 export const metadata = { title: "Siguria e llogarisë — Zgjoi", robots: { index: false, follow: false } };
 export const dynamic = "force-dynamic";
 export default async function Page() {
   const actor = await pageGuard();
-  const [sessions, mfa] = await Promise.all([accountSessions(actor), mfaStatus(actor)]);
+  const [sessions, mfa, preferences] = await Promise.all([accountSessions(actor), mfaStatus(actor), notificationPreferences(db, actor.id)]);
   return <Frame actor={actor} title="Siguria e llogarisë">
     <Panel><MfaPanel {...mfa} staff={actor.role === "ADMIN" || actor.role === "SUPPORT"} /></Panel>
+    <Panel>
+      <h2 className="mb-3 text-lg font-bold">Njoftimet me email</h2>
+      <p className="mb-4 text-sm text-muted">Njoftimet në llogari mbeten gjithmonë aktive. Email-et opsionale për kërkesa, mesazhe dhe oferta kërkojnë adresë të verifikuar. Mesazhet private nuk kopjohen në email.</p>
+      {process.env.JOB_EMAILS_ENABLED !== "true" && <p className="mb-3 text-sm">Dërgimi i këtyre njoftimeve ende nuk është aktiv. Preferenca juaj mund të ruhet tani.</p>}
+      <ApiForm endpoint="/api/account/notifications" label="Ruaj preferencat"
+        fields={[{ name: "jobEmail", label: "Dua njoftime për punët me email", type: "checkbox", checked: preferences.jobEmail }]} />
+    </Panel>
     <Panel>
       <h2 className="text-lg font-bold">Hyrjet aktive</h2>
       <p className="mt-2 text-sm text-muted">Shfaqen deri në 50 hyrjet më të fundit. Orët janë sipas Kosovës.</p>

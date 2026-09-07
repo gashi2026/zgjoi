@@ -16,6 +16,7 @@ export type Field = {
     | "number"
     | "datetime-local";
   value?: string | number;
+  checked?: boolean;
   required?: boolean;
   min?: number;
   max?: number;
@@ -187,6 +188,7 @@ export default function ApiForm({
               name={field.name}
               type={field.type ?? "text"}
               defaultValue={field.type === "checkbox" ? undefined : field.value}
+              defaultChecked={field.type === "checkbox" ? field.checked : undefined}
               required={field.required}
               min={field.min}
               max={field.max}

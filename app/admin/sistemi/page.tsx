@@ -23,6 +23,7 @@ export default async function Page() {
     <Panel>
       <h2 className="text-lg font-bold">Emaili i llogarisë</h2>
       <p className="mt-3">{health.emailConfigured ? "Konfiguruar; dorëzimi duhet provuar." : "Kërkon aktivizim dhe provë të dorëzimit."}</p>
+      <p className="mt-2 text-sm">Email-et opsionale për punët: {health.jobEmailEnabled ? "aktive vetëm për përdoruesit që i zgjedhin" : "ende jo aktive"}.</p>
       <ul className="mt-3 space-y-2 text-sm">
         <li>{health.mail.failed} dërgesa të dështuara që kërkojnë shqyrtim.</li>
         <li>{health.mail.overdue} dërgesa kanë kaluar kohën e provës së radhës me mbi 15 minuta.</li>

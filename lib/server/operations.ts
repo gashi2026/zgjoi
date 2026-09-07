@@ -27,6 +27,7 @@ export async function operationalHealth() {
     maintenance: maintenanceState(heartbeat?.value, now),
     emailConfigured: Object.values(emailSetup).every(Boolean),
     emailSetup,
+    jobEmailEnabled: process.env.JOB_EMAILS_ENABLED === "true",
     staffMfa,
     documentsConfigured: Boolean(process.env.DOCUMENT_UPLOADS_ENABLED === "true" && process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY),
     mail: { failed, overdue, processingExpired: processing },

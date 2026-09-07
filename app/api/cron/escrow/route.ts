@@ -2,7 +2,7 @@ import { db } from "@/lib/server/db";
 import { json } from "@/lib/server/http";
 import { equalSecret } from "@/lib/server/tokens";
 import { deliverOutbox } from "@/lib/server/notifications";
-import { serializable } from "@/lib/server/marketplace";
+import { expireOffers } from "@/lib/server/offer-expiry";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
@@ -16,31 +16,7 @@ export async function GET(req: Request) {
     return json({ error: "FORBIDDEN" }, 403);
   try {
     const now = new Date();
-    const expired = await serializable(async (tx) => {
-      const quotes = await tx.quote.findMany({
-        where: {
-          state: "SENT",
-          expiresAt: { lte: now },
-          request: { state: "QUOTED" },
-        },
-        take: 100,
-      });
-      for (const quote of quotes) {
-        await tx.quote.update({
-          where: { id: quote.id },
-          data: { state: "EXPIRED" },
-        });
-        await tx.serviceRequest.updateMany({
-          where: {
-            id: quote.requestId,
-            state: "QUOTED",
-            acceptedQuoteId: null,
-          },
-          data: { state: "OPEN", version: { increment: 1 } },
-        });
-      }
-      return quotes.length;
-    });
+    const expired = await expireOffers(now);
     const [sessions, tokens, limits] = await db.$transaction([
       db.session.deleteMany({ where: { expiresAt: { lt: now } } }),
       db.authToken.deleteMany({

@@ -3,6 +3,8 @@ import type { Prisma } from "@prisma/client";
 import { db } from "./db";
 import { encrypt, decrypt } from "./crypto";
 import { invariant } from "./errors";
+import { notificationPreferences } from "./notification-preferences";
+import { hashToken } from "./tokens";
 
 type EmailJob = {
   id: string;
@@ -19,7 +21,29 @@ export async function notify(
   title: string,
   href: string,
 ) {
-  return tx.notification.create({ data: { userId, kind, title, href } });
+  const notice = await tx.notification.create({ data: { userId, kind, title, href } });
+  const base = applicationUrl();
+  // Job emails require an operator switch AND the recipient's explicit preference.
+  // Their content contains a generic event title and an authenticated account link,
+  // never a chat body, identity document, address, or private capability URL.
+  if (process.env.JOB_EMAILS_ENABLED === "true" && base && Object.values(accountEmailSetup()).every(Boolean) &&
+      /^\/(llogaria|pro)\/(kerkesat\/[a-zA-Z0-9_-]+|paneli|njoftimet)$/.test(href)) {
+    const [user, preferences] = await Promise.all([
+      tx.user.findUnique({ where: { id: userId }, select: { email: true, emailVerified: true, suspendedAt: true } }),
+      notificationPreferences(tx, userId),
+    ]);
+    if (user?.emailVerified && !user.suspendedAt && preferences.jobEmail) {
+      const key = kind === "MESSAGE"
+        ? `job-email:${hashToken(`${userId}:${href}:${Math.floor(Date.now() / 300_000)}`)}`
+        : `job-email:${notice.id}`;
+      await tx.outbox.createMany({ skipDuplicates: true, data: [{ key, kind: "EMAIL", payloadEnc: encrypt(JSON.stringify({
+        type: "JOB_NOTICE", userId, notificationId: notice.id, to: user.email,
+        expiresAt: new Date(Date.now() + 23 * 3600_000).toISOString(),
+        subject: `${title} — Zgjoi`, text: `${title}.\nHyni në llogarinë tuaj për hollësi: ${base}${href}\nPreferencat e njoftimeve: ${base}/siguria`,
+      })) }] });
+    }
+  }
+  return notice;
 }
 
 export function applicationUrl() {
@@ -179,7 +203,18 @@ async function submitEmailJobs(jobs: EmailJob[]) {
         text: string;
         tokenId?: string;
         expiresAt?: string;
+        type?: string;
+        userId?: string;
+        notificationId?: string;
       };
+      if (message.type === "JOB_NOTICE") {
+        const user = message.userId && await db.user.findUnique({ where: { id: message.userId }, select: { email: true, emailVerified: true, suspendedAt: true } });
+        const notice = message.notificationId && await db.notification.findUnique({ where: { id: message.notificationId }, select: { userId: true } });
+        const preference = message.userId && await notificationPreferences(db, message.userId);
+        if (process.env.JOB_EMAILS_ENABLED !== "true" || !user || !user.emailVerified || user.suspendedAt ||
+            user.email !== message.to || !notice || notice.userId !== message.userId || !preference || !preference.jobEmail)
+          throw new Error("MESSAGE_SUPPRESSED");
+      }
       if (message.tokenId) {
         const token = await db.authToken.findUnique({
           where: { id: message.tokenId },
@@ -223,7 +258,7 @@ async function submitEmailJobs(jobs: EmailJob[]) {
     } catch (error) {
       const code =
         error instanceof Error &&
-        /^(TEST_ADDRESS|EXPIRED_MESSAGE|EMAIL_STATUS_\d+|EMAIL_NO_RECEIPT)$/.test(
+        /^(TEST_ADDRESS|EXPIRED_MESSAGE|MESSAGE_SUPPRESSED|EMAIL_STATUS_\d+|EMAIL_NO_RECEIPT)$/.test(
           error.message,
         )
           ? error.message
@@ -231,12 +266,12 @@ async function submitEmailJobs(jobs: EmailJob[]) {
       await db.outbox.updateMany({
         where: { id: job.id, state: "PROCESSING", lockedAt: job.lockedAt },
         data: {
-          state:
+          state: code === "MESSAGE_SUPPRESSED" ? "CANCELLED" :
             job.attempts >= 8 ||
             ["TEST_ADDRESS", "EXPIRED_MESSAGE"].includes(code)
               ? "FAILED"
               : "PENDING",
-          ...(job.attempts >= 8 ||
+          ...(code === "MESSAGE_SUPPRESSED" || job.attempts >= 8 ||
           ["TEST_ADDRESS", "EXPIRED_MESSAGE"].includes(code)
             ? { payloadEnc: "" }
             : {}),
