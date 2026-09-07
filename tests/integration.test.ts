@@ -10,7 +10,7 @@ import { encrypt, decrypt } from "../lib/server/crypto";
 import { requestAccountToken, authenticate, consumeAccountToken } from "../lib/server/accounts";
 import { uploadDocument, signedDocument } from "../lib/server/storage";
 import { hashToken } from "../lib/server/tokens";
-import { deliverOutbox } from "../lib/server/notifications";
+import { deliverOutbox, deliverOneVerificationEmail } from "../lib/server/notifications";
 const database = new URL(process.env.DATABASE_URL || "");
 assert(
   process.env.CI &&
@@ -1174,6 +1174,82 @@ test("database-backed private marketplace and authorization journey", async (t) 
       assert.equal(recovered.payloadEnc, "");
       assert.equal(recovered.lockedAt, null);
       assert.equal(calls.length, 2);
+    } finally {
+      globalThis.fetch = originalFetch;
+      for (const name of names) {
+        if (saved[name] === undefined) delete process.env[name];
+        else process.env[name] = saved[name];
+      }
+    }
+  });
+
+  await t.test("a Preview administrator can submit one confirmed verification email without maintenance or other sends", async () => {
+    const input = { outboxId: "synthetic-job", recipient: "recipient@example.test" };
+    ok(await http("/api/admin/email-test", new Map(), input), 401);
+    for (const jar of [aj, pj, supportj]) ok(await http("/api/admin/email-test", jar, input), 403);
+    ok(await http("/api/admin/email-test", adminj, input, { Origin: "https://outside.example.test" }), 403);
+    // The integration HTTP server is not a Vercel Preview; this route stays closed.
+    ok(await http("/api/admin/email-test", adminj, input), 404);
+    const names = ["VERCEL_ENV", "EMAIL_DELIVERY_ENABLED", "RESEND_API_KEY", "EMAIL_FROM"] as const;
+    const saved = Object.fromEntries(names.map((name) => [name, process.env[name]]));
+    const originalFetch = globalThis.fetch;
+    let calls = 0;
+    try {
+      process.env.VERCEL_ENV = "production";
+      await assert.rejects(deliverOneVerificationEmail(input.outboxId, input.recipient), (e: { code?: string }) => e.code === "NOT_FOUND");
+      process.env.VERCEL_ENV = "preview";
+      process.env.EMAIL_DELIVERY_ENABLED = "false";
+      await assert.rejects(deliverOneVerificationEmail(input.outboxId, input.recipient), (e: { code?: string }) => e.code === "EMAIL_NOT_READY");
+      process.env.EMAIL_DELIVERY_ENABLED = "true";
+      process.env.RESEND_API_KEY = "synthetic-ci-only";
+      process.env.EMAIL_FROM = "sender@example.test";
+      const user = await account("CLIENT", "SingleEmail");
+      const recipient = `single-${randomUUID()}@example.test`;
+      await db.user.update({ where: { id: user.id }, data: { email: recipient } });
+      await requestAccountToken(user.id, "EMAIL_VERIFY");
+      const token = await db.authToken.findFirstOrThrow({ where: { userId: user.id, purpose: "EMAIL_VERIFY", usedAt: null } });
+      const target = await db.outbox.findUniqueOrThrow({ where: { key: `account-email:${token.id}` } });
+      // Sentinels would be changed by the general maintenance worker.
+      await persistSession(user.id, user.passwordHash);
+      await db.session.updateMany({ where: { userId: user.id }, data: { expiresAt: new Date(Date.now() - 2 * 86400000) } });
+      await db.authToken.create({ data: { userId: user.id, purpose: "EMAIL_VERIFY", tokenHash: hashToken(randomUUID()), expiresAt: new Date(Date.now() - 8 * 86400000) } });
+      await db.rateLimitBucket.create({ data: { key: hashToken(randomUUID()), hits: 1, resetAt: new Date(Date.now() - 2 * 86400000) } });
+      await db.outbox.create({ data: { key: `unrelated-${randomUUID()}`, kind: "EMAIL", createdAt: new Date(Date.now() - 2 * 86400000), payloadEnc: encrypt("unrelated synthetic message") } });
+      const snapshot = () => Promise.all([
+        db.session.findMany({ orderBy: { id: "asc" } }),
+        db.authToken.findMany({ orderBy: { id: "asc" } }),
+        db.rateLimitBucket.findMany({ orderBy: { key: "asc" } }),
+        db.quote.findMany({ orderBy: { id: "asc" } }),
+        db.serviceRequest.findMany({ orderBy: { id: "asc" } }),
+        db.payment.findMany({ orderBy: { id: "asc" } }),
+        db.payout.findMany({ orderBy: { id: "asc" } }),
+        db.setting.findMany({ orderBy: { key: "asc" } }),
+        db.outbox.findMany({ where: { id: { not: target.id } }, orderBy: { id: "asc" } }),
+      ]);
+      const before = await snapshot();
+      globalThis.fetch = async (url, init) => {
+        assert.equal(String(url), "https://api.resend.com/emails");
+        assert.deepEqual(JSON.parse(String(init?.body)).to, [recipient]);
+        assert.equal(new Headers(init?.headers).get("Idempotency-Key"), target.key);
+        calls++;
+        return new Response(JSON.stringify({ id: "synthetic-single-receipt" }));
+      };
+      await assert.rejects(deliverOneVerificationEmail(target.id, "other@example.test"), (e: { code?: string }) => e.code === "EMAIL_RECIPIENT");
+      assert.equal(calls, 0);
+      assert.deepEqual(await db.outbox.findUnique({ where: { id: target.id } }), target);
+      const concurrent = await Promise.allSettled([
+        deliverOneVerificationEmail(target.id, recipient),
+        deliverOneVerificationEmail(target.id, recipient),
+      ]);
+      assert.equal(concurrent.filter((r) => r.status === "fulfilled" && r.value.accepted).length, 1);
+      assert.equal(concurrent.filter((r) => r.status === "rejected").length, 1);
+      await assert.rejects(deliverOneVerificationEmail(target.id, recipient));
+      assert.equal(calls, 1);
+      const sent = await db.outbox.findUniqueOrThrow({ where: { id: target.id } });
+      assert.equal(sent.state, "SENT");
+      assert.equal(sent.attempts, 1);
+      assert.equal(sent.payloadEnc, "");
+      assert.deepEqual(await snapshot(), before);
     } finally {
       globalThis.fetch = originalFetch;
       for (const name of names) {

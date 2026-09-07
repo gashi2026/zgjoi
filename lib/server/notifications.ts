@@ -2,6 +2,15 @@ import "server-only";
 import type { Prisma } from "@prisma/client";
 import { db } from "./db";
 import { encrypt, decrypt } from "./crypto";
+import { invariant } from "./errors";
+
+type EmailJob = {
+  id: string;
+  payloadEnc: string;
+  key: string;
+  attempts: number;
+  lockedAt: Date;
+};
 
 export async function notify(
   tx: Prisma.TransactionClient,
@@ -72,6 +81,50 @@ export async function queueAccountEmail(
   return { queued: true };
 }
 
+/** Preview-only submission of one fresh verification email; no maintenance work. */
+export async function deliverOneVerificationEmail(id: string, recipient: string) {
+  invariant(process.env.VERCEL_ENV === "preview", "NOT_FOUND", 404, "Nuk u gjet.");
+  invariant(
+    Object.values(accountEmailSetup()).every(Boolean),
+    "EMAIL_NOT_READY", 503, "Dërgimi i emailit nuk është aktiv.",
+  );
+  const job = await db.outbox.findUnique({ where: { id } });
+  invariant(
+    job && job.kind === "EMAIL" && job.state === "PENDING" && job.attempts === 0,
+    "EMAIL_UNAVAILABLE", 409, "Emaili nuk është i disponueshëm për dërgim.",
+  );
+  const message = JSON.parse(decrypt(job.payloadEnc)) as { to?: string; tokenId?: string };
+  invariant(
+    message.to === recipient && !recipient.endsWith(".invalid") &&
+      message.tokenId && job.key === `account-email:${message.tokenId}`,
+    "EMAIL_RECIPIENT", 400, "Konfirmoni marrësin e emailit.",
+  );
+  const token = await db.authToken.findUnique({
+    where: { id: message.tokenId },
+    select: {
+      purpose: true, usedAt: true, expiresAt: true,
+      user: { select: { email: true, suspendedAt: true } },
+    },
+  });
+  invariant(
+    token && token.purpose === "EMAIL_VERIFY" && !token.usedAt &&
+      token.expiresAt.getTime() > Date.now() &&
+      token.user.email === recipient && !token.user.suspendedAt,
+    "EMAIL_UNAVAILABLE", 409, "Emaili nuk është i disponueshëm për dërgim.",
+  );
+  const claimed = await db.$queryRaw<EmailJob[]>`
+    UPDATE public."Outbox" SET state = 'PROCESSING', "lockedAt" = NOW(), attempts = attempts + 1
+    WHERE id = ${job.id} AND kind = 'EMAIL' AND state = 'PENDING' AND attempts = 0
+      AND "payloadEnc" = ${job.payloadEnc} AND "availableAt" <= NOW()
+      AND "createdAt" > NOW() - INTERVAL '23 hours'
+    RETURNING id, "payloadEnc", key, attempts, "lockedAt"`;
+  invariant(
+    claimed.length === 1,
+    "EMAIL_UNAVAILABLE", 409, "Emaili nuk është i disponueshëm për dërgim.",
+  );
+  return { accepted: (await submitEmailJobs(claimed)) === 1 };
+}
+
 /** Called only by the authenticated maintenance worker. Delivery is explicitly opt-in. */
 export async function deliverOutbox() {
   if (
@@ -106,14 +159,17 @@ export async function deliverOutbox() {
     },
     data: { state: "FAILED", lastError: "DELIVERY_ATTEMPTS_EXHAUSTED", payloadEnc: "", lockedAt: null },
   });
-  const jobs = await db.$queryRaw<
-    { id: string; payloadEnc: string; key: string; attempts: number; lockedAt: Date }[]
-  >`
+  const jobs = await db.$queryRaw<EmailJob[]>`
     UPDATE public."Outbox" SET state = 'PROCESSING', "lockedAt" = NOW(), attempts = attempts + 1
     WHERE id IN (SELECT id FROM public."Outbox" WHERE kind = 'EMAIL' AND attempts < 8
       AND ((state = 'PENDING' AND "availableAt" <= NOW()) OR (state = 'PROCESSING' AND "lockedAt" < NOW() - INTERVAL '5 minutes'))
       ORDER BY "availableAt" FOR UPDATE SKIP LOCKED LIMIT 10)
     RETURNING id, "payloadEnc", key, attempts, "lockedAt"`;
+  return { enabled: true, delivered: await submitEmailJobs(jobs) };
+}
+
+/** Only the explicitly claimed rows are updated or submitted to the provider. */
+async function submitEmailJobs(jobs: EmailJob[]) {
   let delivered = 0;
   for (const job of jobs) {
     try {
@@ -193,5 +249,5 @@ export async function deliverOutbox() {
       });
     }
   }
-  return { enabled: true, delivered };
+  return delivered;
 }
