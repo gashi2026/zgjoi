@@ -16,4 +16,10 @@ After changing Preview settings:
 
 Keep variable values and credentials out of screenshots, commits and test logs.
 
+When preparing database URLs, start with the original database password and
+percent-encode its password component once. Encode the password separately from
+the rest of the URL so that host, port, path and query separators stay intact.
+After saving the prepared values, repeat the new-deployment and connection checks
+above; correctly formatted URLs still require valid database credentials.
+
 Reference: [Managing environment variables](https://vercel.com/docs/environment-variables/managing-environment-variables).
