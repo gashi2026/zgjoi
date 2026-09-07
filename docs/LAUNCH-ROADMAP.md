@@ -1,9 +1,9 @@
 # Zgjoi — launch roadmap
 
-Updated 7 September 2026. **Production readiness: 27/100; NO-GO for a real-money beta.**
-This is the production assessment, not a percentage of source code written. The
-implementation candidate is substantially further along, but it has not reached
-production or passed external-service/browser launch gates.
+Updated 7 September 2026. **Current development candidate: approximately 60/100,
+provisional. Real-money beta: NO-GO.** The older audited version was assessed at
+27/100; its source remained deployed at the last inspection. Candidate progress
+and deployed behavior are tracked separately, using the original audit rubric.
 
 ## Product contract
 
@@ -40,6 +40,39 @@ Full details: [implementation evidence](PRIVATE-MARKETPLACE-BETA.md),
 [owner setup steps](OWNER-SETUP.md), [backend map](../BACKEND.md) and
 [deployment runbook](../DEPLOY.md). Earlier foundation verification files are
 historical evidence for their named commits, not current feature claims.
+
+## Readiness reassessment — 7 September 2026
+
+**Current development candidate: approximately 60/100, provisional.** The original
+27/100 assessment described the older audited version after its database access
+repair. Carrying it forward as the headline after the candidate implementation
+understated verified progress. The original audit rubric assessed the source and
+available evidence; it was not restricted to already-deployed changes.
+
+This reassessment uses the original eight categories and weights. It credits the
+implemented code, isolated CI results and hosted staging checks, while withholding
+credit for unverified external-service and production behavior. The individual
+scores are engineering judgments, not calibrated measurements or a percentage of
+work remaining. No new application functionality or deployment occurred as part
+of this scoring correction.
+
+| Area                                    |  Weight | Older version | Current candidate | Evidence / remaining gap                                                                                                                                                                                         |
+| --------------------------------------- | ------: | ------------: | ----------------: | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Direct-pro customer/pro journey         |      25 |             3 |                18 | Persistent search, accounts, private inquiries/chat, offers, acceptance and completion/review pass isolated HTTP/DB tests; full deployed browser/provider journey remains unverified.                            |
+| Payment, held funds and settlement      |      20 |             2 |                 5 | Test-only checkout and guarded state/transfer/refund preparation exist. Live eligibility, complete money ledger, chargeback/reversal handling and bank payout reconciliation remain open.                        |
+| Security and privacy                    |      15 |             5 |                10 | Shared session/role/ownership checks, support isolation, database rate limits and hosted RLS/grant restrictions have evidence. Deployed access, storage and administrative hardening still require verification. |
+| Database and integrity                  |      10 |             4 |                 7 | Staging upgrade, constraints and concurrency scenarios pass. Production schema baseline, data migration and backup/restore rehearsal remain open.                                                                |
+| Admin and support operations            |      10 |             5 |                 7 | Persistent audited administration/support and duplicate-reply controls are implemented; financial operating controls and live settlement verification are incomplete.                                            |
+| UI, mobile, accessibility, localization |      10 |             6 |                 7 | Real account forms replace demos while preserving the visual system. Browser/device, accessibility and Albanian proofreading still need evidence.                                                                |
+| Deployment, reliability and QA          |       5 |             1 |                 3 | Safe reproducible builds and CI/database regressions pass. Isolated Vercel wiring, monitoring, production rollout and recovery remain incomplete.                                                                |
+| SEO, notifications and analytics        |       5 |             1 |                 3 | Canonical/private indexing, real metrics, in-app notifications and account-email outbox are prepared. Actual delivery, conversion analytics and production verification remain open.                             |
+| **Total**                               | **100** |        **27** |            **60** | **Real-money launch remains blocked by mandatory gates.**                                                                                                                                                        |
+
+The last inspected production deployment still ran the older source. The candidate
+remains a draft awaiting isolated Preview verification. A higher candidate score
+does not authorize launch: provider approval, the financial ledger/reconciliation,
+real email/storage/provider and browser/device tests, production migration,
+backup/restore and operational readiness still need completion.
 
 ## Top 25 work packages
 

@@ -140,7 +140,8 @@ and, where relevant, your operating decisions:
 - Accurate operator details, customer/pro terms, privacy, refund policy, Albanian
   proofreading, canonical domain/www routing and real approved launch profiles.
 - A small invited pilot with recorded outcomes and financial reconciliation. The
-  readiness score remains tied to the deployed product, not draft source files.
+  candidate readiness and deployed behavior are tracked separately; mandatory
+  launch gates still require actual operating evidence.
 
 Do not merge either draft yet simply because CI is green. PR #2 currently targets
 the foundation branch, not main; merging it would also require verified staging
