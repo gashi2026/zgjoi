@@ -32,11 +32,13 @@ function snapshot(database) {
   // Compare catalog definitions instead of DDL statement order. Restoring an
   // archive can legitimately reorder CREATE/ALTER statements in a later dump.
   // Keep grants, policies, constraints, defaults and routines in the comparison.
+  // PostgreSQL's pretty deparser removes redundant parentheses introduced when
+  // BETWEEN is expanded to nested ANDs, while retaining meaningful precedence.
   const definitions = {
     schemas: `SELECT nspname AS name, pg_get_userbyid(nspowner) AS owner, CASE WHEN nspacl IS NULL THEN NULL ELSE ARRAY(SELECT item::text FROM unnest(nspacl) item ORDER BY item::text) END AS acl FROM pg_namespace WHERE nspname='public'`,
     relations: `SELECT c.relname AS name, c.relkind::text AS kind, pg_get_userbyid(c.relowner) AS owner, c.relrowsecurity AS rls, c.relforcerowsecurity AS force_rls, CASE WHEN c.relacl IS NULL THEN NULL ELSE ARRAY(SELECT item::text FROM unnest(c.relacl) item ORDER BY item::text) END AS acl, c.reloptions FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind IN ('r','p','v','m','S','f')`,
     columns: `SELECT c.relname AS table_name, a.attname AS name, a.attnum AS position, format_type(a.atttypid,a.atttypmod) AS type, a.attnotnull AS not_null, a.attidentity::text AS identity, a.attgenerated::text AS generated, pg_get_expr(d.adbin,d.adrelid) AS default_value FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid JOIN pg_namespace n ON n.oid=c.relnamespace LEFT JOIN pg_attrdef d ON d.adrelid=c.oid AND d.adnum=a.attnum WHERE n.nspname='public' AND c.relkind IN ('r','p','v','m','S','f') AND a.attnum>0 AND NOT a.attisdropped`,
-    constraints: `SELECT c.relname AS table_name, co.conname AS name, co.contype::text AS type, co.convalidated AS validated, pg_get_constraintdef(co.oid) AS definition FROM pg_constraint co JOIN pg_class c ON c.oid=co.conrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public'`,
+    constraints: `SELECT c.relname AS table_name, co.conname AS name, co.contype::text AS type, co.convalidated AS validated, pg_get_constraintdef(co.oid,true) AS definition FROM pg_constraint co JOIN pg_class c ON c.oid=co.conrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public'`,
     indexes: `SELECT tablename, indexname, indexdef FROM pg_indexes WHERE schemaname='public'`,
     policies: `SELECT tablename, policyname, permissive, roles, cmd, qual, with_check FROM pg_policies WHERE schemaname='public'`,
     enums: `SELECT t.typname AS name, e.enumlabel AS label, e.enumsortorder AS position FROM pg_type t JOIN pg_namespace n ON n.oid=t.typnamespace JOIN pg_enum e ON e.enumtypid=t.oid WHERE n.nspname='public'`,
