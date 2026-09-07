@@ -62,30 +62,10 @@ const buildCells = (services: Record<string, string>): Cell[] => ROWS.flatMap(({
 );
 
 
-/* Ballerina silhouette — bun, arms out, wide tutu, legs crossing en pointe.
-   Filled with currentColor so it takes the same gold as the other icons. */
-function Ballerina({ size = 30 }: { size?: number }) {
-  return (
-    <svg width={size} height={size * 1.3} viewBox="0 0 100 130" fill="currentColor" aria-hidden="true">
-      <ellipse cx="53" cy="6" rx="6" ry="5" />
-      <circle cx="50" cy="16" r="9" />
-      <path d="M47 24 L53 24 L52 31 L48 31 Z" />
-      <path d="M44 30 C42 38 41 46 42 52 L58 52 C59 46 58 38 56 30 C53 32 47 32 44 30 Z" />
-      <path d="M44 33 C34 36 22 42 8 52 C6.5 53 7 55.5 9 55 C23 50 35 44 45 40 Z" />
-      <path d="M56 33 C66 36 78 42 92 52 C93.5 53 93 55.5 91 55 C77 50 65 44 55 40 Z" />
-      <path d="M42 51 C28 54 18 60 14 66 C24 71 38 73 50 73 C62 73 76 71 86 66 C82 60 72 54 58 51 Z" />
-      <path d="M46 72 C45 88 44 102 43 114 L48 114 C49 102 49.5 88 50 73 Z" />
-      <path d="M54 72 C55 86 55 98 52 108 C51 113 49 118 47 122 L52 123 C55 117 57 110 58 102 C59 92 59 82 58 73 Z" />
-      <path d="M43 114 L41 123 C41 125 43 126 44 124 L48 115 Z" />
-      <path d="M47 122 L45 128 C45 130 47 130.5 48 129 L52 123 Z" />
-    </svg>
-  );
-}
-
 /* Hover label: a pill with a short gold line connecting it to the cell. */
-function Label({ name, below }: { name: string; below?: boolean }) {
+function Label({ name, below, edge }: { name: string; below?: boolean; edge?: "left" | "right" }) {
   const pill = (
-    <span className="block whitespace-nowrap rounded-full border border-gold bg-white px-3 py-1 text-xs font-bold text-ink shadow-lift">
+    <span className="block max-w-[11rem] rounded-xl text-center border border-gold bg-white px-3 py-1 text-xs font-bold text-ink shadow-lift">
       {name}
     </span>
   );
@@ -93,7 +73,7 @@ function Label({ name, below }: { name: string; below?: boolean }) {
 
   return (
     <span
-      className={`pointer-events-none absolute left-1/2 z-30 -translate-x-1/2 opacity-0 transition-all duration-200 group-hover:opacity-100 group-focus-visible:opacity-100 ${
+      className={`pointer-events-none absolute z-30 w-max opacity-0 transition-all duration-200 group-hover:opacity-100 group-focus-visible:opacity-100 ${edge === "left" ? "left-0" : edge === "right" ? "right-0" : "left-1/2 -translate-x-1/2"} ${
         below
           ? "bottom-1 translate-y-full group-hover:translate-y-[calc(100%+10px)] group-focus-visible:translate-y-[calc(100%+10px)]"
           : "top-1 -translate-y-full group-hover:-translate-y-[calc(100%+10px)] group-focus-visible:-translate-y-[calc(100%+10px)]"
@@ -130,29 +110,30 @@ export default function Honeycomb({
   const dx = size; // horizontal distance between hex centres
   const dy = h * 0.75; // vertical distance between rows
 
-  const CELLS = buildCells(activeServices);
+  const CELLS = buildCells(activeServices).filter((c) => c.col >= 0 || c.slug || c.bee);
   const cols = CELLS.map((c) => c.col);
   const minCol = Math.min(...cols);
   const width = (Math.max(...cols) - minCol) * dx + size;
   const height = Math.max(...CELLS.map((c) => c.row)) * dy + h;
 
   return (
-    <div className="relative select-none" style={{ width, height }}>
+    <div className="relative mx-auto w-full select-none" style={{ maxWidth: width, aspectRatio: `${width} / ${height}` }} data-honeycomb>
       {CELLS.map((c, i) => {
-        const left = (c.col - minCol) * dx;
-        const top = c.row * dy;
+        const left = `${((c.col - minCol) * dx / width) * 100}%`;
+        const top = `${(c.row * dy / height) * 100}%`;
+        const cellSize = { width: `${size / width * 100}%`, height: `${h / height * 100}%` };
         const category = c.slug ? lookup(c.slug) : undefined;
         const decorative = !category && !c.bee;
 
         const shape = (
           <svg
             viewBox="0 0 100 115.47"
-            width={size}
-            height={h}
+            width="100%"
+            height="100%"
             className={
               decorative
                 ? ""
-                : "drop-shadow-[0_6px_14px_rgba(232,157,0,0.12)] transition-transform duration-200 group-hover:scale-[1.06]"
+                : "drop-shadow-[0_6px_14px_rgba(232,157,0,0.12)] transition-colors duration-200"
             }
             aria-hidden="true"
           >
@@ -188,8 +169,7 @@ export default function Honeycomb({
               style={{
                 left,
                 top,
-                width: size,
-                height: h,
+                ...cellSize,
                 opacity: c.fade ?? 1,
               }}
               aria-hidden="true"
@@ -205,7 +185,7 @@ export default function Honeycomb({
             <div
               key={i}
               className="absolute"
-              style={{ left, top, width: size, height: h }}
+              style={{ left, top, ...cellSize }}
             >
               <BeeCell size={size} height={h} />
             </div>
@@ -216,26 +196,17 @@ export default function Honeycomb({
         return (
           <Link
             key={i}
-            href={`/kerko?kategoria=${category!.slug}`}
+            href={`/kerko?kategoria=${encodeURIComponent(category!.slug)}`}
             aria-label={`${category!.name} — shiko profesionistët`}
             draggable={false}
-            className="group absolute z-10 hover:z-40 focus:z-40"
-            style={{ left, top, width: size, height: h }}
+            className="group absolute z-10 rounded-xl hover:z-40 focus:z-40"
+            style={{ left, top, ...cellSize }}
           >
             {shape}
-            <span className="absolute inset-0 flex items-center justify-center text-gold-dark transition-transform duration-200 group-hover:scale-110">
-              {category!.slug === "balet" ? (
-                <Ballerina size={26} />
-              ) : (
-                <CategoryIcon
-                  name={category!.icon}
-                  size={30}
-                  className="text-gold-dark"
-                  strokeWidth={1.7}
-                />
-              )}
+            <span className="absolute inset-0 flex items-center justify-center text-gold-dark">
+              <CategoryIcon name={category!.icon} size={30} className="!h-[43%] !w-[43%] text-gold-dark" />
             </span>
-            <Label name={category!.name} below={c.below} />
+            <Label name={category!.name} below={c.below} edge={c.col < minCol + 1 ? "left" : c.col > Math.max(...cols) - 1 ? "right" : undefined} />
           </Link>
         );
       })}

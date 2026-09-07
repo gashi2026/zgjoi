@@ -23,6 +23,17 @@ body {
   @apply bg-white text-ink antialiased;
 }
 
+/* Components respond to their available space, including laptop columns. */
+.service-search { container: service-search / inline-size; }
+@container service-search (min-width: 36rem) {
+  .service-search-form { grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr) auto; }
+}
+@container service-search (min-width: 24rem) and (max-width: 35.999rem) {
+  .service-search-form { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .service-search-form > button { grid-column: 1 / -1; }
+}
+.hive-scroll { scrollbar-width: thin; scrollbar-color: #e89d00 #fff3cf; }
+
 ::selection {
   background: #fff3cf;
   color: #111111;

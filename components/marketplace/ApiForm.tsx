@@ -29,7 +29,7 @@ export type Field = {
   autoComplete?: string;
 };
 export const inputClass =
-  "w-full rounded-xl border border-line bg-white px-3 py-3 text-base text-ink outline-none focus:border-gold focus:ring-2 focus:ring-gold/30";
+  "min-w-0 max-w-full w-full rounded-xl border border-line bg-white px-3 py-3 text-base text-ink outline-none focus:border-gold focus:ring-2 focus:ring-gold/30";
 export const buttonClass =
   "inline-flex min-h-11 items-center justify-center rounded-full bg-gold px-5 py-3 font-semibold text-ink hover:bg-gold-dark disabled:cursor-wait disabled:opacity-60";
 

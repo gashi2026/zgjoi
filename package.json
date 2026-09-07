@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --webpack",
+    "dev": "node scripts/dev.mjs",
     "build": "npm run lint && prisma generate && next build --webpack",
     "start": "next start",
     "lint": "eslint .",

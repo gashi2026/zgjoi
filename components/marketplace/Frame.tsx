@@ -5,7 +5,7 @@ import { initials } from "@/lib/server/catalog";
 import Link from "next/link";
 export function Panel({ children }: { children: React.ReactNode }) {
   return (
-    <section className="rounded-2xl border border-line bg-white p-5 shadow-soft sm:p-6">
+    <section className="min-w-0 break-words rounded-2xl border border-line bg-white p-4 shadow-soft sm:p-6">
       {children}
     </section>
   );

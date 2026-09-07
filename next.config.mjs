@@ -1,6 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  // The supervised local preview proxies the Next.js development server here.
+  allowedDevOrigins: ["terminal.local"],
   async headers() {
     return [
       {
