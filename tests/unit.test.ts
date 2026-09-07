@@ -48,9 +48,11 @@ test("database diagnostics classify failures without logging credentials or Pris
   assert.equal(logged.databaseErrorCode, "P1001");
   assert.equal(logged.databaseEndpoint, "supabase_direct");
   assert.equal(logged.databaseFailureReason, "unclassified");
+  assert.equal(logged.databasePasswordState, "present");
   assert.equal(body.databaseErrorCode, undefined);
   assert.equal(body.databaseEndpoint, undefined);
   assert.equal(body.databaseFailureReason, undefined);
+  assert.equal(body.databasePasswordState, undefined);
   for (const secret of [
     secretUrl,
     "private-user",
@@ -87,7 +89,26 @@ test("database diagnostics reject arbitrary metadata and classify missing or inv
     assert.deepEqual(databaseFailureDetails(error), {
       databaseEndpoint: expected,
       databaseFailureReason: "unclassified",
+      ...(expected === "supabase_pooler" ? {
+        databaseProjectRef: undefined,
+        databasePasswordState: "present",
+      } : {}),
     });
+  }
+  for (const [password, state] of [
+    ["", "missing"],
+    ["[YOUR-PASSWORD]", "placeholder"],
+    ["%5BYOUR_PASSWORD%5D", "placeholder"],
+    ["test-secret", "present"],
+  ]) {
+    process.env.DATABASE_URL =
+      `postgresql://postgres.abcdefghijklmnopqrst:${password}@aws-test.pooler.supabase.com:6543/postgres`;
+    const details = databaseFailureDetails(error);
+    assert.equal(details.databaseProjectRef, "abcdefghijklmnopqrst");
+    assert.equal(details.databasePasswordState, state);
+    assert(!JSON.stringify(details).includes("test-secret"));
+    assert(!JSON.stringify(details).includes("postgres."));
+    assert(!JSON.stringify(details).includes("aws-test"));
   }
   for (const [message, reason] of [
     ["FATAL: Tenant or user not found", "pooler_tenant_or_user_not_found"],

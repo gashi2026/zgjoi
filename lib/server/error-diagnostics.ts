@@ -13,6 +13,8 @@ export function databaseFailureDetails(error: unknown) {
     databaseErrorCode?: string;
     databaseEndpoint?: string;
     databaseFailureReason?: string;
+    databaseProjectRef?: string;
+    databasePasswordState?: string;
   } = {};
   if (typeof code === "string" && /^P\d{4}$/.test(code))
     details.databaseErrorCode = code;
@@ -49,6 +51,18 @@ export function databaseFailureDetails(error: unknown) {
             : url.hostname.endsWith(".pooler.supabase.com")
               ? "supabase_pooler"
               : "other";
+        if (["supabase_direct", "supabase_pooler"].includes(details.databaseEndpoint)) {
+          // Project references are public identifiers. Do not log the username,
+          // hostname, password, or any substring/hash of the password.
+          details.databaseProjectRef =
+            url.hostname.match(/^db\.([a-z]{20})\.supabase\.co$/)?.[1] ??
+            url.username.match(/\.([a-z]{20})$/)?.[1];
+          details.databasePasswordState = !url.password
+            ? "missing"
+            : /^(?:\[YOUR[-_]PASSWORD\]|%5BYOUR[-_]PASSWORD%5D|YOUR[-_]PASSWORD)$/i.test(url.password)
+              ? "placeholder"
+              : "present";
+        }
       } catch {
         details.databaseEndpoint = "invalid";
       }

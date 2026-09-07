@@ -74,6 +74,13 @@ historical evidence for their named commits, not current feature claims.
   Preview to load the corrected environment. Verify the actual staging category
   IDs before authentication or writes; a reported correction alone is not a
   successful connection test. Application source and database schema are unchanged.
+- Retry at `a2ceb2505907ef69e7a7f6ac14c46d0a6f9399a5`: Preview
+  `dpl_8NcxjBMGNLZGFGN1j7G3RkB3FuN7` is READY; full CI run `34133020916`
+  passes. Catalog request `ec47e291-45c5-4b68-ade6-51842bf5aacb` still returns
+  HTTP 503 with `authentication_failed`. Added only a public Supabase project-ref
+  identifier and password presence/placeholder category to initialization logs to
+  distinguish a wrong environment/project from an incorrect database password.
+  No password content, substring or hash is emitted. Hosted writes remain blocked.
 
 ## Readiness reassessment — 7 September 2026
 
