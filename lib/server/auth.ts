@@ -6,6 +6,7 @@ import { db } from "./db";
 import { AppError } from "./errors";
 import { serializable } from "./transaction";
 import { opaqueToken, hashToken, validToken } from "./tokens";
+import { readMfa } from "./mfa-state";
 export type Role = "CLIENT" | "PRO" | "ADMIN" | "SUPPORT";
 
 const COOKIE = "zgjoi_session";
@@ -41,15 +42,18 @@ export async function accountSessions(actor: Actor) {
 
 /* ------------------------------------------------------------ sessions */
 
-export async function persistSession(userId: string, expectedPasswordHash: string, old?: string) {
+export async function persistSession(userId: string, expectedPasswordHash: string, old?: string, mfaVersion?: string) {
   const token = opaqueToken();
 
   const expiresAt = await serializable(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM public."User" WHERE id = ${userId} FOR UPDATE`;
     const user = await tx.user.findUnique({
       where: { id: userId },
       select: { suspendedAt: true, passwordHash: true, role: true },
     });
     if (!user || user.suspendedAt || user.passwordHash !== expectedPasswordHash) throw new AuthError("UNAUTHENTICATED");
+    const mfa = await readMfa(tx, userId);
+    if (mfa?.enabled && mfa.version !== mfaVersion) throw new AuthError("MFA_REQUIRED");
     const expiresAt = new Date(Date.now() + (["ADMIN", "SUPPORT"].includes(user.role) ? STAFF_SESSION_MS : DAYS * 864e5));
     if (old && validToken(old))
       await tx.session.deleteMany({ where: { token: hashToken(old) } });
@@ -62,9 +66,9 @@ export async function persistSession(userId: string, expectedPasswordHash: strin
   return { token, expiresAt };
 }
 
-export async function createSession(userId: string, expectedPasswordHash: string) {
+export async function createSession(userId: string, expectedPasswordHash: string, mfaVersion?: string) {
   const old = (await cookies()).get(COOKIE)?.value;
-  const { token, expiresAt } = await persistSession(userId, expectedPasswordHash, old);
+  const { token, expiresAt } = await persistSession(userId, expectedPasswordHash, old, mfaVersion);
   (await cookies()).set(COOKIE, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",

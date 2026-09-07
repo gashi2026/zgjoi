@@ -20,6 +20,11 @@ export default function Page() {
           required: true,
           autoComplete: "current-password",
         },
+        {
+          name: "secondFactor",
+          label: "Kodi i autentikimit ose rikuperimit (nëse e keni aktivizuar)",
+          autoComplete: "one-time-code",
+        },
       ]}
     />
   );

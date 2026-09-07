@@ -11,6 +11,9 @@ import { requestAccountToken, authenticate, consumeAccountToken } from "../lib/s
 import { uploadDocument, signedDocument } from "../lib/server/storage";
 import { hashToken } from "../lib/server/tokens";
 import { deliverOutbox, deliverOneVerificationEmail } from "../lib/server/notifications";
+import { totp } from "../lib/server/totp";
+import { mfaKey, readMfa } from "../lib/server/mfa-state";
+import { kosovoLocalToIso } from "../lib/scheduling";
 const database = new URL(process.env.DATABASE_URL || "");
 assert(
   process.env.CI &&
@@ -186,6 +189,77 @@ test("database-backed private marketplace and authorization journey", async (t) 
         }),
         401,
       );
+    },
+  );
+  await t.test(
+    "MFA enrollment, login, recovery rotation and disable require both factors and revoke sessions",
+    async () => {
+      const user = await account("ADMIN", "MfaAdmin");
+      const jar: Jar = new Map();
+      ok(await http("/api/auth/login", jar, { email: user.email, password }));
+      ok(await http("/api/account/mfa"), 401);
+      ok(await http("/api/account/mfa", jar, { action: "BEGIN", currentPassword: "incorrect" }), 401);
+      const setup = ok(await http("/api/account/mfa", jar, { action: "BEGIN", currentPassword: password }));
+      const state = await readMfa(db, user.id);
+      assert(state && !state.enabled);
+      assert(!JSON.stringify(state).includes(setup.secret));
+      assert.equal(decrypt(state.secretEnc), setup.secret);
+      assert.deepEqual(ok(await http("/api/account/mfa", jar)), { enabled: false, recoveryCodesRemaining: 0 });
+      ok(await http("/api/account/mfa", jar, { action: "ENABLE", currentPassword: password, code: "invalid" }), 401);
+      const enrollmentCode = totp(setup.secret);
+      const enabled = ok(await http("/api/account/mfa", jar, { action: "ENABLE", currentPassword: password, code: enrollmentCode }));
+      assert.equal(enabled.recoveryCodes.length, 10);
+      assert.equal(new Set(enabled.recoveryCodes).size, 10);
+      assert.equal(await db.session.count({ where: { userId: user.id } }), 0);
+      ok(await http("/api/account/mfa", jar), 401);
+      const stored = JSON.stringify((await db.setting.findUniqueOrThrow({ where: { key: mfaKey(user.id) } })).value);
+      assert(enabled.recoveryCodes.every((code: string) => !stored.includes(code.replaceAll("-", ""))));
+      assert(!stored.includes(setup.secret));
+      ok(await http("/api/auth/login", new Map(), { email: user.email, password }), 401);
+      ok(await http("/api/auth/login", new Map(), { email: user.email, password, secondFactor: "invalid" }), 401);
+      ok(await http("/api/auth/login", new Map(), { email: user.email, password, secondFactor: enrollmentCode }), 401);
+      await assert.rejects(persistSession(user.id, user.passwordHash), { code: "MFA_REQUIRED" });
+      const jars: Jar[] = [new Map(), new Map()];
+      const race = await Promise.all(jars.map(j => http("/api/auth/login", j, {
+        email: user.email, password, secondFactor: enabled.recoveryCodes[0],
+      })));
+      assert.deepEqual(race.map(r => r.status).sort(), [200, 401]);
+      const activeJar = jars[race.findIndex(r => r.status === 200)];
+      const status = await http("/api/account/mfa", activeJar);
+      assert.equal(status.headers.get("cache-control"), "no-store");
+      assert.deepEqual(ok(status), { enabled: true, recoveryCodesRemaining: 9 });
+      const generation = (await readMfa(db, user.id))!.version;
+      ok(await http("/api/account/mfa", activeJar, { action: "DISABLE", currentPassword: password, code: "invalid" }), 401);
+      const rotated = ok(await http("/api/account/mfa", activeJar, { action: "REGENERATE", currentPassword: password, code: enabled.recoveryCodes[1] }));
+      assert.equal(await db.session.count({ where: { userId: user.id } }), 0);
+      await assert.rejects(persistSession(user.id, user.passwordHash, undefined, generation), { code: "MFA_REQUIRED" });
+      ok(await http("/api/auth/login", new Map(), { email: user.email, password, secondFactor: enabled.recoveryCodes[2] }), 401);
+      const freshJar: Jar = new Map();
+      ok(await http("/api/auth/login", freshJar, { email: user.email, password, secondFactor: rotated.recoveryCodes[0] }));
+      ok(await http("/api/account/mfa", freshJar, { action: "DISABLE", currentPassword: password, code: rotated.recoveryCodes[1] }));
+      assert.equal(await db.session.count({ where: { userId: user.id } }), 0);
+      assert.equal((await readMfa(db, user.id))!.secretEnc, "");
+      ok(await http("/api/auth/login", new Map(), { email: user.email, password }));
+      const audits = await db.auditLog.findMany({ where: { target: user.id } });
+      assert(audits.some(a => a.action === "MFA_ENABLE"));
+      assert(audits.some(a => a.action === "MFA_REGENERATE"));
+      assert(audits.some(a => a.action === "MFA_DISABLE"));
+      assert(!JSON.stringify(audits).includes(setup.secret));
+    },
+  );
+  await t.test(
+    "expired MFA enrollment is denied and corrupt factor state never falls back to password-only login",
+    async () => {
+      const user = await account("CLIENT", "MfaExpiry");
+      const jar: Jar = new Map();
+      ok(await http("/api/auth/login", jar, { email: user.email, password }));
+      const setup = ok(await http("/api/account/mfa", jar, { action: "BEGIN", currentPassword: password }));
+      const state = (await readMfa(db, user.id))!;
+      await db.setting.update({ where: { key: mfaKey(user.id) }, data: { value: { ...state, enrollmentExpiresAt: Date.now() - 1 } } });
+      ok(await http("/api/account/mfa", jar, { action: "ENABLE", currentPassword: password, code: totp(setup.secret) }), 409);
+      await db.setting.update({ where: { key: mfaKey(user.id) }, data: { value: { enabled: true } } });
+      await assert.rejects(authenticate({ email: user.email, password }, "mfa-corrupt"), { code: "MFA_CONFIG" });
+      await assert.rejects(persistSession(user.id, user.passwordHash), { code: "MFA_CONFIG" });
     },
   );
   await t.test(
@@ -764,6 +838,52 @@ test("database-backed private marketplace and authorization journey", async (t) 
       );
     },
   );
+  await t.test("calendar prevents concurrent cross-customer double booking and rechecks changed working hours", async () => {
+    const professional = await account("PRO", "CalendarPro");
+    const jar: Jar = new Map();
+    ok(await http("/api/auth/login", jar, { email: professional.email, password }));
+    const days = Array.from({ length: 7 }, (_, weekday) => ({ weekday, startMin: 540, endMin: 1020 }));
+    ok(await http("/api/availability", jar, { days }));
+    const date = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10);
+    const start = kosovoLocalToIso(`${date}T09:00`);
+    async function request(j: Jar) {
+      return ok(await http("/api/requests", j, { ...inquiry, profileId: professional.proProfile!.id, clientKey: randomUUID() }));
+    }
+    async function proposal(id: string, hour: string, expectedVersion = 0) {
+      return http("/api/offers", jar, { ...offer(), requestId: id, expectedVersion, clientKey: randomUUID(), duration: "120", scheduledAt: kosovoLocalToIso(`${date}T${hour}`) });
+    }
+    const first = await request(aj), second = await request(bj);
+    const quotes = [ok(await proposal(first.id, "09:00")), ok(await proposal(second.id, "09:00"))];
+    const race = await Promise.all([aj, bj].map((j, i) => http("/api/offers/accept", j, { quoteId: quotes[i].quoteId, expectedVersion: 1 })));
+    assert.deepEqual(race.map(r => r.status).sort(), [200, 409]);
+    assert.equal(race.find(r => r.status === 409)!.data.code, "APPOINTMENT_CONFLICT");
+    assert.equal(await db.quote.count({ where: { profileId: professional.proProfile!.id, state: "ACCEPTED" } }), 1);
+    assert.equal(await db.payment.count({ where: { requestId: { in: [first.id, second.id] } } }), 1);
+    const booking = await db.serviceRequest.findFirstOrThrow({ where: { acceptedProfileId: professional.proProfile!.id } });
+    assert.equal(booking.scheduledAt!.toISOString(), start);
+    ok(await http("/api/availability", jar, { days: days.map(d => ({ ...d, endMin: 600 })) }), 409);
+    assert.equal(await db.availability.count({ where: { profileId: professional.proProfile!.id, endMin: 1020 } }), 7);
+    const blocked = await request(aj);
+    ok(await proposal(blocked.id, "10:00"), 409);
+    ok(await proposal(blocked.id, "18:00"), 409);
+    const adjacent = ok(await proposal(blocked.id, "11:00"));
+    ok(await http("/api/offers/accept", aj, { quoteId: adjacent.quoteId, expectedVersion: 1 }));
+    const changed = await request(aj);
+    const late = ok(await proposal(changed.id, "15:00"));
+    ok(await http("/api/availability", jar, { days: days.map(d => ({ ...d, endMin: 900 })) }));
+    const denied = await http("/api/offers/accept", aj, { quoteId: late.quoteId, expectedVersion: 1 });
+    assert.equal(denied.status, 409);
+    assert.equal(denied.data.code, "AVAILABILITY");
+    assert.equal(await db.payment.count({ where: { requestId: changed.id } }), 0);
+    const winnerJar = race[0].status === 200 ? aj : bj;
+    ok(await http(`/api/requests/${booking.id}`, winnerJar, { action: "CANCEL" }), 409);
+    // Accepted-booking cancellation policy is unchanged; a rejected cancellation
+    // must not free the reserved slot or create another payment.
+    ok(await proposal(changed.id, "09:00", 1), 409);
+    const calendar = await http("/pro/kalendari", jar);
+    assert.equal(calendar.status, 200);
+    assert(calendar.text.includes("Në pritje të pagesës"));
+  });
   await t.test("concurrent rate limits share one atomic bucket", async () => {
     const key = `test-${randomUUID()}`;
     const results = await Promise.all(

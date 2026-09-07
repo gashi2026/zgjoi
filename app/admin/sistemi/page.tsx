@@ -8,6 +8,13 @@ export default async function Page() {
   const maintenance = { UNKNOWN: "Pa ekzekutim të verifikuar", LATE: "Kontrolli periodik është vonuar", RECENT: "Ekzekutim në 15 minutat e fundit" }[health.maintenance];
   return <Frame actor={actor} title="Gjendja e shërbimeve" subtitle={`Kontrolluar: ${dateTime(health.checkedAt)} · ora e Kosovës`}>
     <Panel>
+      <h2 className="text-lg font-bold">Siguria e stafit</h2>
+      <p className="mt-3">{health.staffMfa.enabled} nga {health.staffMfa.total} llogari aktive të stafit kanë autentikim me dy hapa.</p>
+      {health.staffMfa.enabled < health.staffMfa.total && <p className="mt-2 text-sm text-amber-900">Çdo administrator dhe pjesëtar i mbështetjes duhet ta aktivizojë para hapjes së beta-s.</p>}
+      {health.staffMfa.errors > 0 && <p className="mt-2 text-sm text-red-800">{health.staffMfa.errors} konfigurime kërkojnë kontroll teknik.</p>}
+      <a className="mt-3 inline-block underline" href="/siguria">Konfiguroni sigurinë e llogarisë suaj</a>
+    </Panel>
+    <Panel>
       <h2 className="text-lg font-bold">Kontrolli periodik</h2>
       <p className={`mt-3 font-semibold ${health.maintenance === "RECENT" ? "text-green-800" : "text-amber-900"}`}>{maintenance}</p>
       {health.maintenance !== "RECENT" && <p className="mt-2 text-sm">Kërkoni kontrollin e ekzekutimit periodik para se të mbështeteni te skadimi automatik i ofertave ose dërgimi i email-eve.</p>}

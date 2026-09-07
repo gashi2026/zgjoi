@@ -7,6 +7,7 @@ import { notify } from "./notifications";
 import { commissionBps, splitAmount } from "./settings";
 import { enforceLimit } from "./rate-limit";
 import { hashToken } from "./tokens";
+import { assertAppointmentAvailable, assertAvailabilityPreservesBookings } from "./appointments";
 import {
   inquiryInput,
   offerInput,
@@ -173,6 +174,7 @@ export async function createOffer(actor: Actor, input: unknown) {
       409,
       "Kërkesa ka ndryshuar. Rifreskoni faqen para se të dërgoni ofertën.",
     );
+    await assertAppointmentAvailable(tx, actor.proProfile!.id, scheduledAt, data.duration, request.id);
     const revision =
       (
         await tx.quote.aggregate({
@@ -286,6 +288,7 @@ export async function acceptOffer(actor: Actor, input: unknown) {
       409,
       "Kërkesa ka ndryshuar. Rifreskoni faqen.",
     );
+    await assertAppointmentAvailable(tx, quote.profileId, quote.scheduledAt!, quote.duration ?? "", request.id);
     const updated = await tx.serviceRequest.updateMany({
       where: {
         id: request.id,
@@ -736,7 +739,8 @@ export async function saveAvailability(actor: Actor, input: unknown) {
   role(actor, "PRO");
   invariant(actor.proProfile, "NO_PROFILE", 403, "Profili nuk u gjet.");
   const data = availabilityInput.parse(input);
-  await db.$transaction(async (tx) => {
+  await serializable(async (tx) => {
+    await assertAvailabilityPreservesBookings(tx, actor.proProfile!.id, data.days);
     await tx.availability.deleteMany({
       where: { profileId: actor.proProfile!.id },
     });

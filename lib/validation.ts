@@ -56,6 +56,7 @@ export const proSignupSchema = z.object({
 export const loginSchema = z.object({
   email,
   password: z.string().min(1, "Shkruani fjalëkalimin.").max(256),
+  secondFactor: z.string().max(50).optional(),
 });
 
 export const requestSchema = z.object({

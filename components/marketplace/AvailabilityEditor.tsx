@@ -62,8 +62,9 @@ export default function AvailabilityEditor({
   return (
     <form onSubmit={submit} className="space-y-3">
       <p className="text-sm text-muted">
-        Orari javor, sipas orës së Kosovës. Ky është orar orientues; rezervimet
-        konfirmohen me ofertë.
+        Orari javor, sipas orës së Kosovës. Ofertat duhet të përshtaten me këto
+        orare dhe të mos mbivendosen me rezervimet e pranuara. Pa ditë të zgjedhura,
+        orari dakordohet veçmas në çdo ofertë. Ndryshimi nuk anulon rezervime.
       </p>
       {names.map((name, weekday) => {
         const day = days.find((d) => d.weekday === weekday);

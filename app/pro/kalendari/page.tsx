@@ -2,6 +2,7 @@ import Link from "next/link";
 import { pageGuard } from "@/lib/server/guard";
 import { db } from "@/lib/server/db";
 import { dateTime } from "@/lib/format";
+import { appointmentEnd } from "@/lib/appointments";
 import Frame, { Panel } from "@/components/marketplace/Frame";
 import AvailabilityEditor from "@/components/marketplace/AvailabilityEditor";
 export default async function Page() {
@@ -42,7 +43,8 @@ export default async function Page() {
             >
               {q.request.title}
             </Link>{" "}
-            · {q.scheduledAt && dateTime(q.scheduledAt)} ·{" "}
+            · {q.scheduledAt && dateTime(q.scheduledAt)}
+            {q.scheduledAt && appointmentEnd(q.scheduledAt, q.duration) && <> – {dateTime(appointmentEnd(q.scheduledAt, q.duration)!)}</>} ·{" "}
             {q.request.payment?.state === "HELD"
               ? "Pagesa u konfirmua"
               : "Në pritje të pagesës"}

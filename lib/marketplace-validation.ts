@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { email, password } from "./validation";
+import { appointmentMinutes } from "./appointments";
 
 export const entityId = z
   .string()
@@ -71,7 +72,9 @@ export const offerInput = z.object({
   timing: cleanText(3, 120),
   scheduledAt: z.string().datetime(),
   expiresAt: z.string().datetime(),
-  duration: cleanText(1, 60),
+  duration: cleanText(1, 60)
+    .refine(value => appointmentMinutes(value) !== null, "Shkruani kohëzgjatjen në minuta, nga 1 deri 43200.")
+    .transform(value => `${appointmentMinutes(value)} min`),
 });
 export const acceptanceInput = z.object({
   quoteId: entityId,

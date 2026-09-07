@@ -11,6 +11,7 @@ import { AppError, invariant } from "./errors";
 import { opaqueToken, hashToken, validToken } from "./tokens";
 import { serializable } from "./transaction";
 import { queueAccountEmail } from "./notifications";
+import { verifyLoginFactor } from "./mfa";
 
 const dummyHash = bcrypt.hashSync(opaqueToken(), 12);
 
@@ -29,7 +30,8 @@ export async function authenticate(input: unknown, ip: string) {
     401,
     "Email ose fjalëkalim i pasaktë.",
   );
-  return { id: user.id, role: user.role, passwordHash: user.passwordHash };
+  const mfaVersion = await verifyLoginFactor(user.id, user.passwordHash, data.secondFactor);
+  return { id: user.id, role: user.role, passwordHash: user.passwordHash, mfaVersion };
 }
 
 export async function signup(input: unknown, ip: string) {

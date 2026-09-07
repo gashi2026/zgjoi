@@ -167,9 +167,13 @@ export default async function JobDetail({
                 },
                 {
                   name: "duration",
-                  label: "Kohëzgjatja e parashikuar",
+                  label: "Kohëzgjatja në minuta",
+                  type: "number",
+                  min: 1,
+                  max: 43200,
+                  step: "1",
                   required: true,
-                  maxLength: 60,
+                  hint: "P.sh. 120 për dy orë. Ky interval rezervohet kur klienti pranon ofertën.",
                 },
                 {
                   name: "expiresAt",

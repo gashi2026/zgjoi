@@ -3,12 +3,15 @@ import { accountSessions } from "@/lib/server/auth";
 import { dateTime } from "@/lib/format";
 import Frame, { Panel } from "@/components/marketplace/Frame";
 import ApiForm from "@/components/marketplace/ApiForm";
+import MfaPanel from "@/components/marketplace/MfaPanel";
+import { mfaStatus } from "@/lib/server/mfa";
 export const metadata = { title: "Siguria e llogarisë — Zgjoi", robots: { index: false, follow: false } };
 export const dynamic = "force-dynamic";
 export default async function Page() {
   const actor = await pageGuard();
-  const sessions = await accountSessions(actor);
+  const [sessions, mfa] = await Promise.all([accountSessions(actor), mfaStatus(actor)]);
   return <Frame actor={actor} title="Siguria e llogarisë">
+    <Panel><MfaPanel {...mfa} staff={actor.role === "ADMIN" || actor.role === "SUPPORT"} /></Panel>
     <Panel>
       <h2 className="text-lg font-bold">Hyrjet aktive</h2>
       <p className="mt-2 text-sm text-muted">Shfaqen deri në 50 hyrjet më të fundit. Orët janë sipas Kosovës.</p>
