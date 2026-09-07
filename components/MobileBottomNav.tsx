@@ -3,7 +3,13 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Headset, LayoutGrid, MessageSquare, UserRound, Users } from "lucide-react";
+import {
+  Headset,
+  LayoutGrid,
+  MessageSquare,
+  UserRound,
+  Users,
+} from "lucide-react";
 
 type Me = { name: string; role: "CLIENT" | "PRO" | "ADMIN" | "SUPPORT" } | null;
 
@@ -15,7 +21,7 @@ export default function MobileBottomNav() {
   const pathname = usePathname();
 
   const onAccountPage = ACCOUNT_PREFIXES.some(
-    (p) => pathname === p || pathname.startsWith(`${p}/`)
+    (p) => pathname === p || pathname.startsWith(`${p}/`),
   );
 
   if (!onAccountPage) return null;
@@ -29,31 +35,47 @@ function AccountBottomNav({ pathname }: { pathname: string }) {
     let alive = true;
     fetch("/api/auth/me", { cache: "no-store" })
       .then((r) => r.json())
-      .then((d) => { if (alive) setMe(d.user ?? null); })
-      .catch(() => { if (alive) setMe(null); });
-    return () => { alive = false; };
+      .then((d) => {
+        if (alive) setMe(d.user ?? null);
+      })
+      .catch(() => {
+        if (alive) setMe(null);
+      });
+    return () => {
+      alive = false;
+    };
   }, [pathname]);
 
   if (!me) return null;
 
   const items =
-    me.role === "ADMIN" || me.role === "SUPPORT"
-      ? [
-          { href: "/admin", label: "Paneli", icon: LayoutGrid },
-          { href: "/admin/mbeshtetja", label: "Mbështetja", icon: Headset },
-          { href: "/admin/perdoruesit", label: "Përdoruesit", icon: Users },
-        ]
-      : me.role === "PRO"
+    me.role === "SUPPORT"
+      ? [{ href: "/admin/mbeshtetja", label: "Mbështetja", icon: Headset }]
+      : me.role === "ADMIN"
         ? [
-            { href: "/pro/mesazhet", label: "Mesazhet", icon: MessageSquare },
-            { href: "/pro/paneli", label: "Punët e mia", icon: LayoutGrid },
-            { href: "/pro/profili", label: "Profili", icon: UserRound },
+            { href: "/admin", label: "Paneli", icon: LayoutGrid },
+            { href: "/admin/mbeshtetja", label: "Mbështetja", icon: Headset },
+            { href: "/admin/perdoruesit", label: "Përdoruesit", icon: Users },
           ]
-        : [
-            { href: "/llogaria/mesazhet", label: "Mesazhet", icon: MessageSquare },
-            { href: "/llogaria", label: "Punët e mia", icon: LayoutGrid },
-            { href: "/llogaria/cilesimet", label: "Profili", icon: UserRound },
-          ];
+        : me.role === "PRO"
+          ? [
+              { href: "/pro/mesazhet", label: "Mesazhet", icon: MessageSquare },
+              { href: "/pro/paneli", label: "Punët e mia", icon: LayoutGrid },
+              { href: "/pro/profili", label: "Profili", icon: UserRound },
+            ]
+          : [
+              {
+                href: "/llogaria/mesazhet",
+                label: "Mesazhet",
+                icon: MessageSquare,
+              },
+              { href: "/llogaria", label: "Punët e mia", icon: LayoutGrid },
+              {
+                href: "/llogaria/cilesimet",
+                label: "Profili",
+                icon: UserRound,
+              },
+            ];
 
   return (
     <nav

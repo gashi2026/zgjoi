@@ -1,24 +1,38 @@
 import "server-only";
-import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import { cookies } from "next/headers";
 import { cache } from "react";
 import { db } from "./db";
+import { AppError } from "./errors";
+import { opaqueToken, hashToken, validToken } from "./tokens";
 export type Role = "CLIENT" | "PRO" | "ADMIN" | "SUPPORT";
 
 const COOKIE = "zgjoi_session";
 const DAYS = 30;
 
 export const hashPassword = (pw: string) => bcrypt.hash(pw, 12);
-export const verifyPassword = (pw: string, hash: string) => bcrypt.compare(pw, hash);
+export const verifyPassword = (pw: string, hash: string) =>
+  bcrypt.compare(pw, hash);
 
 /* ------------------------------------------------------------ sessions */
 
 export async function createSession(userId: string) {
-  const token = crypto.randomBytes(32).toString("hex");
+  const token = opaqueToken();
   const expiresAt = new Date(Date.now() + DAYS * 864e5);
 
-  await db.session.create({ data: { userId, token, expiresAt } });
+  const old = (await cookies()).get(COOKIE)?.value;
+  await db.$transaction(async (tx) => {
+    const user = await tx.user.findUnique({
+      where: { id: userId },
+      select: { suspendedAt: true },
+    });
+    if (!user || user.suspendedAt) throw new AuthError("UNAUTHENTICATED");
+    if (old && validToken(old))
+      await tx.session.deleteMany({ where: { token: hashToken(old) } });
+    await tx.session.create({
+      data: { userId, token: hashToken(token), expiresAt },
+    });
+  });
 
   (await cookies()).set(COOKIE, token, {
     httpOnly: true,
@@ -27,12 +41,18 @@ export async function createSession(userId: string) {
     path: "/",
     expires: expiresAt,
   });
+  (await cookies()).delete("zgjoi_support");
 }
 
 export async function destroySession() {
   const token = (await cookies()).get(COOKIE)?.value;
-  if (token) await db.session.deleteMany({ where: { token } });
-  (await cookies()).delete(COOKIE);
+  try {
+    if (token && validToken(token))
+      await db.session.deleteMany({ where: { token: hashToken(token) } });
+  } finally {
+    (await cookies()).delete(COOKIE);
+    (await cookies()).delete("zgjoi_support");
+  }
 }
 
 /**
@@ -41,10 +61,10 @@ export async function destroySession() {
  */
 export const currentUser = cache(async () => {
   const token = (await cookies()).get(COOKIE)?.value;
-  if (!token) return null;
+  if (!validToken(token)) return null;
 
   const session = await db.session.findUnique({
-    where: { token },
+    where: { token: hashToken(token) },
     include: {
       user: {
         select: {
@@ -54,20 +74,41 @@ export const currentUser = cache(async () => {
           role: true,
           city: true,
           suspendedAt: true,
+          emailVerified: true,
           proProfile: { select: { id: true, slug: true, verification: true } },
         },
       },
     },
   });
 
-  if (!session || session.expiresAt < new Date()) return null;
+  if (!session || session.expiresAt <= new Date()) return null;
   if (session.user.suspendedAt) return null;
   return session.user;
 });
 
 /* --------------------------------------------------------- guard rails */
 
-export class AuthError extends Error {}
+export class AuthError extends AppError {
+  constructor(code: string) {
+    super(
+      code,
+      code === "UNAUTHENTICATED" ? 401 : 403,
+      code === "UNAUTHENTICATED"
+        ? "Hyni në llogarinë tuaj për të vazhduar."
+        : "Nuk keni qasje në këtë veprim.",
+    );
+  }
+}
+
+export const accountHome = (role: Role) =>
+  role === "ADMIN"
+    ? "/admin"
+    : role === "SUPPORT"
+      ? "/admin/mbeshtetja"
+      : role === "PRO"
+        ? "/pro/paneli"
+        : "/llogaria";
+export type Actor = NonNullable<Awaited<ReturnType<typeof currentUser>>>;
 
 export async function requireUser() {
   const user = await currentUser();

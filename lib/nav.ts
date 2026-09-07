@@ -8,7 +8,7 @@ export const proNav: NavItem[] = [
   { href: "/pro/mesazhet", label: "Mesazhet", icon: "messageSquare" },
   { href: "/pro/pagesat", label: "Pagesat e mia", icon: "wallet" },
   { href: "/pro/te-ardhurat", label: "Të ardhurat", icon: "receipt" },
-  { href: "/pro/buxheti", label: "Buxheti i lead-eve", icon: "target" },
+  { href: "/pro/njoftimet", label: "Njoftimet", icon: "inbox" },
   { href: "/pro/profili", label: "Profili im", icon: "userRound" },
 ];
 
@@ -18,6 +18,7 @@ export const clientNav: NavItem[] = [
   { href: "/llogaria/ofertat", label: "Ofertat", icon: "fileText" },
   { href: "/llogaria/mesazhet", label: "Mesazhet", icon: "messageSquare" },
   { href: "/llogaria/te-preferuarit", label: "Të preferuarit", icon: "heart" },
+  { href: "/llogaria/njoftimet", label: "Njoftimet", icon: "inbox" },
   { href: "/llogaria/cilesimet", label: "Cilësimet", icon: "settings" },
 ];
 

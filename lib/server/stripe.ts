@@ -24,13 +24,17 @@ import {
  * Without STRIPE_SECRET_KEY every function below returns a demo result, so
  * the app still runs end to end without charging anyone.
  */
-export const stripeEnabled = Boolean(process.env.STRIPE_SECRET_KEY);
+export const stripeEnabled = false; // Legacy escrow implementation is disabled.
 
 export const stripe = stripeEnabled
   ? new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: "2024-06-20" })
   : null;
 
-const demo = <T extends object>(extra: T) => ({ demo: true as const, ...extra });
+const demo = <T extends object>(_extra: T): never => {
+  throw new Error(
+    "Legacy payment path disabled; use the verified checkout service",
+  );
+};
 
 /* ------------------------------------------------ connected accounts */
 
@@ -208,7 +212,7 @@ export async function releasePayout(params: {
       currency: "eur",
       metadata: { requestId: params.requestId },
     },
-    { stripeAccount: params.connectedAccountId }
+    { stripeAccount: params.connectedAccountId },
   );
 
   return { demo: false as const, payoutId: payout.id };

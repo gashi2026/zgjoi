@@ -1,0 +1,833 @@
+import test, { after } from "node:test";
+import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
+import { db } from "../lib/server/db";
+import { hashPassword } from "../lib/server/auth";
+import { recordSettledCheckout } from "../lib/server/payments";
+import { adminCommand } from "../lib/server/admin";
+import { rateLimit } from "../lib/server/rate-limit";
+import { decrypt } from "../lib/server/crypto";
+const database = new URL(process.env.DATABASE_URL || "");
+assert(
+  process.env.CI &&
+    ["localhost", "127.0.0.1"].includes(database.hostname) &&
+    database.pathname === "/zgjoi_test",
+  "Refuse non-disposable database",
+);
+const base = process.env.TEST_BASE_URL!;
+type Jar = Map<string, string>;
+async function http(
+  path: string,
+  jar: Jar = new Map(),
+  body?: unknown,
+  extra: Record<string, string> = {},
+) {
+  const response = await fetch(`${base}${path}`, {
+    method: body === undefined ? "GET" : "POST",
+    redirect: "manual",
+    headers: {
+      ...(body === undefined
+        ? {}
+        : { Origin: base, "Content-Type": "application/json" }),
+      Cookie: [...jar].map(([k, v]) => `${k}=${v}`).join("; "),
+      ...extra,
+    },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
+  for (const value of response.headers.getSetCookie()) {
+    const [pair] = value.split(";");
+    const i = pair.indexOf("=");
+    const name = pair.slice(0, i),
+      token = pair.slice(i + 1);
+    if (token) jar.set(name, token);
+    else jar.delete(name);
+  }
+  const text = await response.text();
+  const data = response.headers
+    .get("content-type")
+    ?.includes("application/json")
+    ? JSON.parse(text)
+    : null;
+  return { status: response.status, data, text, headers: response.headers };
+}
+function ok(response: Awaited<ReturnType<typeof http>>, status = 200) {
+  assert.equal(
+    response.status,
+    status,
+    `Unexpected response: ${JSON.stringify(response.data)}`,
+  );
+  return response.data;
+}
+after(async () => {
+  await db.$disconnect();
+});
+
+test("database-backed private marketplace and authorization journey", async (t) => {
+  const password = `test-only-${randomUUID()}`;
+  const passwordHash = await hashPassword(password);
+  const category = await db.category.create({
+    data: {
+      slug: "test-elektricist",
+      name: "Elektricist test",
+      icon: "zap",
+      active: true,
+    },
+  });
+  async function account(
+    role: "CLIENT" | "PRO" | "ADMIN" | "SUPPORT",
+    label: string,
+  ) {
+    return db.user.create({
+      data: {
+        id: randomUUID(),
+        email: `${label}-${randomUUID()}@ci.zgjoi.invalid`,
+        passwordHash,
+        name: `Test ${label}`,
+        city: "Prishtinë",
+        role,
+        emailVerified: new Date(),
+        ...(role === "PRO"
+          ? {
+              proProfile: {
+                create: {
+                  slug: `pro-${randomUUID()}`,
+                  categorySlug: category.slug,
+                  about:
+                    "Profesionist testues për skenarët e integrimit të aplikacionit.",
+                  priceFrom: 2500,
+                  serviceCities: ["Prishtinë"],
+                  verification: "APPROVED",
+                  autoBid: false,
+                  weeklyBudget: 0,
+                },
+              },
+            }
+          : {}),
+      },
+      include: { proProfile: true },
+    });
+  }
+  const a = await account("CLIENT", "ClientA"),
+    b = await account("CLIENT", "ClientB"),
+    pro = await account("PRO", "ProA"),
+    otherPro = await account("PRO", "ProB"),
+    admin = await account("ADMIN", "AdminA"),
+    support = await account("SUPPORT", "SupportA");
+  const aj: Jar = new Map(),
+    bj: Jar = new Map(),
+    pj: Jar = new Map(),
+    otherj: Jar = new Map(),
+    adminj: Jar = new Map(),
+    supportj: Jar = new Map();
+  await t.test(
+    "sign-in hashes session tokens and exposes only the current user",
+    async () => {
+      for (const [actor, jar] of [
+        [a, aj],
+        [b, bj],
+        [pro, pj],
+        [otherPro, otherj],
+        [admin, adminj],
+        [support, supportj],
+      ] as const) {
+        ok(
+          await http("/api/auth/login", jar, {
+            email: actor.email.toUpperCase(),
+            password,
+          }),
+        );
+        const data = ok(await http("/api/auth/me", jar));
+        assert.equal(data.user.id, actor.id);
+        assert(!("passwordHash" in data.user));
+      }
+      const sessions = await db.session.findMany();
+      assert(sessions.length >= 6);
+      assert(sessions.every((s) => /^sha256:[a-f0-9]{64}$/.test(s.token)));
+      assert(!sessions.some((s) => s.token === aj.get("zgjoi_session")));
+      ok(
+        await http("/api/auth/login", new Map(), {
+          email: a.email,
+          password: "wrong-password",
+        }),
+        401,
+      );
+    },
+  );
+  await t.test(
+    "HTML and API roles reject unauthenticated and wrong-role requests",
+    async () => {
+      const privatePage = await http("/llogaria", new Map());
+      assert.equal(privatePage.status, 307);
+      assert.match(privatePage.headers.get("location") ?? "", /\/hyr/);
+      const wrongRole = await http("/admin", aj);
+      assert.equal(wrongRole.status, 307);
+      ok(
+        await http("/api/admin/commands", aj, {
+          action: "USER_SUSPEND",
+          id: b.id,
+        }),
+        403,
+      );
+      ok(await http("/api/requests", new Map(), {}), 401);
+      const forged = new Map([["zgjoi_session", "a".repeat(64)]]);
+      ok(await http("/api/requests", forged, {}), 401);
+      const staffHome = await http("/admin", supportj);
+      assert.equal(staffHome.status, 307);
+      assert.match(staffHome.headers.get("location") ?? "", /mbeshtetja/);
+    },
+  );
+  await t.test(
+    "JSON, CSRF, role escalation and upload gates fail closed",
+    async () => {
+      ok(
+        await http(
+          "/api/requests",
+          aj,
+          {},
+          { Origin: "https://attacker.invalid" },
+        ),
+        403,
+      );
+      ok(await http("/api/requests", aj, { detail: "x".repeat(20000) }), 413);
+      ok(
+        await http("/api/auth/register", new Map(), {
+          role: "ADMIN",
+          name: "Intruder",
+          email: "intruder@ci.zgjoi.invalid",
+          password,
+          city: "Prishtinë",
+          terms: true,
+        }),
+        400,
+      );
+      ok(await http("/api/documents", aj, {}), 403);
+      const raw = await fetch(`${base}/api/requests`, {
+        method: "POST",
+        headers: {
+          Origin: base,
+          "Content-Type": "application/json",
+          Cookie: [...aj].map(([k, v]) => `${k}=${v}`).join("; "),
+        },
+        body: "{",
+      });
+      assert.equal(raw.status, 400);
+    },
+  );
+  await t.test(
+    "support ticket access requires its owner, staff, or guest capability",
+    async () => {
+      const sent = ok(
+        await http("/api/support/send", aj, {
+          body: "Mesazh privat i klientit A për ndihmë.",
+          clientKey: randomUUID(),
+        }),
+      );
+      const read = ok(
+        await http(`/api/support/messages?ticketId=${sent.ticketId}`, aj),
+      );
+      assert.equal(read.messages.length, 1);
+      ok(
+        await http(`/api/support/messages?ticketId=${sent.ticketId}`, bj),
+        404,
+      );
+      ok(
+        await http("/api/support/send", bj, {
+          ticketId: sent.ticketId,
+          body: "Attempted outsider reply",
+          clientKey: randomUUID(),
+        }),
+        404,
+      );
+      ok(
+        await http("/api/support/reply", supportj, {
+          ticketId: sent.ticketId,
+          body: "Përgjigje e mbështetjes.",
+        }),
+      );
+      assert.equal(
+        ok(await http(`/api/support/messages?ticketId=${sent.ticketId}`, aj))
+          .messages.length,
+        2,
+      );
+      const guest: Jar = new Map();
+      const ticket = ok(
+        await http("/api/support/send", guest, {
+          body: "Vizitor pa llogari, kërkoj ndihmë.",
+          clientKey: randomUUID(),
+        }),
+      );
+      assert(guest.has("zgjoi_support"));
+      ok(
+        await http(`/api/support/messages?ticketId=${ticket.ticketId}`, guest),
+      );
+      ok(
+        await http(
+          `/api/support/messages?ticketId=${ticket.ticketId}`,
+          new Map(),
+        ),
+        404,
+      );
+      const switched = new Map([...guest, ...bj]);
+      ok(
+        await http(
+          `/api/support/messages?ticketId=${ticket.ticketId}`,
+          switched,
+        ),
+        404,
+      );
+      assert.equal(
+        ok(await http("/api/support/current", aj)).ticketId,
+        sent.ticketId,
+      );
+    },
+  );
+  const inquiry = {
+    profileId: pro.proProfile!.id,
+    title: "Riparim ndriçimi në kuzhinë",
+    detail:
+      "Ndriçimi në kuzhinë duhet kontrolluar dhe riparuar nga profesionisti.",
+    city: "Prishtinë",
+    timing: "Gjatë javës",
+    address: "Rruga e testit 12",
+    clientKey: randomUUID(),
+  };
+  let requestId = "",
+    conversationId = "",
+    quoteId = "",
+    version = 0;
+  await t.test(
+    "a selected-pro inquiry persists once, remains private and creates no payment",
+    async () => {
+      const responses = await Promise.all([
+        http("/api/requests", aj, inquiry),
+        http("/api/requests", aj, inquiry),
+      ]);
+      requestId = ok(responses[0]).id;
+      assert.equal(ok(responses[1]).id, requestId);
+      const request = await db.serviceRequest.findUniqueOrThrow({
+        where: { id: requestId },
+        include: { conversation: true },
+      });
+      conversationId = request.conversation!.id;
+      assert.equal(request.selectedProfileId, pro.proProfile!.id);
+      assert.equal(await db.payment.count({ where: { requestId } }), 0);
+      assert.equal(await db.leadCharge.count(), 0);
+      const viewed = ok(await http(`/api/requests/${requestId}`, pj));
+      assert.equal(viewed.address, null);
+      assert.notEqual(viewed.client.name, a.name);
+      ok(await http(`/api/requests/${requestId}`, bj), 404);
+      ok(await http(`/api/requests/${requestId}`, otherj), 404);
+    },
+  );
+  await t.test(
+    "chat writes are participant-scoped, retry-safe, and block pre-booking contact",
+    async () => {
+      ok(
+        await http("/api/messages", otherj, {
+          conversationId,
+          body: "Other pro cannot send",
+          clientKey: randomUUID(),
+        }),
+        404,
+      );
+      const body = {
+        conversationId,
+        body: "Përshëndetje, mund ta kontrolloni ndriçimin?",
+        clientKey: randomUUID(),
+      };
+      const first = ok(await http("/api/messages", aj, body));
+      assert.equal(ok(await http("/api/messages", aj, body)).id, first.id);
+      ok(
+        await http("/api/messages", aj, {
+          conversationId,
+          body: "Telefoni +383 44 123 456",
+          clientKey: randomUUID(),
+        }),
+        400,
+      );
+      ok(await http(`/api/messages?conversationId=${conversationId}`, bj), 404);
+    },
+  );
+  await t.test(
+    "message history returns the newest 100 and correctly pages older messages",
+    async () => {
+      const created = Date.now() - 400000;
+      await db.message.createMany({
+        data: Array.from({ length: 305 }, (_, i) => ({
+          id: randomUUID(),
+          conversationId,
+          senderId: a.id,
+          body: `History message ${i}`,
+          createdAt: new Date(created + i * 1000),
+        })),
+      });
+      const latest = ok(
+        await http(`/api/messages?conversationId=${conversationId}`, pj),
+      );
+      assert.equal(latest.messages.length, 100);
+      assert(latest.hasMore);
+      assert(
+        latest.messages.some(
+          (m: { body: string }) => m.body === "History message 304",
+        ),
+      );
+      const previous = ok(
+        await http(
+          `/api/messages?conversationId=${conversationId}&before=${latest.messages[0].id}`,
+          pj,
+        ),
+      );
+      assert.equal(previous.messages.length, 100);
+      assert(
+        !previous.messages.some((m: { id: string }) =>
+          latest.messages.some((n: { id: string }) => n.id === m.id),
+        ),
+      );
+    },
+  );
+  const offer = (key = randomUUID(), expectedVersion = 0) => ({
+    requestId,
+    clientKey: key,
+    expectedVersion,
+    amount: "99.99",
+    description: "Kontrolli dhe riparimi i plotë i ndriçimit të kuzhinës.",
+    timing: "Në orarin e konfirmuar",
+    duration: "Dy orë",
+    expiresAt: new Date(Date.now() + 3600000).toISOString(),
+    scheduledAt: new Date(Date.now() + 7200000).toISOString(),
+  });
+  await t.test(
+    "only the selected pro can issue a versioned offer; replaced offers cannot be accepted",
+    async () => {
+      ok(await http("/api/offers", otherj, offer()), 404);
+      const first = offer();
+      const sent = ok(await http("/api/offers", pj, first));
+      assert.equal(
+        ok(await http("/api/offers", pj, first)).quoteId,
+        sent.quoteId,
+      );
+      ok(await http("/api/offers", pj, offer()), 409);
+      const next = ok(await http("/api/offers", pj, offer(randomUUID(), 1)));
+      quoteId = next.quoteId;
+      version = 2;
+      assert.equal(
+        (await db.quote.findUniqueOrThrow({ where: { id: sent.quoteId } }))
+          .state,
+        "WITHDRAWN",
+      );
+      ok(
+        await http("/api/offers/accept", aj, {
+          quoteId: sent.quoteId,
+          expectedVersion: version,
+        }),
+        409,
+      );
+      ok(
+        await http("/api/offers/accept", bj, {
+          quoteId,
+          expectedVersion: version,
+        }),
+        404,
+      );
+      assert.equal(await db.payment.count({ where: { requestId } }), 0);
+    },
+  );
+  await t.test(
+    "acceptance creates exactly one pending payment despite simultaneous retries",
+    async () => {
+      const responses = await Promise.all([
+        http("/api/offers/accept", aj, { quoteId, expectedVersion: version }),
+        http("/api/offers/accept", aj, { quoteId, expectedVersion: version }),
+      ]);
+      responses.forEach((r) => ok(r));
+      const payment = await db.payment.findUniqueOrThrow({
+        where: { requestId },
+      });
+      assert.equal(payment.amount, 9999);
+      assert.equal(payment.commissionAmount, 1500);
+      assert.equal(payment.proAmount, 8499);
+      assert.equal(payment.state, "PENDING");
+      assert.equal(payment.provider, "disabled");
+      assert.equal(await db.payment.count({ where: { requestId } }), 1);
+      ok(
+        await http(`/api/requests/${requestId}`, pj, { action: "START" }),
+        409,
+      );
+      ok(
+        await http(`/api/requests/${requestId}`, aj, {
+          action: "CONFIRM_COMPLETION",
+        }),
+        409,
+      );
+      ok(
+        await http("/api/reviews", aj, {
+          requestId,
+          rating: 5,
+          text: "A review before work completion must be rejected.",
+        }),
+        409,
+      );
+      ok(await http("/api/payments/checkout", aj, { requestId }), 503);
+    },
+  );
+  let event: Parameters<typeof recordSettledCheckout>[0];
+  await t.test(
+    "the verified-provider database boundary rejects mismatches and handles replay without duplicate effects",
+    async () => {
+      const payment = await db.payment.update({
+        where: { requestId },
+        data: {
+          provider: "stripe_test",
+          providerCheckoutId: `cs_test_${randomUUID()}`,
+          attempt: 1,
+          connectedAccountId: "acct_test_isolated",
+        },
+      });
+      event = {
+        eventId: `evt_test_${randomUUID()}`,
+        checkoutId: payment.providerCheckoutId!,
+        paymentId: payment.id,
+        intentId: `pi_test_${randomUUID()}`,
+        chargeId: `ch_test_${randomUUID()}`,
+        amount: 9999,
+        received: 9999,
+        currency: "eur",
+        intentCurrency: "eur",
+        attempt: "1",
+      };
+      await assert.rejects(recordSettledCheckout({ ...event, amount: 1 }));
+      await assert.rejects(recordSettledCheckout({ ...event, attempt: "9" }));
+      const replies = await Promise.all([
+        recordSettledCheckout(event),
+        recordSettledCheckout(event),
+      ]);
+      assert.equal(replies.length, 2);
+      assert.equal(
+        await db.paymentEvent.count({ where: { paymentId: payment.id } }),
+        1,
+      );
+      assert.equal(
+        (await db.payment.findUniqueOrThrow({ where: { id: payment.id } }))
+          .state,
+        "HELD",
+      );
+      const revealed = ok(await http(`/api/requests/${requestId}`, pj));
+      assert.equal(revealed.address, inquiry.address);
+      assert.equal(revealed.client.name, a.name);
+    },
+  );
+  await t.test(
+    "only the customer confirms completion, creating one payout obligation independently of review",
+    async () => {
+      ok(await http(`/api/requests/${requestId}`, pj, { action: "START" }));
+      ok(
+        await http(`/api/requests/${requestId}`, pj, {
+          action: "REQUEST_COMPLETION",
+        }),
+      );
+      ok(
+        await http(`/api/requests/${requestId}`, pj, {
+          action: "CONFIRM_COMPLETION",
+        }),
+        403,
+      );
+      const complete = await Promise.all([
+        http(`/api/requests/${requestId}`, aj, {
+          action: "CONFIRM_COMPLETION",
+        }),
+        http(`/api/requests/${requestId}`, aj, {
+          action: "CONFIRM_COMPLETION",
+        }),
+      ]);
+      complete.forEach((r) => ok(r));
+      assert.equal(
+        (
+          await db.serviceRequest.findUniqueOrThrow({
+            where: { id: requestId },
+          })
+        ).state,
+        "COMPLETED",
+      );
+      assert.equal(
+        await db.payout.count({ where: { paymentId: event.paymentId } }),
+        1,
+      );
+      assert.equal(await db.review.count({ where: { requestId } }), 0);
+      assert.equal(
+        (await db.payment.findUniqueOrThrow({ where: { id: event.paymentId } }))
+          .state,
+        "HELD",
+      );
+      ok(
+        await http("/api/admin/payments", aj, {
+          action: "RELEASE",
+          id: event.paymentId,
+        }),
+        403,
+      );
+    },
+  );
+  await t.test(
+    "reviews are owner-only, optional, unique, and moderation recalculates ratings",
+    async () => {
+      const review = {
+        requestId,
+        rating: 5,
+        text: "Puna u krye mirë dhe komunikimi ishte i qartë.",
+      };
+      ok(await http("/api/reviews", bj, review), 409);
+      const saved = ok(await http("/api/reviews", aj, review));
+      assert.equal(ok(await http("/api/reviews", aj, review)).id, saved.id);
+      assert.equal(
+        (
+          await db.proProfile.findUniqueOrThrow({
+            where: { id: pro.proProfile!.id },
+          })
+        ).ratingCount,
+        1,
+      );
+      ok(
+        await http("/api/admin/commands", adminj, {
+          action: "REVIEW_REMOVE",
+          id: saved.id,
+          reason: "Moderim i provës: arsye e regjistruar.",
+        }),
+      );
+      assert.equal(
+        (
+          await db.proProfile.findUniqueOrThrow({
+            where: { id: pro.proProfile!.id },
+          })
+        ).ratingCount,
+        0,
+      );
+      ok(
+        await http("/api/admin/commands", adminj, {
+          action: "REVIEW_RESTORE",
+          id: saved.id,
+        }),
+      );
+      assert.equal(
+        (
+          await db.proProfile.findUniqueOrThrow({
+            where: { id: pro.proProfile!.id },
+          })
+        ).ratingCount,
+        1,
+      );
+    },
+  );
+  await t.test(
+    "a dispute freezes funded work and older checkout events never overwrite that state",
+    async () => {
+      ok(
+        await http("/api/disputes", aj, {
+          requestId,
+          reason:
+            "Problem pas konfirmimit që kërkon shqyrtim të administratës.",
+        }),
+      );
+      assert.equal(
+        (await db.payment.findUniqueOrThrow({ where: { requestId } })).state,
+        "DISPUTED",
+      );
+      await recordSettledCheckout({
+        ...event,
+        eventId: `evt_test_${randomUUID()}`,
+      });
+      assert.equal(
+        (await db.payment.findUniqueOrThrow({ where: { requestId } })).state,
+        "DISPUTED",
+      );
+      ok(
+        await http(`/api/requests/${requestId}`, aj, {
+          action: "CONFIRM_COMPLETION",
+        }),
+        409,
+      );
+    },
+  );
+  await t.test(
+    "expiry, cancellation and approved catalog eligibility persist",
+    async () => {
+      const newRequest = ok(
+        await http("/api/requests", aj, {
+          ...inquiry,
+          clientKey: randomUUID(),
+        }),
+      );
+      const expiredOffer = ok(
+        await http("/api/offers", pj, {
+          ...offer(),
+          requestId: newRequest.id,
+          clientKey: randomUUID(),
+        }),
+      );
+      await db.quote.update({
+        where: { id: expiredOffer.quoteId },
+        data: { expiresAt: new Date(Date.now() - 1000) },
+      });
+      ok(
+        await http("/api/offers/accept", aj, {
+          quoteId: expiredOffer.quoteId,
+          expectedVersion: 1,
+        }),
+        409,
+      );
+      ok(
+        await http(`/api/requests/${newRequest.id}`, aj, { action: "CANCEL" }),
+      );
+      ok(
+        await http("/api/offers", pj, {
+          ...offer(),
+          requestId: newRequest.id,
+          expectedVersion: 2,
+          clientKey: randomUUID(),
+        }),
+        409,
+      );
+      const catalog = ok(await http(`/api/catalog?kategoria=${category.slug}`));
+      assert(
+        catalog.pros.some((p: { id: string }) => p.id === pro.proProfile!.id),
+      );
+      assert(!JSON.stringify(catalog).includes(pro.email));
+      ok(
+        await http("/api/admin/commands", adminj, {
+          action: "PRO_REJECT",
+          id: otherPro.proProfile!.id,
+          reason: "Kontroll provë i statusit të katalogut",
+        }),
+      );
+      assert(
+        !ok(await http(`/api/catalog?kategoria=${category.slug}`)).pros.some(
+          (p: { id: string }) => p.id === otherPro.proProfile!.id,
+        ),
+      );
+    },
+  );
+  await t.test("concurrent rate limits share one atomic bucket", async () => {
+    const key = `test-${randomUUID()}`;
+    const results = await Promise.all(
+      Array.from({ length: 12 }, () => rateLimit(key, 5, 60000)),
+    );
+    assert.equal(results.filter((r) => r.ok).length, 5);
+  });
+  await t.test(
+    "password recovery uses expiring one-use tokens and revokes every session",
+    async () => {
+      ok(await http("/api/auth/forgot", new Map(), { email: b.email }));
+      const token = await db.authToken.findFirstOrThrow({
+        where: { userId: b.id, purpose: "PASSWORD_RESET", usedAt: null },
+        orderBy: { createdAt: "desc" },
+      });
+      const outbox = await db.outbox.findUniqueOrThrow({
+        where: { key: `account-email:${token.id}` },
+      });
+      const payload = JSON.parse(decrypt(outbox.payloadEnc));
+      const raw = String(payload.text).match(/#token=([a-f0-9]{64})/)?.[1];
+      assert(raw);
+      const nextPassword = `replacement-${randomUUID()}`;
+      ok(
+        await http("/api/auth/reset", new Map(), {
+          token: raw,
+          password: nextPassword,
+        }),
+      );
+      assert.equal(await db.session.count({ where: { userId: b.id } }), 0);
+      ok(
+        await http("/api/auth/reset", new Map(), {
+          token: raw,
+          password: nextPassword,
+        }),
+        400,
+      );
+      ok(
+        await http("/api/auth/login", new Map(), { email: b.email, password }),
+        401,
+      );
+      ok(
+        await http("/api/auth/login", bj, {
+          email: b.email,
+          password: nextPassword,
+        }),
+      );
+    },
+  );
+  await t.test(
+    "suspension revokes sessions, self-demotion is blocked, and the cron requires a secret",
+    async () => {
+      ok(
+        await http("/api/admin/commands", adminj, {
+          action: "USER_SUSPEND",
+          id: b.id,
+        }),
+      );
+      ok(await http("/api/requests", bj, {}), 401);
+      await assert.rejects(
+        adminCommand(admin, { action: "USER_SUSPEND", id: admin.id }),
+      );
+      assert.equal(
+        (await db.user.findUniqueOrThrow({ where: { id: admin.id } }))
+          .suspendedAt,
+        null,
+      );
+      ok(await http("/api/cron/escrow"), 403);
+      const cron = ok(
+        await http("/api/cron/escrow", new Map(), undefined, {
+          Authorization: `Bearer ${process.env.CRON_SECRET}`,
+        }),
+      );
+      assert.equal(cron.delivery.enabled, false);
+      assert.equal(
+        (await db.payment.findUniqueOrThrow({ where: { requestId } })).state,
+        "DISPUTED",
+      );
+    },
+  );
+  await t.test(
+    "public HTML and private dashboards render real records without demo journeys",
+    async () => {
+      for (const [path, jar] of [
+        ["/", new Map()],
+        ["/kerko", new Map()],
+        [`/profesionisti/${pro.proProfile!.slug}`, new Map()],
+        ["/llogaria", aj],
+        [`/llogaria/kerkesat/${requestId}`, aj],
+        ["/pro/paneli", pj],
+        [`/pro/kerkesat/${requestId}`, pj],
+        ["/admin", adminj],
+        ["/admin/perdoruesit", adminj],
+        ["/admin/pagesat", adminj],
+        ["/admin/mbeshtetja", supportj],
+      ] as [string, Jar][]) {
+        const result = await http(path, jar);
+        assert.equal(result.status, 200, path);
+        assert(!result.text.includes("Kjo faqe është demonstrim"), path);
+      }
+      assert.match(
+        (await http("/llogaria/kerkesat", aj)).text,
+        /Riparim ndriçimi/,
+      );
+      const signup = await http("/regjistrohu-profesionist");
+      assert.equal(signup.status, 200);
+      assert.match(signup.text, /Elektricist test/);
+    },
+  );
+  await t.test(
+    "all application tables retain RLS and no browser-role grants; financial constraints reject invalid rows",
+    async () => {
+      const checks = await db.$queryRaw<
+        { tables: bigint; rls: bigint; exposed: bigint }[]
+      >`SELECT count(*) AS tables, count(*) FILTER (WHERE c.relrowsecurity) AS rls, count(*) FILTER (WHERE has_table_privilege('anon',c.oid,'SELECT,INSERT,UPDATE,DELETE') OR has_table_privilege('authenticated',c.oid,'SELECT,INSERT,UPDATE,DELETE')) AS exposed FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind='r'`;
+      assert.equal(Number(checks[0].tables), 28);
+      assert.equal(Number(checks[0].rls), 28);
+      assert.equal(Number(checks[0].exposed), 0);
+      await assert.rejects(
+        db.payment.update({ where: { requestId }, data: { amount: 100 } }),
+      );
+      await assert.rejects(
+        db.review.updateMany({ where: { requestId }, data: { rating: 6 } }),
+      );
+    },
+  );
+});

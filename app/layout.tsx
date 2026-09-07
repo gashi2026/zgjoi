@@ -13,9 +13,14 @@ const jakarta = Plus_Jakarta_Sans({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://zgjoi.com"),
+  robots:
+    process.env.ZGJOI_PASSWORD || process.env.VERCEL_ENV === "preview"
+      ? { index: false, follow: false }
+      : undefined,
   title: "Zgjoi — Gjej profesionist për çdo shërbim. Lehtë.",
   description:
-    "Zgjoi është platforma më e besuar në Kosovë për të gjetur dhe punësuar profesionistë lokalë: elektricistë, hidraulikë, pastrues, piktorë dhe më shumë.",
+    "Zgjoi është platformë në Kosovë për të gjetur dhe punësuar profesionistë lokalë: elektricistë, hidraulikë, pastrues, piktorë dhe më shumë.",
 };
 
 export default function RootLayout({
@@ -26,8 +31,16 @@ export default function RootLayout({
   return (
     <html lang="sq" className={jakarta.variable}>
       <body className="font-sans">
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:block focus:p-4"
+        >
+          Kalo te përmbajtja
+        </a>
         <Header />
-        <main className="min-h-[60vh]">{children}</main>
+        <main id="main-content" className="min-h-[60vh]">
+          {children}
+        </main>
         <Footer />
         <MobileBottomNav />
         <SupportChat />

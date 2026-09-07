@@ -6,7 +6,6 @@ import WhyZgjoi from "@/components/WhyZgjoi";
 import HowItWorks from "@/components/HowItWorks";
 import CTABanner from "@/components/CTABanner";
 import RecommendedPros from "@/components/RecommendedPros";
-import Testimonials from "@/components/Testimonials";
 
 export const dynamic = "force-dynamic";
 
@@ -27,7 +26,6 @@ export default function HomePage() {
           <HowItWorks />
           <CTABanner />
           <RecommendedPros />
-          <Testimonials />
         </div>
       </div>
 

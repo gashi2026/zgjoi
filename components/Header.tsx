@@ -15,7 +15,13 @@ const links = [
 type Me = { name: string; role: "CLIENT" | "PRO" | "ADMIN" | "SUPPORT" } | null;
 
 const dashboardFor = (role: string) =>
-  role === "ADMIN" || role === "SUPPORT" ? "/admin" : role === "PRO" ? "/pro/paneli" : "/llogaria";
+  role === "SUPPORT"
+    ? "/admin/mbeshtetja"
+    : role === "ADMIN"
+      ? "/admin"
+      : role === "PRO"
+        ? "/pro/paneli"
+        : "/llogaria";
 
 export default function Header() {
   const [open, setOpen] = useState(false);
@@ -49,14 +55,27 @@ export default function Header() {
     let alive = true;
     fetch("/api/auth/me", { cache: "no-store" })
       .then((r) => r.json())
-      .then((d) => { if (alive) { setMe(d.user ?? null); setChecked(true); } })
-      .catch(() => { if (alive) setChecked(true); });
-    return () => { alive = false; };
+      .then((d) => {
+        if (alive) {
+          setMe(d.user ?? null);
+          setChecked(true);
+        }
+      })
+      .catch(() => {
+        if (alive) setChecked(true);
+      });
+    return () => {
+      alive = false;
+    };
   }, [pathname]);
 
   async function logout() {
     setOpen(false);
-    await fetch("/api/auth/logout", { method: "POST" });
+    const response = await fetch("/api/auth/logout", { method: "POST" });
+    if (!response.ok) {
+      window.alert("Dalja nuk u konfirmua. Provoni përsëri.");
+      return;
+    }
     setMe(null);
     router.push("/");
     router.refresh();
@@ -121,7 +140,10 @@ export default function Header() {
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
           {brand}
 
-          <nav className="hidden items-center gap-7 lg:flex" aria-label="Kryesore">
+          <nav
+            className="hidden items-center gap-7 lg:flex"
+            aria-label="Kryesore"
+          >
             {links.map((l) => (
               <Link
                 key={l.href}
@@ -165,7 +187,9 @@ export default function Header() {
                 href={l.href}
                 onClick={() => setOpen(false)}
                 className={`rounded-xl px-4 py-3.5 text-base font-medium transition-colors ${
-                  pathname === l.href ? "bg-honey text-ink" : "text-ink hover:bg-cream"
+                  pathname === l.href
+                    ? "bg-honey text-ink"
+                    : "text-ink hover:bg-cream"
                 }`}
               >
                 {l.label}
