@@ -81,6 +81,11 @@ historical evidence for their named commits, not current feature claims.
   identifier and password presence/placeholder category to initialization logs to
   distinguish a wrong environment/project from an incorrect database password.
   No password content, substring or hash is emitted. Hosted writes remain blocked.
+- Supabase password reset checkpoint: the founder now reports changing the actual
+  staging database password to match the saved Preview connections. Trigger a
+  fresh Preview and verify the result after that provider-side change. Keep the
+  runtime isolation gate closed until the staged category IDs are returned;
+  neither the reported reset nor a READY build proves a successful connection.
 
 ## Readiness reassessment — 7 September 2026
 
