@@ -7,10 +7,5 @@
       "path": "/api/cron/escrow",
       "schedule": "*/5 * * * *"
     }
-  ],
-  "git": {
-    "deploymentEnabled": {
-      "codex/private-marketplace-beta": false
-    }
-  }
+  ]
 }

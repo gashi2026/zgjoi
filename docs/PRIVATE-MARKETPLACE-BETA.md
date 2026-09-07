@@ -44,7 +44,7 @@ A fresh hosted staging check on 7 September confirmed the same 28/28 RLS and zer
 
 ## Deployment guard and configuration
 
-Automatic Vercel deployment is disabled for `codex/private-marketplace-beta` in `vercel.json`. The available connector cannot set branch-specific Preview secrets, and Preview database isolation has not been established. After the dedicated staging credentials are configured, remove that one branch rule and deploy a Preview. The rule does not disable other branches.
+Automatic Vercel deployment has been enabled for `codex/private-marketplace-beta` after the founder reported saving the eight initial staging-only Preview variables on 7 September. The available connector cannot inspect or edit their secret values. Deployment and database isolation must be verified from runtime behavior before authenticated writes. `APP_URL` follows once the stable Preview origin exists. Both pull requests remain draft and unmerged.
 
 Follow [OWNER-SETUP.md](OWNER-SETUP.md) for dashboard steps and the actual remaining owner inputs. Required staging variables (names only; never paste secrets in chat):
 

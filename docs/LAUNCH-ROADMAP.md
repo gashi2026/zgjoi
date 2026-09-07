@@ -30,8 +30,9 @@ Review is optional. There is no public bidding, broadcast lead feed or paid unlo
 - Supabase security advisors show only informational no-policy notices. This is
   intentional server-only access; [do not open browser policies to silence these notices](https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy).
 - Production source remains `4e6c58a21984b7ed7f6d9bf22d1c755c8512ef82`.
-  The last Vercel inspection found no candidate deployment. Automatic deployment
-  of this branch is paused until staging-only Preview variables are configured.
+  The founder reported saving the eight initial staging-only Preview variables
+  on 7 September. This branch's deployment restriction has now been removed;
+  the resulting Preview still needs runtime isolation and journey verification.
 - The earlier production database permission repair remains recorded as migration
   `20260906193104`. No production feature schema change or code release was made
   during this implementation batch.

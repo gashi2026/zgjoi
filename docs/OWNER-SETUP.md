@@ -56,10 +56,12 @@ Generate each new hex secret separately on your computer with
 Changing the production encryption key without a migration would make existing
 encrypted data unreadable.
 
-Vercel applies changed variables to **new deployments**, not existing ones. Once
-all staging overrides are configured, the candidate's one branch-deployment
-restriction in `vercel.json` can be removed and a Preview created. This source
-restriction is deliberately still present. See
+Vercel applies changed variables to **new deployments**, not existing ones. On
+7 September the founder reported saving the eight initial branch-specific
+settings. The candidate's branch-deployment restriction has now been removed so
+a Preview can be created. Saving variables is not proof of database isolation:
+verify the resulting deployment against staging before authenticated writes.
+Set `APP_URL` to the actual stable Preview origin after deployment. See
 [Vercel environment-variable behavior](https://vercel.com/docs/environment-variables).
 
 You only need to report that configuration is complete and supply the Preview URL.
