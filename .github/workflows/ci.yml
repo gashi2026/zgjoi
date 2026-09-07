@@ -30,7 +30,7 @@ jobs:
           POSTGRES_PASSWORD: ci_only_password
         ports: ["5432:5432"]
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -U postgres -d zgjoi_test"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10

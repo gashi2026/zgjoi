@@ -7,6 +7,7 @@ import { recordSettledCheckout } from "../lib/server/payments";
 import { adminCommand } from "../lib/server/admin";
 import { rateLimit } from "../lib/server/rate-limit";
 import { decrypt } from "../lib/server/crypto";
+import { deliverOutbox } from "../lib/server/notifications";
 const database = new URL(process.env.DATABASE_URL || "");
 assert(
   process.env.CI &&
@@ -57,6 +58,37 @@ function ok(response: Awaited<ReturnType<typeof http>>, status = 200) {
     `Unexpected response: ${JSON.stringify(response.data)}`,
   );
   return response.data;
+}
+function redirects(
+  response: Awaited<ReturnType<typeof http>>,
+  destination: string,
+) {
+  if ([303, 307, 308].includes(response.status)) {
+    assert.equal(
+      new URL(response.headers.get("location") ?? "", base).pathname,
+      destination,
+    );
+  } else {
+    // Next streams a meta redirect when a loading boundary has already sent HTTP 200.
+    assert.equal(response.status, 200);
+    const tag = response.text.match(
+      /<meta\b[^>]*id="__next-page-redirect"[^>]*>/,
+    )?.[0];
+    assert(
+      tag,
+      "Expected a real Next redirect tag, not an accessible admin page",
+    );
+    assert(tag.includes('http-equiv="refresh"'));
+    assert(tag.includes(`content="1;url=${destination}"`));
+  }
+  assert(
+    !response.text.includes("Administrimi i Zgjoi"),
+    "Admin content leaked before redirect",
+  );
+  assert(
+    !response.text.includes("Komision nga transfere"),
+    "Private financial content leaked",
+  );
 }
 after(async () => {
   await db.$disconnect();
@@ -160,7 +192,7 @@ test("database-backed private marketplace and authorization journey", async (t) 
       assert.equal(privatePage.status, 307);
       assert.match(privatePage.headers.get("location") ?? "", /\/hyr/);
       const wrongRole = await http("/admin", aj);
-      assert.equal(wrongRole.status, 307);
+      redirects(wrongRole, "/llogaria");
       ok(
         await http("/api/admin/commands", aj, {
           action: "USER_SUSPEND",
@@ -172,8 +204,7 @@ test("database-backed private marketplace and authorization journey", async (t) 
       const forged = new Map([["zgjoi_session", "a".repeat(64)]]);
       ok(await http("/api/requests", forged, {}), 401);
       const staffHome = await http("/admin", supportj);
-      assert.equal(staffHome.status, 307);
-      assert.match(staffHome.headers.get("location") ?? "", /mbeshtetja/);
+      redirects(staffHome, "/admin/mbeshtetja");
     },
   );
   await t.test(
@@ -216,11 +247,19 @@ test("database-backed private marketplace and authorization journey", async (t) 
   await t.test(
     "support ticket access requires its owner, staff, or guest capability",
     async () => {
-      const sent = ok(
-        await http("/api/support/send", aj, {
-          body: "Mesazh privat i klientit A për ndihmë.",
-          clientKey: randomUUID(),
-        }),
+      const firstMessage = {
+        body: "Mesazh privat i klientit A për ndihmë.",
+        clientKey: randomUUID(),
+      };
+      const [firstSend, retriedSend] = await Promise.all([
+        http("/api/support/send", aj, firstMessage),
+        http("/api/support/send", aj, firstMessage),
+      ]);
+      const sent = ok(firstSend);
+      assert.equal(ok(retriedSend).ticketId, sent.ticketId);
+      assert.equal(
+        await db.supportTicket.count({ where: { userId: a.id } }),
+        1,
       );
       const read = ok(
         await http(`/api/support/messages?ticketId=${sent.ticketId}`, aj),
@@ -238,25 +277,40 @@ test("database-backed private marketplace and authorization journey", async (t) 
         }),
         404,
       );
-      ok(
-        await http("/api/support/reply", supportj, {
-          ticketId: sent.ticketId,
-          body: "Përgjigje e mbështetjes.",
-        }),
-      );
+      const reply = {
+        ticketId: sent.ticketId,
+        body: "Përgjigje e mbështetjes.",
+        clientKey: randomUUID(),
+      };
+      for (const response of await Promise.all([
+        http("/api/support/reply", supportj, reply),
+        http("/api/support/reply", supportj, reply),
+      ]))
+        ok(response);
       assert.equal(
         ok(await http(`/api/support/messages?ticketId=${sent.ticketId}`, aj))
           .messages.length,
         2,
       );
       const guest: Jar = new Map();
-      const ticket = ok(
-        await http("/api/support/send", guest, {
-          body: "Vizitor pa llogari, kërkoj ndihmë.",
-          clientKey: randomUUID(),
-        }),
-      );
+      ok(await http("/api/support/current", guest));
       assert(guest.has("zgjoi_support"));
+      const guestMessage = {
+        body: "Vizitor pa llogari, kërkoj ndihmë.",
+        clientKey: randomUUID(),
+      };
+      const ticket = ok(await http("/api/support/send", guest, guestMessage));
+      assert.equal(
+        ok(await http("/api/support/send", guest, guestMessage)).ticketId,
+        ticket.ticketId,
+      );
+      ok(
+        await http("/api/support/send", guest, {
+          ...guestMessage,
+          body: "Different message with reused key",
+        }),
+        409,
+      );
       ok(
         await http(`/api/support/messages?ticketId=${ticket.ticketId}`, guest),
       );
@@ -713,6 +767,162 @@ test("database-backed private marketplace and authorization journey", async (t) 
     assert.equal(results.filter((r) => r.ok).length, 5);
   });
   await t.test(
+    "signup, verification, own-profile edits, favorites and availability persist",
+    async () => {
+      for (const role of ["CLIENT", "PRO"] as const) {
+        const jar: Jar = new Map();
+        const email = `signup-${role.toLowerCase()}-${randomUUID()}@ci.zgjoi.invalid`;
+        const input = {
+          role,
+          name: `Test ${role}`,
+          email,
+          password,
+          city: "Prishtinë",
+          terms: true,
+          ...(role === "PRO"
+            ? {
+                categorySlug: category.slug,
+                about: "Profesionist i ri për provën e regjistrimit të sigurt.",
+                priceFrom: "35.50",
+              }
+            : {}),
+        };
+        ok(await http("/api/auth/register", jar, input));
+        const user = await db.user.findUniqueOrThrow({
+          where: { email },
+          include: { proProfile: true },
+        });
+        assert.equal(user.role, role);
+        assert.notEqual(user.passwordHash, password);
+        assert.equal(user.emailVerified, null);
+        ok(await http("/api/auth/register", new Map(), input), 409);
+        const token = await db.authToken.findFirstOrThrow({
+          where: { userId: user.id, purpose: "EMAIL_VERIFY", usedAt: null },
+        });
+        const mail = await db.outbox.findUniqueOrThrow({
+          where: { key: `account-email:${token.id}` },
+        });
+        const payload = JSON.parse(decrypt(mail.payloadEnc));
+        assert.equal(payload.expiresAt, token.expiresAt.toISOString());
+        const raw = String(payload.text).match(/#token=([a-f0-9]{64})/)?.[1];
+        assert(raw);
+        ok(await http("/api/auth/verify", new Map(), { token: raw }));
+        ok(await http("/api/auth/verify", new Map(), { token: raw }), 400);
+        assert.equal(await db.session.count({ where: { userId: user.id } }), 0);
+        ok(await http("/api/auth/login", jar, { email, password }));
+        ok(await http("/api/auth/resend", jar, {}));
+        assert.equal(
+          await db.authToken.count({
+            where: { userId: user.id, purpose: "EMAIL_VERIFY" },
+          }),
+          1,
+        );
+        ok(
+          await http("/api/account", jar, {
+            name: user.name,
+            city: "Pejë",
+            phone: "",
+            ...(role === "PRO" ? { priceFrom: "40.25" } : {}),
+          }),
+        );
+        assert.equal(
+          (await db.user.findUniqueOrThrow({ where: { id: user.id } })).city,
+          "Pejë",
+        );
+        if (role === "CLIENT") {
+          for (let attempt = 0; attempt < 2; attempt++)
+            ok(
+              await http("/api/favorites", jar, {
+                profileId: pro.proProfile!.id,
+                saved: true,
+              }),
+            );
+          assert.equal(
+            await db.favorite.count({ where: { userId: user.id } }),
+            1,
+          );
+          assert.equal(await db.favorite.count({ where: { userId: a.id } }), 0);
+          ok(
+            await http("/api/favorites", jar, {
+              profileId: pro.proProfile!.id,
+              saved: false,
+            }),
+          );
+          assert.equal(
+            await db.favorite.count({ where: { userId: user.id } }),
+            0,
+          );
+          ok(await http("/api/availability", jar, { days: [] }), 403);
+        } else {
+          assert.equal(user.proProfile!.verification, "PENDING");
+          assert(
+            !ok(await http("/api/catalog")).pros.some(
+              (p: { id: string }) => p.id === user.proProfile!.id,
+            ),
+          );
+          assert.equal(
+            (
+              await db.proProfile.findUniqueOrThrow({
+                where: { id: user.proProfile!.id },
+              })
+            ).priceFrom,
+            4025,
+          );
+          const days = [{ weekday: 1, startMin: 540, endMin: 1020 }];
+          ok(await http("/api/availability", jar, { days }));
+          assert.equal(
+            await db.availability.count({
+              where: { profileId: user.proProfile!.id },
+            }),
+            1,
+          );
+          ok(
+            await http("/api/availability", jar, { days: [...days, ...days] }),
+            400,
+          );
+          assert.equal(
+            await db.availability.count({
+              where: { profileId: user.proProfile!.id },
+            }),
+            1,
+          );
+          ok(
+            await http("/api/admin/commands", adminj, {
+              action: "PRO_APPROVE",
+              id: user.proProfile!.id,
+              reason: "Synthetic profile checked for CI publication test",
+            }),
+          );
+          assert(
+            ok(await http("/api/catalog")).pros.some(
+              (p: { id: string }) => p.id === user.proProfile!.id,
+            ),
+          );
+          ok(
+            await http("/api/account", jar, {
+              name: `${user.name} Changed`,
+              city: "Pejë",
+              phone: "",
+            }),
+          );
+          assert.equal(
+            (
+              await db.proProfile.findUniqueOrThrow({
+                where: { id: user.proProfile!.id },
+              })
+            ).verification,
+            "PENDING",
+          );
+        }
+        await db.session.updateMany({
+          where: { userId: user.id },
+          data: { expiresAt: new Date(Date.now() - 1000) },
+        });
+        ok(await http("/api/account", jar, {}), 401);
+      }
+    },
+  );
+  await t.test(
     "password recovery uses expiring one-use tokens and revokes every session",
     async () => {
       ok(await http("/api/auth/forgot", new Map(), { email: b.email }));
@@ -724,6 +934,7 @@ test("database-backed private marketplace and authorization journey", async (t) 
         where: { key: `account-email:${token.id}` },
       });
       const payload = JSON.parse(decrypt(outbox.payloadEnc));
+      assert.equal(payload.expiresAt, token.expiresAt.toISOString());
       const raw = String(payload.text).match(/#token=([a-f0-9]{64})/)?.[1];
       assert(raw);
       const nextPassword = `replacement-${randomUUID()}`;
@@ -751,6 +962,51 @@ test("database-backed private marketplace and authorization journey", async (t) 
           password: nextPassword,
         }),
       );
+    },
+  );
+  await t.test(
+    "consumed recovery emails are discarded without contacting a delivery provider",
+    async () => {
+      const originalFetch = globalThis.fetch;
+      const names = [
+        "EMAIL_DELIVERY_ENABLED",
+        "RESEND_API_KEY",
+        "EMAIL_FROM",
+      ] as const;
+      const saved = Object.fromEntries(
+        names.map((name) => [name, process.env[name]]),
+      );
+      let attempts = 0;
+      globalThis.fetch = async () => {
+        attempts++;
+        throw new Error("External network forbidden in this test");
+      };
+      process.env.EMAIL_DELIVERY_ENABLED = "true";
+      process.env.RESEND_API_KEY = "synthetic-ci-only";
+      process.env.EMAIL_FROM = "test@ci.zgjoi.invalid";
+      try {
+        await deliverOutbox();
+        assert.equal(attempts, 0);
+        const used = await db.authToken.findFirstOrThrow({
+          where: {
+            userId: b.id,
+            purpose: "PASSWORD_RESET",
+            usedAt: { not: null },
+          },
+        });
+        const mail = await db.outbox.findUniqueOrThrow({
+          where: { key: `account-email:${used.id}` },
+        });
+        assert.equal(mail.state, "FAILED");
+        assert.equal(mail.lastError, "EXPIRED_MESSAGE");
+        assert.equal(mail.payloadEnc, "");
+      } finally {
+        globalThis.fetch = originalFetch;
+        for (const name of names) {
+          if (saved[name] === undefined) delete process.env[name];
+          else process.env[name] = saved[name];
+        }
+      }
     },
   );
   await t.test(

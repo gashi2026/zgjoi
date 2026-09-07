@@ -10,6 +10,8 @@ import { enforceLimit } from "./rate-limit";
 import { requestIp } from "./http";
 import { supportInput, entityId, cleanText } from "../marketplace-validation";
 import { supportStatus } from "../support-hours";
+import { serializable } from "./marketplace";
+import { clientKey } from "../marketplace-validation";
 
 type TicketAccess = { userId: string | null; guestTokenHash: string | null };
 export function canReadTicket(
@@ -37,6 +39,16 @@ async function context() {
     user,
     guestHash: !user && validToken(token) ? hashToken(token) : null,
   };
+}
+
+async function setGuestCapability(token: string) {
+  (await cookies()).set("zgjoi_support", token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge: 7 * 86400,
+  });
 }
 
 export async function requireTicket(
@@ -109,7 +121,36 @@ export async function sendSupport(input: unknown) {
     !ctx.user && !ctx.guestHash && !data.ticketId ? opaqueToken() : null;
   const guestHash =
     ctx.guestHash ?? (guestToken ? hashToken(guestToken) : null);
-  const result = await db.$transaction(async (tx) => {
+  const dedupeKey = data.clientKey
+    ? hashToken(`support:${ctx.user?.id ?? guestHash}:${data.clientKey}`)
+    : undefined;
+  const result = await serializable(async (tx) => {
+    if (dedupeKey) {
+      const existing = await tx.supportMessage.findUnique({
+        where: { dedupeKey },
+        include: { ticket: true },
+      });
+      if (existing) {
+        invariant(
+          canReadTicket(existing.ticket, ctx.user, guestHash),
+          "NOT_FOUND",
+          404,
+          "Biseda nuk u gjet.",
+        );
+        invariant(
+          existing.body === data.body &&
+            (!data.ticketId || data.ticketId === existing.ticketId),
+          "RETRY_CHANGED",
+          409,
+          "Mesazhi ka ndryshuar. Dërgojeni si mesazh të ri.",
+        );
+        return {
+          ok: true,
+          ticketId: existing.ticketId,
+          offline: existing.ticket.offline,
+        };
+      }
+    }
     let ticket;
     if (data.ticketId) {
       ticket = await tx.supportTicket.findUnique({
@@ -140,14 +181,6 @@ export async function sendSupport(input: unknown) {
         },
       });
     }
-    const dedupeKey = data.clientKey
-      ? hashToken(`${ticket.id}:${ctx.user?.id ?? guestHash}:${data.clientKey}`)
-      : undefined;
-    if (
-      dedupeKey &&
-      (await tx.supportMessage.findUnique({ where: { dedupeKey } }))
-    )
-      return { ok: true, ticketId: ticket.id, offline: ticket.offline };
     await tx.supportMessage.create({
       data: {
         ticketId: ticket.id,
@@ -162,30 +195,49 @@ export async function sendSupport(input: unknown) {
     });
     return { ok: true, ticketId: ticket.id, offline: !status.online };
   });
-  if (guestToken)
-    (await cookies()).set("zgjoi_support", guestToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/",
-      maxAge: 7 * 86400,
-    });
+  if (guestToken) await setGuestCapability(guestToken);
   return result;
 }
 
 export async function replySupport(input: unknown) {
   const user = await requireRole("ADMIN", "SUPPORT");
   const data = z
-    .object({ ticketId: entityId, body: cleanText(1, 2000) })
+    .object({
+      ticketId: entityId,
+      body: cleanText(1, 2000),
+      clientKey: clientKey.optional(),
+    })
     .parse(input);
   await enforceLimit(`staff-reply:${user.id}`, 60, 60_000);
-  await db.$transaction(async (tx) => {
+  const dedupeKey = data.clientKey
+    ? hashToken(`staff:${user.id}:${data.clientKey}`)
+    : undefined;
+  await serializable(async (tx) => {
+    const ticket = await tx.supportTicket.findUnique({
+      where: { id: data.ticketId },
+    });
+    invariant(ticket, "NOT_FOUND", 404, "Biseda nuk u gjet.");
+    if (dedupeKey) {
+      const existing = await tx.supportMessage.findUnique({
+        where: { dedupeKey },
+      });
+      if (existing) {
+        invariant(
+          existing.ticketId === data.ticketId && existing.body === data.body,
+          "RETRY_CHANGED",
+          409,
+          "Mesazhi ka ndryshuar. Dërgojeni si mesazh të ri.",
+        );
+        return;
+      }
+    }
     await tx.supportMessage.create({
       data: {
         ticketId: data.ticketId,
         senderId: user.id,
         body: data.body,
         fromAgent: true,
+        dedupeKey,
       },
     });
     await tx.supportTicket.update({
@@ -230,7 +282,12 @@ export async function changeTicketState(input: unknown) {
 
 export async function currentSupport() {
   const ctx = await context();
-  if (!ctx.user && !ctx.guestHash) return { ticketId: null, identity: "guest" };
+  if (!ctx.user && !ctx.guestHash) {
+    // The widget prepares this private capability before its first send so retries
+    // remain bound to the same guest even when the first message response is lost.
+    await setGuestCapability(opaqueToken());
+    return { ticketId: null, identity: "guest" };
+  }
   const ticket = await db.supportTicket.findFirst({
     where: ctx.user
       ? { userId: ctx.user.id }

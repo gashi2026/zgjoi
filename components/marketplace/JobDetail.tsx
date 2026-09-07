@@ -3,6 +3,7 @@ import { pageGuard } from "@/lib/server/guard";
 import { getRequest } from "@/lib/server/marketplace";
 import { AppError } from "@/lib/server/errors";
 import { paymentsReady } from "@/lib/server/payments";
+import { commissionBps } from "@/lib/server/settings";
 import { money, stateLabel, dateTime } from "@/lib/format";
 import Frame, { Panel } from "./Frame";
 import ApiForm from "./ApiForm";
@@ -26,6 +27,10 @@ export default async function JobDetail({
     (q) => q.state === "SENT" && q.expiresAt && q.expiresAt > new Date(),
   );
   const funded = request.payment?.state === "HELD";
+  const commission =
+    pro && ["OPEN", "QUOTED"].includes(request.state)
+      ? await commissionBps()
+      : null;
   const active = ["BOOKED", "IN_PROGRESS"].includes(request.state);
   const jobAction = (
     action: string,
@@ -121,61 +126,68 @@ export default async function JobDetail({
           </article>
         ))}
         {pro && ["OPEN", "QUOTED"].includes(request.state) && (
-          <ApiForm
-            key={request.version}
-            endpoint="/api/offers"
-            idempotent
-            values={{ requestId: id, expectedVersion: request.version }}
-            label={
-              request.quotes.length ? "Dërgo ofertën e re" : "Dërgo ofertën"
-            }
-            fields={[
-              {
-                name: "amount",
-                label: "Çmimi total në euro",
-                type: "number",
-                min: 0.01,
-                max: 100000,
-                step: "0.01",
-                required: true,
-              },
-              {
-                name: "description",
-                label: "Çfarë përfshihet në çmim?",
-                type: "textarea",
-                minLength: 20,
-                maxLength: 4000,
-                required: true,
-              },
-              {
-                name: "timing",
-                label: "Përshkrimi i orarit",
-                required: true,
-                minLength: 3,
-                maxLength: 120,
-              },
-              {
-                name: "duration",
-                label: "Kohëzgjatja e parashikuar",
-                required: true,
-                maxLength: 60,
-              },
-              {
-                name: "expiresAt",
-                label: "Oferta skadon",
-                type: "datetime-local",
-                required: true,
-                hint: "Brenda 30 ditësh dhe para fillimit të punës. Përdoret zona kohore e pajisjes suaj.",
-              },
-              {
-                name: "scheduledAt",
-                label: "Fillimi i punës",
-                type: "datetime-local",
-                required: true,
-                hint: "Pas skadimit të ofertës. Përdoret zona kohore e pajisjes suaj.",
-              },
-            ]}
-          />
+          <div className="space-y-4">
+            <p className="text-sm text-muted">
+              Komisioni aktual i platformës është {(commission ?? 0) / 100}% e
+              çmimit total. Shumat e rezervimit shfaqen pas pranimit. Pagesat
+              janë ende në provë.
+            </p>
+            <ApiForm
+              key={request.version}
+              endpoint="/api/offers"
+              idempotent
+              values={{ requestId: id, expectedVersion: request.version }}
+              label={
+                request.quotes.length ? "Dërgo ofertën e re" : "Dërgo ofertën"
+              }
+              fields={[
+                {
+                  name: "amount",
+                  label: "Çmimi total në euro",
+                  type: "number",
+                  min: 0.01,
+                  max: 100000,
+                  step: "0.01",
+                  required: true,
+                },
+                {
+                  name: "description",
+                  label: "Çfarë përfshihet në çmim?",
+                  type: "textarea",
+                  minLength: 20,
+                  maxLength: 4000,
+                  required: true,
+                },
+                {
+                  name: "timing",
+                  label: "Përshkrimi i orarit",
+                  required: true,
+                  minLength: 3,
+                  maxLength: 120,
+                },
+                {
+                  name: "duration",
+                  label: "Kohëzgjatja e parashikuar",
+                  required: true,
+                  maxLength: 60,
+                },
+                {
+                  name: "expiresAt",
+                  label: "Oferta skadon",
+                  type: "datetime-local",
+                  required: true,
+                  hint: "Brenda 30 ditësh dhe para fillimit të punës. Përdoret zona kohore e pajisjes suaj.",
+                },
+                {
+                  name: "scheduledAt",
+                  label: "Fillimi i punës",
+                  type: "datetime-local",
+                  required: true,
+                  hint: "Pas skadimit të ofertës. Përdoret zona kohore e pajisjes suaj.",
+                },
+              ]}
+            />
+          </div>
         )}
       </Panel>
       {request.payment && (
@@ -341,6 +353,7 @@ export default async function JobDetail({
         <Panel>
           <h2 className="mb-4 text-lg font-bold">Biseda private</h2>
           <Thread
+            key={request.conversation.id}
             id={request.conversation.id}
             closed={["CANCELLED", "COMPLETED"].includes(request.state)}
           />

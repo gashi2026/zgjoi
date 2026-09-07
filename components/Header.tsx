@@ -71,14 +71,15 @@ export default function Header() {
 
   async function logout() {
     setOpen(false);
-    const response = await fetch("/api/auth/logout", { method: "POST" });
-    if (!response.ok) {
+    try {
+      const response = await fetch("/api/auth/logout", { method: "POST" });
+      if (!response.ok) throw new Error("Logout not confirmed");
+      setMe(null);
+      router.push("/");
+      router.refresh();
+    } catch {
       window.alert("Dalja nuk u konfirmua. Provoni përsëri.");
-      return;
     }
-    setMe(null);
-    router.push("/");
-    router.refresh();
   }
 
   const brand = logoUrl ? (

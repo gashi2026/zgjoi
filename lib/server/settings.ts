@@ -55,12 +55,6 @@ export function splitAmount(totalCents: number, bps: number) {
   };
 }
 
-/** Cost of opening one lead, in cents. Admin-overridable via Setting. */
-export async function leadCostCents(): Promise<number> {
-  const v = await getSetting<number>("leadCostCents");
-  return typeof v === "number" && v >= 0 && v <= 100000 ? v : 400;
-}
-
 /* ------------------------------------------------------- site settings */
 
 export type SiteSettings = {

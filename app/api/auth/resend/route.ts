@@ -5,6 +5,8 @@ import { enforceLimit } from "@/lib/server/rate-limit";
 export async function POST(req: Request) {
   return api(req, async () => {
     const user = await requireUser();
+    if (user.emailVerified)
+      return { ok: true, message: "Emaili juaj është verifikuar." };
     await enforceLimit(`resend:${user.id}`, 3, 3600000);
     const result = await requestAccountToken(user.id, "EMAIL_VERIFY");
     return {

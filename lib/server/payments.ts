@@ -137,6 +137,13 @@ export async function startCheckout(actor: Actor, requestId: string) {
     "Kërkesa ka ndryshuar.",
   );
   const base = applicationUrl()!;
+  invariant(
+    current.providerCheckoutId ||
+      current.updatedAt.getTime() > Date.now() - 23 * 3600000,
+    "RECONCILE",
+    409,
+    "Kontrolloni tentimin e pagesës te ofruesi para riprovimit.",
+  );
   const checkout = await stripe.checkout.sessions.create(
     {
       mode: "payment",
@@ -402,6 +409,25 @@ export async function releasePayment(actor: Actor, paymentId: string) {
     return p;
   });
   if (payment.state === "RELEASED") return { ok: true, already: true };
+  // Recheck the provider before attempting a transfer: an external refund or
+  // chargeback must not be treated as releasable funds merely because our
+  // checkout webhook previously recorded HELD. Full event reconciliation is a
+  // separate live-payment release gate.
+  const charge = await stripe.charges.retrieve(payment.stripeChargeId!);
+  invariant(
+    !charge.livemode &&
+      charge.paid &&
+      charge.captured &&
+      !charge.disputed &&
+      !charge.refunded &&
+      charge.amount_refunded === 0 &&
+      charge.amount === payment.amount &&
+      charge.currency === "eur" &&
+      charge.payment_intent === payment.stripePaymentIntentId,
+    "RECONCILE",
+    409,
+    "Gjendja te ofruesi ka ndryshuar. Ndaloni lirimin dhe shqyrtoni pagesën.",
+  );
   const transfer = await stripe.transfers.create(
     {
       amount: payment.proAmount,
@@ -529,6 +555,16 @@ export async function refundHeldPayment(
       },
     });
     if (refund.status === "succeeded") {
+      await tx.payout.updateMany({
+        where: {
+          paymentId: payment.id,
+          state: { in: ["SCHEDULED", "PROCESSING"] },
+        },
+        data: {
+          state: "FAILED",
+          reference: `cancelled-by-refund:${refund.id}`,
+        },
+      });
       await tx.serviceRequest.update({
         where: { id: payment.requestId },
         data: {
@@ -551,6 +587,12 @@ export async function refundHeldPayment(
       });
     }
   });
+  invariant(
+    !["failed", "canceled"].includes(refund.status ?? ""),
+    "REFUND_REVIEW",
+    409,
+    "Rimbursimi nuk u krye. Shqyrtojeni te ofruesi para çdo veprimi tjetër.",
+  );
   return {
     ok: true,
     message:

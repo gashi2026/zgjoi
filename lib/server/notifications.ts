@@ -33,6 +33,7 @@ export async function queueAccountEmail(
   purpose: string,
   token: string,
   key: string,
+  expiresAt: Date,
 ) {
   const base = applicationUrl();
   if (!base || !/^[a-fA-F0-9]{64}$/.test(process.env.ENCRYPTION_KEY ?? ""))
@@ -46,6 +47,8 @@ export async function queueAccountEmail(
       payloadEnc: encrypt(
         JSON.stringify({
           to,
+          tokenId: key,
+          expiresAt: expiresAt.toISOString(),
           subject:
             purpose === "EMAIL_VERIFY"
               ? "Verifikoni emailin tuaj — Zgjoi"
@@ -95,7 +98,19 @@ export async function deliverOutbox() {
         to: string;
         subject: string;
         text: string;
+        tokenId?: string;
+        expiresAt?: string;
       };
+      if (message.tokenId) {
+        const token = await db.authToken.findUnique({
+          where: { id: message.tokenId },
+          select: { expiresAt: true, usedAt: true },
+        });
+        if (!token || token.usedAt || token.expiresAt.getTime() <= Date.now())
+          throw new Error("EXPIRED_MESSAGE");
+      }
+      if (message.expiresAt && !(Date.parse(message.expiresAt) > Date.now()))
+        throw new Error("EXPIRED_MESSAGE");
       if (message.to.endsWith(".invalid")) throw new Error("TEST_ADDRESS");
       const response = await fetch("https://api.resend.com/emails", {
         method: "POST",
@@ -122,20 +137,30 @@ export async function deliverOutbox() {
           sentAt: new Date(),
           payloadEnc: "",
           lastError: null,
+          lockedAt: null,
         },
       });
       delivered++;
     } catch (error) {
       const code =
         error instanceof Error &&
-        /^(TEST_ADDRESS|EMAIL_STATUS_\d+|EMAIL_NO_RECEIPT)$/.test(error.message)
+        /^(TEST_ADDRESS|EXPIRED_MESSAGE|EMAIL_STATUS_\d+|EMAIL_NO_RECEIPT)$/.test(
+          error.message,
+        )
           ? error.message
           : "EMAIL_DELIVERY_FAILED";
       await db.outbox.update({
         where: { id: job.id },
         data: {
           state:
-            job.attempts >= 8 || code === "TEST_ADDRESS" ? "FAILED" : "PENDING",
+            job.attempts >= 8 ||
+            ["TEST_ADDRESS", "EXPIRED_MESSAGE"].includes(code)
+              ? "FAILED"
+              : "PENDING",
+          ...(job.attempts >= 8 ||
+          ["TEST_ADDRESS", "EXPIRED_MESSAGE"].includes(code)
+            ? { payloadEnc: "" }
+            : {}),
           lastError: code,
           availableAt: new Date(
             Date.now() + Math.min(6 * 60 * 60_000, 60_000 * 2 ** job.attempts),

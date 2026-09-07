@@ -8,11 +8,17 @@ from completion. There is no public bidding or paid lead unlocking in this model
 
 ## Current state
 
-The repository contains reusable Albanian-language UI, custom authentication,
-Prisma models and partly connected admin/support APIs. Much of the customer and
-professional journey still uses fixtures or local-only interactions. Search,
-requests, offers, checkout, completion and payouts are not an operational paid
-marketplace yet. Database RLS does not fix application-level ownership bugs.
+This candidate contains database-backed customer, professional and admin flows:
+accounts and recovery, approved catalog/search, private inquiries and messages,
+versioned offers, atomic acceptance, customer completion and optional reviews.
+Application authorization, database rate limits and restricted Supabase API roles
+are separate layers. Legacy demo transactions and invented marketplace activity
+have been removed from the active experience.
+
+Payment code is **Stripe test-only and disabled by default**. Email delivery and
+private document uploads also require configuration and external verification.
+The candidate has not been deployed to production. Read
+[the implementation evidence](docs/PRIVATE-MARKETPLACE-BETA.md) before enabling a Preview.
 
 **Real-money beta is not ready.** Track verified work and remaining gates in
 [docs/LAUNCH-ROADMAP.md](docs/LAUNCH-ROADMAP.md). The initial audit covered all 143
@@ -22,16 +28,17 @@ success screens as evidence of real transactions.
 
 ## Stack and directories
 
-| Location | Purpose |
-| --- | --- |
-| `app/` | Next.js App Router pages, route handlers and server actions |
-| `components/` | React UI, including customer/pro/admin screens |
-| `lib/` | Display fixtures and shared definitions |
-| `lib/server/` | Prisma, custom sessions, settings, encryption and payment helpers |
-| `prisma/` | PostgreSQL schema and legacy seed; do not seed production |
-| `supabase/migrations/` | Recorded database permission repair; not a complete schema bootstrap |
-| `scripts/` | Local production-build smoke checks |
-| `.github/workflows/` | CI using no production credentials |
+| Location               | Purpose                                                                    |
+| ---------------------- | -------------------------------------------------------------------------- |
+| `app/`                 | Next.js App Router pages, route handlers and server actions                |
+| `components/`          | React UI, including customer/pro/admin screens                             |
+| `lib/`                 | Static service taxonomy, validation, formatting and shared definitions     |
+| `lib/server/`          | Prisma, custom sessions, settings, encryption and payment helpers          |
+| `prisma/`              | PostgreSQL schema and guarded catalog-only local/staging seed              |
+| `supabase/migrations/` | Recorded database permission repair; not a complete schema bootstrap       |
+| `supabase/staging/`    | Guarded staging bootstrap/upgrade and verification evidence                |
+| `scripts/`, `tests/`   | Unit checks, HTTP smoke checks and isolated PostgreSQL integration journey |
+| `.github/workflows/`   | CI using no production credentials                                         |
 
 Framework: Next.js 16.3.4, React 19.2.8, TypeScript 5.9.3, Tailwind CSS 3 and Prisma
 5.22.0. PostgreSQL is hosted on Supabase; the web app runs on Vercel. Next.js builds
@@ -52,9 +59,12 @@ For the verification sequence:
 ```bash
 npm run build
 npm run typecheck
+npm run test:unit
 npm run test:smoke
 ```
 
 See [DEPLOY.md](DEPLOY.md) before changing Vercel, environment configuration or the
 database. Build and install commands never migrate, seed or reset a database.
-See [BACKEND.md](BACKEND.md) for the current backend boundaries and known gaps.
+GitHub CI also runs `npm run test:integration` against a disposable local PostgreSQL
+17 service. The preparation script refuses non-CI/non-loopback databases; never
+point it at Supabase. See [BACKEND.md](BACKEND.md) for backend boundaries.

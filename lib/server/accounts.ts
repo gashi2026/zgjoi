@@ -136,7 +136,14 @@ export async function requestAccountToken(
         ),
       },
     });
-    return queueAccountEmail(tx, user.email, purpose, token, record.id);
+    return queueAccountEmail(
+      tx,
+      user.email,
+      purpose,
+      token,
+      record.id,
+      record.expiresAt,
+    );
   });
 }
 

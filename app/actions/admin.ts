@@ -6,8 +6,6 @@ import { requireRole } from "@/lib/server/auth";
 import { invariant } from "@/lib/server/errors";
 import { entityId, cleanText } from "@/lib/marketplace-validation";
 import { categories as baseCategories } from "@/lib/data";
-import { adminCommand } from "@/lib/server/admin";
-import { changeTicketState } from "@/lib/server/support";
 const slugify = (s: string) =>
   s
     .toLowerCase()
@@ -194,58 +192,4 @@ export async function saveHoneycomb(fd: FormData) {
     }),
   ]);
   refresh();
-}
-
-// Compatibility adapters for old imports; all use the same audited commands.
-async function command(fd: FormData, action: string, idKey = "id") {
-  await adminCommand(await requireRole("ADMIN"), {
-    ...Object.fromEntries(fd),
-    action,
-    id: fd.get(idKey) ?? undefined,
-  });
-  revalidatePath("/admin/perdoruesit");
-  revalidatePath("/admin/vleresimet");
-}
-export async function createUser(fd: FormData) {
-  await command(fd, "USER_CREATE");
-}
-export async function updateUser(fd: FormData) {
-  await command(fd, "USER_UPDATE");
-}
-export async function updateProProfile(_fd: FormData) {
-  await requireRole("ADMIN");
-  invariant(
-    false,
-    "PROFILE_EDITOR",
-    409,
-    "Përdorni profilin profesional dhe mjetet e shqyrtimit.",
-  );
-}
-export async function suspendUser(fd: FormData) {
-  await command(fd, "USER_SUSPEND");
-}
-export async function unsuspendUser(fd: FormData) {
-  await command(fd, "USER_RESTORE");
-}
-export async function deleteUser(fd: FormData) {
-  await command(fd, "USER_SUSPEND");
-}
-export async function approvePro(fd: FormData) {
-  await command(fd, "PRO_APPROVE", "profileId");
-}
-export async function rejectPro(fd: FormData) {
-  await command(fd, "PRO_REJECT", "profileId");
-}
-export async function flagReview(fd: FormData) {
-  await command(fd, "REVIEW_FLAG");
-}
-export async function removeReview(fd: FormData) {
-  await command(fd, "REVIEW_REMOVE");
-}
-export async function restoreReview(fd: FormData) {
-  await command(fd, "REVIEW_RESTORE");
-}
-export async function setTicketState(fd: FormData) {
-  await changeTicketState({ ticketId: fd.get("id"), state: fd.get("state") });
-  revalidatePath("/admin/mbeshtetja");
 }
