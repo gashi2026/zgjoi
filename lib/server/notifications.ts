@@ -84,7 +84,7 @@ export async function queueAccountEmail(
     return { queued: false };
   const path =
     purpose === "EMAIL_VERIFY" ? "/verifiko-emailin" : "/rivendos-fjalekalimin";
-  await tx.outbox.create({
+  const job = await tx.outbox.create({
     data: {
       key: `account-email:${key}`,
       kind: "EMAIL",
@@ -102,7 +102,21 @@ export async function queueAccountEmail(
       ),
     },
   });
-  return { queued: true };
+  return { queued: true, jobId: job.id };
+}
+
+/** First attempt for exactly the account email created by the current request.
+ * The durable outbox remains responsible for later retries. No batch maintenance.
+ */
+export async function deliverAccountEmail(id: string) {
+  if (!Object.values(accountEmailSetup()).every(Boolean)) return { accepted: false };
+  const jobs = await db.$queryRaw<EmailJob[]>`
+    UPDATE public."Outbox" SET state = 'PROCESSING', "lockedAt" = NOW(), attempts = attempts + 1
+    WHERE id = ${id} AND kind = 'EMAIL' AND key LIKE 'account-email:%'
+      AND state = 'PENDING' AND attempts = 0 AND "availableAt" <= NOW()
+      AND "createdAt" > NOW() - INTERVAL '23 hours'
+    RETURNING id, "payloadEnc", key, attempts, "lockedAt"`;
+  return { accepted: (await submitEmailJobs(jobs)) === 1 };
 }
 
 /** Preview-only submission of one fresh verification email; no maintenance work. */
@@ -218,11 +232,16 @@ async function submitEmailJobs(jobs: EmailJob[]) {
       if (message.tokenId) {
         const token = await db.authToken.findUnique({
           where: { id: message.tokenId },
-          select: { expiresAt: true, usedAt: true },
+          select: { expiresAt: true, usedAt: true, purpose: true,
+            user: { select: { email: true, suspendedAt: true } } },
         });
         if (!token || token.usedAt || token.expiresAt.getTime() <= Date.now())
           throw new Error("EXPIRED_MESSAGE");
+        if (token.user.suspendedAt || token.user.email !== message.to ||
+          !["EMAIL_VERIFY", "PASSWORD_RESET"].includes(token.purpose) || job.key !== `account-email:${message.tokenId}`)
+          throw new Error("MESSAGE_SUPPRESSED");
       }
+      if (job.key.startsWith("account-email:") && !message.tokenId) throw new Error("MESSAGE_SUPPRESSED");
       if (message.expiresAt && !(Date.parse(message.expiresAt) > Date.now()))
         throw new Error("EXPIRED_MESSAGE");
       if (message.to.endsWith(".invalid")) throw new Error("TEST_ADDRESS");

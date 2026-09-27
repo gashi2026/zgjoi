@@ -10,7 +10,7 @@ import { encrypt, decrypt } from "../lib/server/crypto";
 import { requestAccountToken, authenticate, consumeAccountToken } from "../lib/server/accounts";
 import { uploadDocument, signedDocument } from "../lib/server/storage";
 import { hashToken, opaqueToken } from "../lib/server/tokens";
-import { deliverOutbox, deliverOneVerificationEmail, notify } from "../lib/server/notifications";
+import { deliverOutbox, deliverOneVerificationEmail, deliverAccountEmail, notify } from "../lib/server/notifications";
 import { notificationPreferenceKey, saveNotificationPreferences } from "../lib/server/notification-preferences";
 import { expireOffers } from "../lib/server/offer-expiry";
 import { bookingFunnel } from "../lib/server/metrics";
@@ -830,7 +830,7 @@ test("database-backed private marketplace and authorization journey", async (t) 
         409,
       );
       ok(
-        await http(`/api/requests/${newRequest.id}`, aj, { action: "CANCEL" }),
+        await http(`/api/requests/${newRequest.id}`, aj, { action: "CANCEL", expectedVersion: 1 }),
       );
       ok(
         await http("/api/offers", pj, {
@@ -898,10 +898,9 @@ test("database-backed private marketplace and authorization journey", async (t) 
     assert.equal(denied.data.code, "AVAILABILITY");
     assert.equal(await db.payment.count({ where: { requestId: changed.id } }), 0);
     const winnerJar = race[0].status === 200 ? aj : bj;
-    ok(await http(`/api/requests/${booking.id}`, winnerJar, { action: "CANCEL" }), 409);
-    // Accepted-booking cancellation policy is unchanged; a rejected cancellation
-    // must not free the reserved slot or create another payment.
-    ok(await proposal(changed.id, "09:00", 1), 409);
+    ok(await http(`/api/requests/${booking.id}`, winnerJar, { action: "CANCEL", expectedVersion: booking.version }));
+    // Cancelling an untouched booking frees the slot while retaining its payment history.
+    ok(await proposal(changed.id, "09:00", 1));
     const calendar = await http("/pro/kalendari", jar);
     assert.equal(calendar.status, 200);
     assert(calendar.text.includes("Në pritje të pagesës"));
@@ -921,6 +920,151 @@ test("database-backed private marketplace and authorization journey", async (t) 
     await expireOffers();
     assert.equal(await db.notification.count({ where: { kind: "EXPIRED", href: { endsWith: `/kerkesat/${pending.id}` } } }), 2);
   });
+  async function unpaidBooking() {
+    const customer = await account("CLIENT", "BookingClient"), professional = await account("PRO", "BookingPro");
+    const customerJar: Jar = new Map([["zgjoi_session", (await persistSession(customer.id, passwordHash)).token]]);
+    const proJar: Jar = new Map([["zgjoi_session", (await persistSession(professional.id, passwordHash)).token]]);
+    const request = await db.serviceRequest.create({ data: {
+      clientId: customer.id, selectedProfileId: professional.proProfile!.id, categorySlug: category.slug,
+      title: "Rezervim për testim", detail: "Punë private për testimin e rezervimit.", city: "Prishtinë", timing: "Sipas marrëveshjes", answers: {}, conversation: { create: {} },
+    } });
+    const start = new Date(Date.now() + 3 * 86400000).toISOString();
+    const sent = ok(await http("/api/offers", proJar, { ...offer(), requestId: request.id, scheduledAt: start }));
+    ok(await http("/api/offers/accept", customerJar, { quoteId: sent.quoteId, expectedVersion: 1 }));
+    const proposal = { action: "PROPOSE", clientKey: randomUUID(), expectedVersion: 2, timing: "Orari i ri i propozuar",
+      scheduledAt: new Date(Date.now() + 5 * 86400000).toISOString(), expiresAt: new Date(Date.now() + 3600000).toISOString() };
+    return { id: request.id, customer, professional, customerJar, proJar, start, quoteId: sent.quoteId as string, proposal,
+      path: `/api/requests/${request.id}/reschedule` };
+  }
+
+  await t.test("unpaid cancellation enforces ownership and versions, is idempotent and retains closed payment history", async () => {
+    const f = await unpaidBooking();
+    const body = { action: "CANCEL", expectedVersion: 2 };
+    for (const jar of [bj, otherj, adminj]) ok(await http(`/api/requests/${f.id}`, jar, body), 404);
+    ok(await http(`/api/requests/${f.id}`, f.customerJar, { action: "CANCEL" }), 409);
+    ok(await http(`/api/requests/${f.id}`, f.customerJar, { ...body, expectedVersion: 1 }), 409);
+    const notices = await db.notification.count({ where: { kind: "CANCEL", href: { endsWith: f.id } } });
+    const results = await Promise.all([f.customerJar, f.proJar].map(jar => http(`/api/requests/${f.id}`, jar, body)));
+    results.forEach(r => ok(r));
+    const request = await db.serviceRequest.findUniqueOrThrow({ where: { id: f.id } });
+    assert.equal(request.state, "CANCELLED");
+    assert.equal(request.version, 3);
+    assert(request.cancelledAt);
+    assert.equal((await db.payment.findUniqueOrThrow({ where: { requestId: f.id } })).state, "EXPIRED");
+    assert.equal((await db.quote.findUniqueOrThrow({ where: { id: f.quoteId } })).state, "WITHDRAWN");
+    assert.equal(await db.notification.count({ where: { kind: "CANCEL", href: { endsWith: f.id } } }), notices + 1);
+    ok(await http(f.path, f.proJar, { ...f.proposal, expectedVersion: 3 }), 409);
+    ok(await http("/api/payments/checkout", f.customerJar, { requestId: f.id }), 409);
+    ok(await http("/api/offers/accept", f.customerJar, { quoteId: f.quoteId, expectedVersion: 1 }), 409);
+    const page = await http(`/llogaria/kerkesat/${f.id}`, f.customerJar);
+    assert.equal(page.status, 200);
+    assert(page.text.includes("Asnjë shumë nuk u tarifua"));
+    assert(!page.text.includes("Anulo rezervimin pa pagesë"));
+  });
+
+  await t.test("payment attempts, provider references and settled history prevent self-service booking changes", async () => {
+    const f = await unpaidBooking();
+    const payment = await db.payment.findUniqueOrThrow({ where: { requestId: f.id } });
+    const cases = [
+      { attempt: 1 }, { provider: "stripe_test" }, { providerCheckoutId: `cs-${randomUUID()}` },
+      { stripeChargeId: "ch-ci" }, { operation: "CHECKOUT", operationStartedAt: new Date() },
+      { heldAt: new Date() }, { state: "HELD" as const }, { state: "REFUNDED" as const },
+    ];
+    for (const patch of cases) {
+      await db.payment.update({ where: { id: payment.id }, data: patch });
+      ok(await http(`/api/requests/${f.id}`, f.customerJar, { action: "CANCEL", expectedVersion: 2 }), 409);
+      ok(await http(f.path, f.proJar, f.proposal), 409);
+      assert.equal(ok(await http(`/api/requests/${f.id}`, f.customerJar)).unpaidEditable, false);
+      await db.payment.update({ where: { id: payment.id }, data: Object.fromEntries(Object.keys(patch).map(key => [key, payment[key as keyof typeof payment]])) });
+    }
+    await db.paymentEvent.create({ data: { provider: "synthetic", eventId: randomUUID(), kind: "synthetic", paymentId: payment.id } });
+    ok(await http(`/api/requests/${f.id}`, f.proJar, { action: "CANCEL", expectedVersion: 2 }), 409);
+    ok(await http(f.path, f.proJar, f.proposal), 409);
+    assert.equal((await db.serviceRequest.findUniqueOrThrow({ where: { id: f.id } })).state, "BOOKED");
+  });
+
+  await t.test("rescheduling needs customer consent, keeps original terms and payment, and rejects stale or foreign decisions", async () => {
+    const f = await unpaidBooking();
+    for (const jar of [new Map(), bj, otherj, f.customerJar]) {
+      const r = await http(f.path, jar, f.proposal);
+      assert([401, 403, 404].includes(r.status));
+    }
+    ok(await http(f.path, f.proJar, f.proposal, { Origin: "https://outside.example.test" }), 403);
+    ok(await http(f.path, f.proJar, { ...f.proposal, amount: "1" }), 400);
+    const before = await db.payment.findUniqueOrThrow({ where: { requestId: f.id } });
+    const proposals = await Promise.all([http(f.path, f.proJar, f.proposal), http(f.path, f.proJar, f.proposal)]);
+    const sent = ok(proposals[0]);
+    assert.equal(ok(proposals[1]).quoteId, sent.quoteId);
+    let request = await db.serviceRequest.findUniqueOrThrow({ where: { id: f.id } });
+    assert.equal(request.acceptedQuoteId, f.quoteId);
+    assert.equal(request.scheduledAt!.toISOString(), f.start);
+    assert.equal(request.version, 3);
+    assert.deepEqual(await db.payment.findUniqueOrThrow({ where: { requestId: f.id } }), before);
+    assert.equal((await http("/api/payments/checkout", f.customerJar, { requestId: f.id })).data.code, "RESCHEDULE_PENDING");
+    const page = await http(`/llogaria/kerkesat/${f.id}`, f.customerJar);
+    assert(page.text.includes("Prano orarin e ri"));
+    assert(page.text.includes("Mbaj orarin e mëparshëm"));
+    const decision = { action: "ACCEPT", quoteId: sent.quoteId, expectedVersion: 3 };
+    ok(await http(f.path, f.proJar, decision), 403);
+    ok(await http(f.path, bj, decision), 404);
+    ok(await http(f.path, f.customerJar, { ...decision, expectedVersion: 2 }), 409);
+    const accepted = await Promise.all([http(f.path, f.customerJar, decision), http(f.path, f.customerJar, decision)]);
+    accepted.forEach(r => ok(r));
+    request = await db.serviceRequest.findUniqueOrThrow({ where: { id: f.id } });
+    assert.equal(request.scheduledAt!.toISOString(), f.proposal.scheduledAt);
+    assert.equal(request.acceptedQuoteId, sent.quoteId);
+    assert.equal(request.version, 4);
+    const after = await db.payment.findUniqueOrThrow({ where: { requestId: f.id } });
+    assert.deepEqual({ ...after, updatedAt: before.updatedAt }, before);
+    assert.equal(await db.payment.count({ where: { requestId: f.id } }), 1);
+    assert.equal(await db.notification.count({ where: { kind: "RESCHEDULE_ACCEPT", href: { endsWith: f.id } } }), 1);
+    assert.equal((await db.quote.findUniqueOrThrow({ where: { id: f.quoteId } })).state, "WITHDRAWN");
+  });
+
+  await t.test("declined, withdrawn, replaced and expired rescheduling proposals preserve the original reservation", async () => {
+    const f = await unpaidBooking();
+    let version = 2;
+    for (const action of ["DECLINE", "WITHDRAW"] as const) {
+      const sent = ok(await http(f.path, f.proJar, { ...f.proposal, clientKey: randomUUID(), expectedVersion: version++ }));
+      const jar = action === "DECLINE" ? f.customerJar : f.proJar;
+      const decision = { action, quoteId: sent.quoteId, expectedVersion: version++ };
+      ok(await http(f.path, jar, decision));
+      ok(await http(f.path, jar, decision));
+    }
+    const replaced = ok(await http(f.path, f.proJar, { ...f.proposal, clientKey: randomUUID(), expectedVersion: version++ }));
+    const fresh = ok(await http(f.path, f.proJar, { ...f.proposal, clientKey: randomUUID(), expectedVersion: version++ }));
+    ok(await http(f.path, f.customerJar, { action: "ACCEPT", quoteId: replaced.quoteId, expectedVersion: version }), 409);
+    await db.quote.update({ where: { id: fresh.quoteId }, data: { expiresAt: new Date(Date.now() - 1000) } });
+    ok(await http(f.path, f.customerJar, { action: "ACCEPT", quoteId: fresh.quoteId, expectedVersion: version }), 409);
+    await Promise.all([expireOffers(), expireOffers()]);
+    const request = await db.serviceRequest.findUniqueOrThrow({ where: { id: f.id } });
+    assert.equal(request.state, "BOOKED");
+    assert.equal(request.acceptedQuoteId, f.quoteId);
+    assert.equal(request.scheduledAt!.toISOString(), f.start);
+    assert.equal(request.version, version + 1);
+    assert.equal(await db.notification.count({ where: { kind: "RESCHEDULE_EXPIRED", href: { endsWith: f.id } } }), 2);
+  });
+
+  await t.test("rescheduling rechecks calendar collisions and payment activity at acceptance", async () => {
+    const f = await unpaidBooking();
+    const sent = ok(await http(f.path, f.proJar, f.proposal));
+    const decision = { action: "ACCEPT", quoteId: sent.quoteId, expectedVersion: 3 };
+    const otherRequest = await db.serviceRequest.create({ data: { clientId: b.id, selectedProfileId: f.professional.proProfile!.id,
+      categorySlug: category.slug, title: "Rezervim tjetër", timing: "Sipas marrëveshjes", city: "Prishtinë", answers: {} } });
+    // The original slot is still reserved while a replacement awaits consent.
+    ok(await http("/api/offers", f.proJar, { ...offer(), requestId: otherRequest.id, scheduledAt: f.start }), 409);
+    const otherQuote = ok(await http("/api/offers", f.proJar, { ...offer(), requestId: otherRequest.id, scheduledAt: f.proposal.scheduledAt }));
+    ok(await http("/api/offers/accept", bj, { quoteId: otherQuote.quoteId, expectedVersion: 1 }));
+    const conflict = await http(f.path, f.customerJar, decision);
+    assert.equal(conflict.status, 409);
+    assert.equal(conflict.data.code, "APPOINTMENT_CONFLICT");
+    assert.equal((await db.serviceRequest.findUniqueOrThrow({ where: { id: f.id } })).acceptedQuoteId, f.quoteId);
+    ok(await http(`/api/requests/${otherRequest.id}`, bj, { action: "CANCEL", expectedVersion: 2 }));
+    await db.payment.update({ where: { requestId: f.id }, data: { attempt: 1, provider: "stripe_test" } });
+    ok(await http(f.path, f.customerJar, decision), 409);
+    assert.equal((await db.quote.findUniqueOrThrow({ where: { id: sent.quoteId } })).state, "SENT");
+  });
+
   await t.test("concurrent rate limits share one atomic bucket", async () => {
     const key = `test-${randomUUID()}`;
     const results = await Promise.all(
@@ -1284,6 +1428,61 @@ test("database-backed private marketplace and authorization journey", async (t) 
       }
     },
   );
+
+  await t.test("targeted account delivery claims only its fresh job and rechecks token, recipient and opt-in", async () => {
+    const originalFetch = globalThis.fetch;
+    const names = ["EMAIL_DELIVERY_ENABLED", "RESEND_API_KEY", "EMAIL_FROM"] as const;
+    const saved = Object.fromEntries(names.map(name => [name, process.env[name]]));
+    let calls = 0;
+    try {
+      const user = await account("CLIENT", "ImmediateEmail");
+      const recipient = `immediate-${randomUUID()}@example.test`;
+      await db.user.update({ where: { id: user.id }, data: { email: recipient } });
+      const queued = await requestAccountToken(user.id, "PASSWORD_RESET");
+      assert(queued.jobId);
+      const sentinel = await db.outbox.create({ data: { key: `unrelated-${randomUUID()}`, kind: "EMAIL", payloadEnc: "unrelated" } });
+      const before = await db.outbox.findUniqueOrThrow({ where: { id: queued.jobId } });
+      globalThis.fetch = async (url, init) => {
+        assert.equal(String(url), "https://api.resend.com/emails");
+        assert.equal(new Headers(init?.headers).get("Idempotency-Key"), before.key);
+        const payload = JSON.parse(String(init?.body));
+        assert.deepEqual(payload.to, [recipient]);
+        assert(payload.text.includes("/rivendos-fjalekalimin#token="));
+        calls++;
+        return new Response(JSON.stringify({ id: "mock-account-receipt" }));
+      };
+      process.env.EMAIL_DELIVERY_ENABLED = "false";
+      process.env.RESEND_API_KEY = "synthetic-ci-only";
+      process.env.EMAIL_FROM = "sender@example.test";
+      assert.equal((await deliverAccountEmail(queued.jobId)).accepted, false);
+      assert.deepEqual(await db.outbox.findUniqueOrThrow({ where: { id: queued.jobId } }), before);
+      process.env.EMAIL_DELIVERY_ENABLED = "true";
+      const results = await Promise.all([deliverAccountEmail(queued.jobId), deliverAccountEmail(queued.jobId)]);
+      assert.equal(results.filter(r => r.accepted).length, 1);
+      assert.equal(calls, 1);
+      assert.equal((await deliverAccountEmail(queued.jobId)).accepted, false);
+      assert.equal((await deliverAccountEmail(sentinel.id)).accepted, false);
+      assert.deepEqual(await db.outbox.findUniqueOrThrow({ where: { id: sentinel.id } }), sentinel);
+      assert.equal((await db.outbox.findUniqueOrThrow({ where: { id: queued.jobId } })).payloadEnc, "");
+
+      const used = await requestAccountToken(user.id, "EMAIL_VERIFY");
+      const suspended = await requestAccountToken(user.id, "EMAIL_VERIFY");
+      assert(used.jobId && suspended.jobId);
+      await deliverAccountEmail(used.jobId);
+      assert.equal((await db.outbox.findUniqueOrThrow({ where: { id: used.jobId } })).lastError, "EXPIRED_MESSAGE");
+      await db.user.update({ where: { id: user.id }, data: { suspendedAt: new Date() } });
+      await deliverAccountEmail(suspended.jobId);
+      assert.equal((await db.outbox.findUniqueOrThrow({ where: { id: suspended.jobId } })).lastError, "MESSAGE_SUPPRESSED");
+      assert.equal(calls, 1);
+      await db.outbox.delete({ where: { id: sentinel.id } });
+    } finally {
+      globalThis.fetch = originalFetch;
+      for (const name of names) {
+        if (saved[name] === undefined) delete process.env[name];
+        else process.env[name] = saved[name];
+      }
+    }
+  });
 
   await t.test("email delivery retries preserve deduplication and recover crashed final attempts", async () => {
     const originalFetch = globalThis.fetch;

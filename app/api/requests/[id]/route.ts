@@ -29,8 +29,9 @@ export async function POST(
           "WITHDRAW",
         ]),
         quoteId: entityId.optional(),
+        expectedVersion: z.number().int().nonnegative().optional(),
       })
       .parse(await readJson(req));
-    return changeJob(user, (await ctx.params).id, data.action, data.quoteId);
+    return changeJob(user, (await ctx.params).id, data.action, data.quoteId, data.expectedVersion);
   });
 }

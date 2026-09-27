@@ -8,6 +8,7 @@ import { commissionBps, splitAmount } from "./settings";
 import { enforceLimit } from "./rate-limit";
 import { hashToken } from "./tokens";
 import { assertAppointmentAvailable, assertAvailabilityPreservesBookings } from "./appointments";
+import { paymentActivity, paymentUntouched } from "./unpaid-booking";
 import {
   inquiryInput,
   offerInput,
@@ -255,12 +256,14 @@ export async function acceptOffer(actor: Actor, input: unknown) {
       "Oferta nuk u gjet.",
     );
     const request = quote.request;
-    if (request.acceptedQuoteId === quote.id)
+    if (request.acceptedQuoteId === quote.id) {
+      invariant(quote.state === "ACCEPTED" && request.state !== "CANCELLED", "STALE", 409, "Rezervimi është anuluar. Rifreskoni faqen.");
       return {
         ok: true,
         requestId: request.id,
         redirect: `/llogaria/kerkesat/${request.id}`,
       };
+    }
     invariant(
       request.selectedProfileId === quote.profileId &&
         quote.profile.verification === "APPROVED" &&
@@ -371,6 +374,7 @@ export async function getRequest(actor: Actor, id: string) {
         },
       },
       quotes: { orderBy: { revision: "desc" }, take: 50 },
+      acceptedQuote: true,
       conversation: { select: { id: true } },
       payment: {
         select: {
@@ -405,8 +409,10 @@ export async function getRequest(actor: Actor, id: string) {
     ["HELD", "RELEASED", "DISPUTED", "REFUNDED"].includes(
       request.payment?.state ?? "",
     );
+  const payment = await db.payment.findUnique({ where: { requestId: id }, include: paymentActivity });
   return {
     ...request,
+    unpaidEditable: ["OPEN", "QUOTED", "BOOKED"].includes(request.state) && paymentUntouched(payment),
     address: reveal ? request.address : null,
     client: {
       ...request.client,
@@ -564,13 +570,14 @@ export async function changeJob(
     | "DECLINE"
     | "WITHDRAW",
   quoteId?: string,
+  expectedVersion?: number,
 ) {
   entityId.parse(id);
   return serializable(async (tx) => {
     const request = await tx.serviceRequest.findUnique({
       where: { id },
       include: {
-        payment: { include: { dispute: true } },
+        payment: { include: paymentActivity },
         selectedPro: { select: { userId: true } },
       },
     });
@@ -633,12 +640,15 @@ export async function changeJob(
         },
       });
     } else if (action === "CANCEL") {
+      if (request.state === "CANCELLED") return { ok: true };
+      invariant(request.version === expectedVersion, "STALE", 409, "Kërkesa ka ndryshuar. Rifreskoni faqen para anulimit.");
       invariant(
-        ["OPEN", "QUOTED"].includes(request.state) && !request.payment,
+        ["OPEN", "QUOTED", "BOOKED"].includes(request.state) && paymentUntouched(request.payment),
         "FUNDED_CANCELLATION",
         409,
-        "Për një ofertë të pranuar ose pagesë aktive, kontaktoni mbështetjen për anulimin.",
+        "Pagesa ka filluar. Kontaktoni mbështetjen për anulimin.",
       );
+      if (request.payment) await tx.payment.update({ where: { id: request.payment.id }, data: { state: "EXPIRED" } });
       await tx.serviceRequest.update({
         where: { id },
         data: {
@@ -648,7 +658,7 @@ export async function changeJob(
         },
       });
       await tx.quote.updateMany({
-        where: { requestId: id, state: "SENT" },
+        where: { requestId: id, state: { in: ["SENT", "ACCEPTED"] } },
         data: { state: "WITHDRAWN" },
       });
     } else {
@@ -679,6 +689,7 @@ export async function changeJob(
         action,
         action === "CONFIRM_COMPLETION"
           ? "Klienti konfirmoi përfundimin e punës"
+          : action === "CANCEL" ? "Kërkesa u anulua pa pagesë"
           : "Kërkesa juaj është përditësuar",
         `${actor.role === "PRO" ? "/llogaria" : "/pro"}/kerkesat/${id}`,
       );

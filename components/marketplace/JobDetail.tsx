@@ -41,7 +41,7 @@ export default async function JobDetail({
   ) => (
     <ApiForm
       endpoint={`/api/requests/${id}`}
-      values={{ action, quoteId }}
+      values={{ action, quoteId, expectedVersion: request.version }}
       label={label}
       confirmation={confirmation}
     />
@@ -65,6 +65,12 @@ export default async function JobDetail({
       </Panel>
       <Panel>
         <h2 className="mb-4 text-lg font-bold">Oferta zyrtare</h2>
+        {request.state === "BOOKED" && request.acceptedQuote?.scheduledAt && (
+          <p className="mb-4 rounded-xl bg-cream p-3">
+            Orari i konfirmuar: {dateTime(request.acceptedQuote.scheduledAt)} (ora e Kosovës).
+            {latest && " Ky orar mbetet i rezervuar derisa klienti të pranojë propozimin e ri."}
+          </p>
+        )}
         {!request.quotes.length && (
           <p className="text-muted">
             {pro
@@ -87,6 +93,9 @@ export default async function JobDetail({
               · Versioni {quote.revision}
             </p>
             <p className="mt-2 whitespace-pre-wrap">{quote.message}</p>
+            {request.state === "BOOKED" && quote.state === "SENT" && (
+              <p className="mt-2 font-semibold">Propozim për ndryshimin e orarit · Çmimi dhe puna mbeten të njëjta.</p>
+            )}
             <p className="mt-2 text-sm">
               {quote.availableAt} · Kohëzgjatja: {quote.duration}
             </p>
@@ -123,6 +132,16 @@ export default async function JobDetail({
                   "Tërhiqni këtë ofertë?",
                   quote.id,
                 )}
+              </div>
+            )}
+            {request.state === "BOOKED" && request.unpaidEditable && latest?.id === quote.id && (
+              <div className="mt-4 flex flex-wrap gap-3">
+                {(pro ? ["WITHDRAW"] : ["ACCEPT", "DECLINE"]).map(action => (
+                  <ApiForm key={action} endpoint={`/api/requests/${id}/reschedule`}
+                    values={{ action, quoteId: quote.id, expectedVersion: request.version }}
+                    label={action === "ACCEPT" ? "Prano orarin e ri" : action === "DECLINE" ? "Mbaj orarin e mëparshëm" : "Tërhiq propozimin"}
+                    confirmation={action === "ACCEPT" ? `Ndryshoni rezervimin në ${dateTime(quote.scheduledAt!)}? Çmimi mbetet ${money(quote.amount)}.` : undefined} />
+                ))}
               </div>
             )}
           </article>
@@ -197,6 +216,19 @@ export default async function JobDetail({
             />
           </div>
         )}
+        {pro && request.state === "BOOKED" && request.unpaidEditable && (
+          <details className="mt-4">
+            <summary className="cursor-pointer font-semibold">Propozo orar tjetër</summary>
+            <p className="my-3 text-sm text-muted">Klienti duhet ta pranojë ndryshimin. Orari i mëparshëm mbetet i rezervuar; çmimi dhe përshkrimi i punës nuk ndryshojnë. Orari i ri kontrollohet përsëri kur pranohet.</p>
+            <ApiForm key={`reschedule-${request.version}`} endpoint={`/api/requests/${id}/reschedule`} idempotent
+              values={{ action: "PROPOSE", expectedVersion: request.version }} label="Dërgo propozimin e orarit"
+              fields={[
+                { name: "timing", label: "Përshkrimi i orarit të ri", required: true, minLength: 3, maxLength: 120 },
+                { name: "expiresAt", label: "Propozimi skadon (ora e Kosovës)", type: "datetime-local", kosovoTime: true, required: true, hint: "Brenda 30 ditëve dhe para orarit të ri." },
+                { name: "scheduledAt", label: "Fillimi i ri (ora e Kosovës)", type: "datetime-local", kosovoTime: true, required: true },
+              ]} />
+          </details>
+        )}
       </Panel>
       {request.payment && (
         <Panel>
@@ -210,9 +242,11 @@ export default async function JobDetail({
               {money(request.payment.proAmount)}
             </p>
           )}
-          {request.payment.state === "PENDING" && (
+          {request.payment.state === "PENDING" && request.state === "BOOKED" && (
             <div className="mt-4">
-              {pro ? (
+              {latest ? (
+                <p>{pro ? "Në pritje të vendimit të klientit për orarin e ri." : "Pranoni ose refuzoni propozimin e orarit para pagesës."}</p>
+              ) : pro ? (
                 <p>Prisni konfirmimin e pagesës para se të filloni punën.</p>
               ) : paymentsReady() ? (
                 <>
@@ -234,6 +268,9 @@ export default async function JobDetail({
                 </p>
               )}
             </div>
+          )}
+          {request.state === "CANCELLED" && request.payment.state === "EXPIRED" && (
+            <p className="mt-3 text-sm">Rezervimi u anulua para fillimit të pagesës. Asnjë shumë nuk u tarifua.</p>
           )}
           {funded && (
             <p className="mt-3 text-sm">
@@ -367,12 +404,12 @@ export default async function JobDetail({
           />
         </Panel>
       )}
-      {["OPEN", "QUOTED"].includes(request.state) && (
+      {request.unpaidEditable && (
         <Panel>
           {jobAction(
             "CANCEL",
-            "Anulo kërkesën",
-            "Anuloni këtë kërkesë dhe ofertat e saj?",
+            request.state === "BOOKED" ? "Anulo rezervimin pa pagesë" : "Anulo kërkesën",
+            "Anuloni këtë kërkesë dhe ofertat e saj pa pagesë? Orari lirohet dhe pala tjetër njoftohet.",
           )}
         </Panel>
       )}

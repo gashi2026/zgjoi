@@ -93,14 +93,15 @@ export async function signup(input: unknown, ip: string) {
       });
       return created;
     });
+    let emailJobId: string | undefined;
     try {
-      await requestAccountToken(user.id, "EMAIL_VERIFY");
+      emailJobId = (await requestAccountToken(user.id, "EMAIL_VERIFY")).jobId;
     } catch {
       console.error(
         JSON.stringify({ event: "verification_queue_failed", userId: user.id }),
       );
     }
-    return { ...user, passwordHash };
+    return { ...user, passwordHash, emailJobId };
   } catch (error) {
     if (
       error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -160,10 +161,10 @@ export async function forgotPassword(input: unknown, ip: string) {
     where: { email: data.email },
     select: { id: true, suspendedAt: true },
   });
-  if (user && !user.suspendedAt)
-    await requestAccountToken(user.id, "PASSWORD_RESET");
+  const queued = user && !user.suspendedAt ? await requestAccountToken(user.id, "PASSWORD_RESET") : undefined;
   return {
     ok: true,
+    emailJobId: queued?.jobId,
     message:
       "Nëse kjo adresë ka llogari aktive, kërkesa për rivendosje është regjistruar. Kontrolloni emailin tuaj.",
   };

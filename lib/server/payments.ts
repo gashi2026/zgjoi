@@ -43,6 +43,7 @@ export async function startCheckout(actor: Actor, requestId: string) {
       request: {
         include: {
           acceptedQuote: true,
+          quotes: { where: { state: "SENT", expiresAt: { gt: new Date() } }, select: { id: true } },
           acceptedPro: {
             include: { user: { select: { suspendedAt: true, role: true } } },
           },
@@ -64,6 +65,11 @@ export async function startCheckout(actor: Actor, requestId: string) {
     "STATE",
     409,
     "Pagesa nuk mund të niset në këtë gjendje.",
+  );
+  invariant(
+    !payment.request.quotes.length,
+    "RESCHEDULE_PENDING", 409,
+    "Pranoni ose refuzoni propozimin e orarit para pagesës.",
   );
   invariant(
     actor.emailVerified,
@@ -111,22 +117,15 @@ export async function startCheckout(actor: Actor, requestId: string) {
       data: { providerCheckoutId: null, attempt: { increment: 1 } },
     });
   }
-  await db.payment.updateMany({
-    where: {
-      id: payment.id,
-      state: "PENDING",
-      attempt: 0,
-      request: { state: "BOOKED" },
-    },
-    data: {
-      attempt: 1,
-      provider: "stripe_test",
-      connectedAccountId: destination,
-    },
-  });
-  const current = await db.payment.findUniqueOrThrow({
-    where: { id: payment.id },
-    include: { request: true },
+  const current = await serializable(async tx => {
+    const fresh = await tx.payment.findUniqueOrThrow({ where: { id: payment.id },
+      include: { request: { include: { quotes: { where: { state: "SENT", expiresAt: { gt: new Date() } }, select: { id: true } } } } } });
+    invariant(fresh.state === "PENDING" && fresh.request.state === "BOOKED" &&
+      fresh.request.version === payment.request.version && !fresh.request.quotes.length,
+      "STATE", 409, "Rezervimi ka ndryshuar. Rifreskoni faqen para pagesës.");
+    if (fresh.attempt === 0) return tx.payment.update({ where: { id: fresh.id },
+      data: { attempt: 1, provider: "stripe_test", connectedAccountId: destination }, include: { request: true } });
+    return fresh;
   });
   invariant(
     current.state === "PENDING" &&
