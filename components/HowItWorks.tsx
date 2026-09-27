@@ -10,20 +10,20 @@ const steps = [
   {
     n: 2,
     icon: Users,
-    title: "Krahaso",
-    text: "Shiko ofertat, vlerësimet dhe zgjidh më të mirin.",
+    title: "Kontakto dhe merr ofertën",
+    text: "Shiko profilet dhe vlerësimet. Kontakto një profesionist privatisht; ai dërgon ofertën zyrtare.",
   },
   {
     n: 3,
     icon: CheckCircle2,
-    title: "Pagesa",
-    text: "Pagesa juaj mbahet e sigurt te ne dhe i lirohet profesionistit vetëm pas përfundimit të punës.",
+    title: "Prano dhe paguaj",
+    text: "Pagesa nis pasi të pranoni ofertën. Transferimi te profesionisti kërkon konfirmimin tuaj të përfundimit. Pagesat online janë ende në përgatitje.",
   },
   {
     n: 4,
     icon: ThumbsUp,
-    title: "Vlerëso",
-    text: "Lërë një vlerësim, ndihmo të tjerët në zgjedhjen e duhur dhe përfito 10% zbritje në punën tënde të radhës.",
+    title: "Konfirmo dhe vlerëso",
+    text: "Konfirmo përfundimin e punës. Më pas, nëse dëshiron, lër një vlerësim për të ndihmuar klientët e tjerë.",
   },
 ];
 
@@ -47,7 +47,11 @@ export default function HowItWorks({ heading = true }: { heading?: boolean }) {
             <li key={n} className="relative flex items-start gap-5 sm:gap-7">
               {/* numbered hexagon */}
               <span className="relative z-10 flex h-[52px] w-[52px] shrink-0 items-center justify-center">
-                <svg viewBox="0 0 100 112" className="absolute inset-0 h-full w-full" aria-hidden="true">
+                <svg
+                  viewBox="0 0 100 112"
+                  className="absolute inset-0 h-full w-full"
+                  aria-hidden="true"
+                >
                   <path
                     d="M50 4 L91 28 L91 84 L50 108 L9 84 L9 28 Z"
                     fill="#FFB800"
@@ -60,11 +64,17 @@ export default function HowItWorks({ heading = true }: { heading?: boolean }) {
 
               <div className="flex flex-1 items-start gap-4 rounded-2xl border border-line bg-white p-5 shadow-soft">
                 <span className="hidden h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-cream sm:flex">
-                  <Icon size={22} className="text-gold-dark" strokeWidth={1.9} />
+                  <Icon
+                    size={22}
+                    className="text-gold-dark"
+                    strokeWidth={1.9}
+                  />
                 </span>
                 <div>
                   <h3 className="text-base font-bold text-ink">{title}</h3>
-                  <p className="mt-1 text-sm leading-relaxed text-muted">{text}</p>
+                  <p className="mt-1 text-sm leading-relaxed text-muted">
+                    {text}
+                  </p>
                 </div>
               </div>
             </li>

@@ -1,9 +1,11 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Lock, ArrowRight } from "lucide-react";
 
 export default function SeShpejtiPage() {
+  const router = useRouter();
   const [showLogin, setShowLogin] = useState(false);
   const [fjalekalimi, setFjalekalimi] = useState("");
   const [gabim, setGabim] = useState("");
@@ -20,10 +22,11 @@ export default function SeShpejtiPage() {
         body: JSON.stringify({ fjalekalimi }),
       });
       if (res.ok) {
-        window.location.href = "/";
+        router.push("/");
+        router.refresh();
       } else {
         const data = await res.json().catch(() => null);
-        setGabim(data?.mesazhi ?? "Fjalëkalimi nuk është i saktë.");
+        setGabim(data?.message ?? "Fjalëkalimi nuk është i saktë.");
         setDuke(false);
       }
     } catch {
@@ -64,9 +67,7 @@ export default function SeShpejtiPage() {
           Zgjoi
         </h1>
 
-        <p className="mt-5 text-xl font-semibold text-[#E9A93A]">
-          Së shpejti
-        </p>
+        <p className="mt-5 text-xl font-semibold text-[#E9A93A]">Së shpejti</p>
 
         {/* Discreet team access */}
         <div className="mt-14 w-full">

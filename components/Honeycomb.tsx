@@ -1,3 +1,4 @@
+import { approvedHoneycomb } from "@/lib/service-categories";
 import Link from "next/link";
 import CategoryIcon from "./CategoryIcon";
 import BeeCell from "./BeeCell";
@@ -123,7 +124,7 @@ export default function Honeycomb({
   services?: Record<string, string>;
   catalog?: { slug: string; name: string; icon: string }[];
 }) {
-  const activeServices = services ?? SERVICES;
+  const activeServices = approvedHoneycomb(services ?? SERVICES);
   const lookup = (slug: string) =>
     catalog?.find((c) => c.slug === slug) ?? categories.find((c) => c.slug === slug);
   const h = size * RATIO;

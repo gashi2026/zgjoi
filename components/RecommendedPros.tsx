@@ -1,53 +1,29 @@
 import Link from "next/link";
-import { ArrowRight } from "lucide-react";
-import Marquee from "./Marquee";
-import ProHex from "./ProHex";
-import { professionals } from "@/lib/data";
-
-const TILE = 190;
-
-export default function RecommendedPros() {
-  const order = [
-    "arben-elektricist",
-    "besnik-hidraulik",
-    "valon-pastrim",
-    "luan-piktor",
-  ];
-  const featured = [
-    ...order
-      .map((id) => professionals.find((p) => p.id === id))
-      .filter((p): p is NonNullable<typeof p> => Boolean(p)),
-    ...professionals.filter((p) => !order.includes(p.id)),
-  ];
-
+import { searchPros } from "@/lib/server/catalog";
+import CatalogCard from "./marketplace/CatalogCard";
+export default async function RecommendedPros() {
+  const { pros, categories } = await searchPros();
   return (
-    <section className="bg-cream">
-      <div className="mx-auto max-w-7xl px-4 pt-16 sm:px-6 lg:px-8">
-        <div className="flex items-end justify-between">
-          <h2 className="text-2xl font-extrabold tracking-tight text-ink sm:text-3xl">
-            Profesionistë të rekomanduar
-          </h2>
-          <Link
-            href="/kerko"
-            className="group flex items-center gap-1 text-sm font-semibold text-gold-dark"
-          >
-            Shiko të gjithë
-            <ArrowRight
-              size={16}
-              className="transition-transform group-hover:translate-x-0.5"
-            />
-          </Link>
-        </div>
+    <section className="mx-auto max-w-7xl px-4 py-12">
+      <h2 className="text-3xl font-bold">Profesionistë në Zgjoi</h2>
+      <div className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+        {pros.slice(0, 6).map((pro) => (
+          <CatalogCard
+            key={pro.id}
+            pro={pro}
+            category={categories.find((c) => c.slug === pro.categorySlug)?.name}
+          />
+        ))}
       </div>
-
-      {/* belt runs the other way to the categories row */}
-      <div className="mt-6 pb-14">
-        <Marquee speed={30} direction="right" gap={0} className="py-6">
-          {featured.map((pro) => (
-            <ProHex key={pro.id} pro={pro} width={TILE} />
-          ))}
-        </Marquee>
-      </div>
+      {!pros.length && (
+        <p className="mt-4 text-muted">
+          Po përgatisim rrjetin e profesionistëve. Mund të regjistroheni për
+          shqyrtimin e profilit tuaj.
+        </p>
+      )}
+      <Link className="mt-6 inline-block text-gold-dark" href="/kerko">
+        Shiko të gjithë profesionistët →
+      </Link>
     </section>
   );
 }

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { LayoutGrid, LogOut, Menu, X } from "lucide-react";
 import { Logo } from "./Brand";
 
@@ -15,15 +15,24 @@ const links = [
 type Me = { name: string; role: "CLIENT" | "PRO" | "ADMIN" | "SUPPORT" } | null;
 
 const dashboardFor = (role: string) =>
-  role === "ADMIN" || role === "SUPPORT" ? "/admin" : role === "PRO" ? "/pro/paneli" : "/llogaria";
+  role === "SUPPORT"
+    ? "/admin/mbeshtetja"
+    : role === "ADMIN"
+      ? "/admin"
+      : role === "PRO"
+        ? "/pro/paneli"
+        : "/llogaria";
 
-export default function Header() {
+export default function Header({ productionHome = false }: { productionHome?: boolean }) {
   const [open, setOpen] = useState(false);
+  const menuButton = useRef<HTMLButtonElement>(null);
+  const drawer = useRef<HTMLDivElement>(null);
   const [me, setMe] = useState<Me>(null);
   const [checked, setChecked] = useState(false);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const pathname = usePathname();
   const router = useRouter();
+  const referenceHome = productionHome && (pathname === "/" || pathname === "/se-shpejti");
 
   const [menuPath, setMenuPath] = useState(pathname);
   if (menuPath !== pathname) {
@@ -32,11 +41,32 @@ export default function Header() {
   }
 
   useEffect(() => {
-    document.body.style.overflow = open ? "hidden" : "";
+    if (!open) return;
+    const previousOverflow = document.body.style.overflow;
+    const returnFocus = menuButton.current;
+    document.body.style.overflow = "hidden";
+    drawer.current?.querySelector<HTMLButtonElement>("button")?.focus();
+    const desktop = window.matchMedia(referenceHome ? "(min-width: 1024px)" : "(min-width: 1280px)");
+    const closeOnDesktop = () => { if (desktop.matches) setOpen(false); };
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") { event.preventDefault(); setOpen(false); }
+      if (event.key !== "Tab") return;
+      const elements = drawer.current?.querySelectorAll<HTMLElement>('a[href], button:not([disabled])');
+      if (!elements?.length) return;
+      const first = elements[0];
+      const last = elements[elements.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    }
+    desktop.addEventListener("change", closeOnDesktop);
+    document.addEventListener("keydown", onKeyDown);
     return () => {
-      document.body.style.overflow = "";
+      document.body.style.overflow = previousOverflow;
+      desktop.removeEventListener("change", closeOnDesktop);
+      document.removeEventListener("keydown", onKeyDown);
+      returnFocus?.focus();
     };
-  }, [open]);
+  }, [open, referenceHome]);
 
   useEffect(() => {
     fetch("/api/site", { cache: "no-store" })
@@ -49,23 +79,37 @@ export default function Header() {
     let alive = true;
     fetch("/api/auth/me", { cache: "no-store" })
       .then((r) => r.json())
-      .then((d) => { if (alive) { setMe(d.user ?? null); setChecked(true); } })
-      .catch(() => { if (alive) setChecked(true); });
-    return () => { alive = false; };
+      .then((d) => {
+        if (alive) {
+          setMe(d.user ?? null);
+          setChecked(true);
+        }
+      })
+      .catch(() => {
+        if (alive) setChecked(true);
+      });
+    return () => {
+      alive = false;
+    };
   }, [pathname]);
 
   async function logout() {
     setOpen(false);
-    await fetch("/api/auth/logout", { method: "POST" });
-    setMe(null);
-    router.push("/");
-    router.refresh();
+    try {
+      const response = await fetch("/api/auth/logout", { method: "POST" });
+      if (!response.ok) throw new Error("Logout not confirmed");
+      setMe(null);
+      router.push("/");
+      router.refresh();
+    } catch {
+      window.alert("Dalja nuk u konfirmua. Provoni përsëri.");
+    }
   }
 
-  const brand = logoUrl ? (
+  const brand = logoUrl && !referenceHome ? (
     <Link href="/" aria-label="Zgjoi — kryefaqja">
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={logoUrl} alt="Zgjoi" className="h-9 w-auto" />
+      <img src={logoUrl} alt="Zgjoi" className="h-9 w-auto max-w-40 object-contain sm:max-w-48" />
     </Link>
   ) : (
     <Logo />
@@ -121,7 +165,10 @@ export default function Header() {
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
           {brand}
 
-          <nav className="hidden items-center gap-7 lg:flex" aria-label="Kryesore">
+          <nav
+            className={referenceHome ? "hidden items-center gap-7 lg:flex" : "hidden items-center gap-6 xl:flex"}
+            aria-label="Kryesore"
+          >
             {links.map((l) => (
               <Link
                 key={l.href}
@@ -135,12 +182,13 @@ export default function Header() {
             ))}
           </nav>
 
-          <div className="hidden items-center gap-3 lg:flex">{authArea}</div>
+          <div className={referenceHome ? "hidden items-center gap-3 lg:flex" : "hidden items-center gap-3 xl:flex"}>{authArea}</div>
 
           <button
             type="button"
+            ref={menuButton}
             onClick={() => setOpen((v) => !v)}
-            className="flex h-11 w-11 items-center justify-center rounded-full text-ink lg:hidden"
+            className={`flex h-11 w-11 items-center justify-center rounded-full text-ink ${referenceHome ? "lg:hidden" : "xl:hidden"}`}
             aria-expanded={open}
             aria-controls="mobile-menu"
             aria-label={open ? "Mbyll menunë" : "Hap menunë"}
@@ -155,9 +203,13 @@ export default function Header() {
           64px bar. As a sibling it covers the screen properly. */}
       {open && (
         <div
-          id="mobile-menu"
-          className="fixed inset-x-0 bottom-0 top-16 z-50 overflow-y-auto bg-white lg:hidden"
+          id="mobile-menu" ref={drawer} role="dialog" aria-modal="true" aria-label="Menuja kryesore"
+          className={`fixed inset-0 z-[70] overflow-y-auto bg-white pb-[env(safe-area-inset-bottom)] ${referenceHome ? "lg:hidden" : "xl:hidden"}`}
         >
+          <div className="flex h-16 items-center justify-between border-b border-line px-4">
+            <span className="font-bold text-ink">Menuja</span>
+            <button type="button" onClick={() => setOpen(false)} aria-label="Mbyll menunë" className="flex h-11 w-11 items-center justify-center rounded-full hover:bg-cream"><X size={24} /></button>
+          </div>
           <nav className="flex flex-col gap-1 p-4" aria-label="Mobile">
             {links.map((l) => (
               <Link
@@ -165,7 +217,9 @@ export default function Header() {
                 href={l.href}
                 onClick={() => setOpen(false)}
                 className={`rounded-xl px-4 py-3.5 text-base font-medium transition-colors ${
-                  pathname === l.href ? "bg-honey text-ink" : "text-ink hover:bg-cream"
+                  pathname === l.href
+                    ? "bg-honey text-ink"
+                    : "text-ink hover:bg-cream"
                 }`}
               >
                 {l.label}

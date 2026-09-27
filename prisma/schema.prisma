@@ -40,14 +40,17 @@ enum QuoteState {
   ACCEPTED
   DECLINED
   WITHDRAWN
+  EXPIRED
 }
 
 enum EscrowStrategy {
+  PLATFORM_CHARGE     // captured after acceptance; transfer only after customer completion
   AUTH_HOLD           // short jobs: authorise now, capture on completion
   DESTINATION_CHARGE  // long jobs: charge now, hold in the pro's locked ledger
 }
 
 enum PaymentState {
+  REFUND_PENDING
   PENDING       // intent created, nothing charged yet
   AUTHORISED    // AUTH_HOLD: card authorised, funds frozen but not taken
   HELD          // funds are with us / locked in the connected account
@@ -58,6 +61,8 @@ enum PaymentState {
 }
 
 enum PayoutState {
+  TRANSFERRED
+  PROCESSING
   SCHEDULED
   PAID
   FAILED
@@ -102,6 +107,9 @@ model User {
   supportMessages SupportMessage[]
   sessions      Session[]
   auditLogs     AuditLog[]
+  authTokens    AuthToken[]
+  notifications Notification[]
+  favorites     Favorite[]
 
   @@index([role])
   @@index([email])
@@ -117,6 +125,7 @@ model Session {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([expiresAt])
 }
 
 // ------------------------------------------------------ professionals
@@ -144,9 +153,9 @@ model ProProfile {
   ratingCount    Int               @default(0)
   responseRate   Int               @default(0)
   // lead budget (monetisation)
-  weeklyBudget   Int               @default(4000) // cents
+  weeklyBudget   Int               @default(0) // legacy; paid leads are disabled
   weeklySpent    Int               @default(0)
-  autoBid        Boolean           @default(true)
+  autoBid        Boolean           @default(false)
   budgetResetAt  DateTime          @default(now())
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
@@ -156,10 +165,12 @@ model ProProfile {
   documents ProDocument[]
   quotes    Quote[]
   jobs      ServiceRequest[] @relation("ProJobs")
+  inquiries ServiceRequest[] @relation("SelectedPro")
   reviews   Review[]
   payouts   Payout[]
   leadCharges LeadCharge[]
   availability Availability[]
+  favorites Favorite[]
 
   @@index([categorySlug])
   @@index([verification])
@@ -180,6 +191,10 @@ model ProDocument {
   profileId String
   kind      String   // "ID" | "CERTIFICATE" | "INSURANCE"
   url       String
+  storagePath String? @unique
+  filename  String?
+  mimeType  String?
+  sizeBytes Int?
   reviewed  Boolean  @default(false)
   createdAt DateTime @default(now())
   profile   ProProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
@@ -240,13 +255,22 @@ model ServiceRequest {
   detail       String?      @db.Text
   state        RequestState @default(OPEN)
   acceptedProfileId String?
+  selectedProfileId String?
+  acceptedQuoteId String? @unique
+  creationKey String? @unique
+  version Int @default(0)
+  completionRequestedAt DateTime?
+  completedAt DateTime?
+  cancelledAt DateTime?
   scheduledAt  DateTime?
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 
   client        User        @relation("ClientRequests", fields: [clientId], references: [id])
   acceptedPro   ProProfile? @relation("ProJobs", fields: [acceptedProfileId], references: [id])
-  quotes        Quote[]
+  selectedPro   ProProfile? @relation("SelectedPro", fields: [selectedProfileId], references: [id])
+  acceptedQuote Quote? @relation("AcceptedQuote", fields: [acceptedQuoteId], references: [id])
+  quotes        Quote[] @relation("RequestQuotes")
   payment       Payment?
   review        Review?
   conversation  Conversation?
@@ -255,6 +279,7 @@ model ServiceRequest {
   @@index([clientId])
   @@index([categorySlug, city, state])
   @@index([state])
+  @@index([selectedProfileId, state, updatedAt])
 }
 
 model Quote {
@@ -271,13 +296,20 @@ model Quote {
   /// strategy the payment uses when this quote is accepted.
   expectedDays Int      @default(1)
   state      QuoteState @default(SENT)
+  revision   Int @default(1)
+  expiresAt  DateTime?
+  scheduledAt DateTime?
+  acceptedAt DateTime?
+  creationKey String? @unique
   createdAt  DateTime   @default(now())
 
-  request ServiceRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  request ServiceRequest @relation("RequestQuotes", fields: [requestId], references: [id], onDelete: Cascade)
+  acceptedFor ServiceRequest? @relation("AcceptedQuote")
   profile ProProfile     @relation(fields: [profileId], references: [id], onDelete: Cascade)
 
-  @@unique([requestId, profileId])
+  @@unique([requestId, profileId, revision])
   @@index([profileId])
+  @@index([state, expiresAt])
 }
 
 // ------------------------------------------------------------ payments
@@ -298,6 +330,14 @@ model Payment {
   stripeChargeId        String?
   stripeTransferId      String?
   stripePayoutId        String?
+  provider              String @default("disabled")
+  providerCheckoutId    String? @unique
+  providerRefundId      String? @unique
+  connectedAccountId    String?
+  operation             String?
+  operationStartedAt    DateTime?
+  attempt               Int @default(0)
+  updatedAt             DateTime @default(now()) @updatedAt
 
   authorisedAt          DateTime?
   /// AUTH_HOLD only: the hold lapses at this moment (Stripe: 7 days).
@@ -313,6 +353,8 @@ model Payment {
 
   request ServiceRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
   dispute Dispute?
+  payouts Payout[]
+  events PaymentEvent[]
 
   @@index([state])
   @@index([state, authExpiresAt])
@@ -322,16 +364,18 @@ model Payment {
 model Payout {
   id         String      @id @default(cuid())
   profileId  String
-  paymentId  String?
+  paymentId  String? @unique
   amount     Int
   state      PayoutState @default(SCHEDULED)
   reference  String?
   stripePayoutId String?
+  providerOperationKey String? @unique
   scheduledFor DateTime
   paidAt     DateTime?
   createdAt  DateTime    @default(now())
 
   profile ProProfile @relation(fields: [profileId], references: [id])
+  payment Payment? @relation(fields: [paymentId], references: [id])
 
   @@index([profileId, state])
 }
@@ -355,6 +399,7 @@ model Dispute {
   paymentId  String    @unique
   openedById String
   reason     String    @db.Text
+  outcome    String?
   resolution String?   @db.Text
   resolvedAt DateTime?
   createdAt  DateTime  @default(now())
@@ -413,12 +458,14 @@ model Message {
   senderId       String
   body           String   @db.Text
   readAt         DateTime?
+  clientKey      String?
   createdAt      DateTime @default(now())
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   sender       User         @relation(fields: [senderId], references: [id])
 
   @@index([conversationId, createdAt])
+  @@unique([conversationId, senderId, clientKey])
 }
 
 // ------------------------------------------------------- support chat
@@ -428,6 +475,7 @@ model SupportTicket {
   userId    String?
   guestName String?
   guestEmail String?
+  guestTokenHash String?
   subject   String?
   state     SupportState @default(OPEN)
   // true when it arrived outside 09:00–17:00 Europe/Belgrade
@@ -439,6 +487,8 @@ model SupportTicket {
   messages SupportMessage[]
 
   @@index([state, createdAt])
+  @@index([userId, updatedAt])
+  @@index([guestTokenHash])
 }
 
 model SupportMessage {
@@ -447,6 +497,7 @@ model SupportMessage {
   senderId  String?  // null = guest
   fromAgent Boolean  @default(false)
   body      String   @db.Text
+  dedupeKey String? @unique
   createdAt DateTime @default(now())
 
   ticket SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
@@ -468,9 +519,80 @@ model AuditLog {
   actor User? @relation(fields: [actorId], references: [id])
 
   @@index([createdAt])
+  @@index([action, createdAt])
 }
 
 model Setting {
   key   String @id
   value Json
+}
+
+model AuthToken {
+  id String @id @default(cuid())
+  userId String
+  purpose String
+  tokenHash String @unique
+  expiresAt DateTime
+  usedAt DateTime?
+  createdAt DateTime @default(now())
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, purpose])
+  @@index([expiresAt])
+}
+
+model RateLimitBucket {
+  key String @id
+  hits Int
+  resetAt DateTime
+  @@index([resetAt])
+}
+
+model Notification {
+  id String @id @default(cuid())
+  userId String
+  kind String
+  title String
+  href String
+  readAt DateTime?
+  createdAt DateTime @default(now())
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, readAt, createdAt])
+}
+
+model Outbox {
+  id String @id @default(cuid())
+  key String @unique
+  kind String
+  payloadEnc String
+  state String @default("PENDING")
+  attempts Int @default(0)
+  availableAt DateTime @default(now())
+  lockedAt DateTime?
+  sentAt DateTime?
+  lastError String?
+  createdAt DateTime @default(now())
+  @@index([state, availableAt])
+}
+
+model Favorite {
+  id String @id @default(cuid())
+  userId String
+  profileId String
+  createdAt DateTime @default(now())
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  profile ProProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  @@unique([userId, profileId])
+}
+
+model PaymentEvent {
+  id String @id @default(cuid())
+  provider String
+  eventId String
+  paymentId String?
+  kind String
+  processedAt DateTime?
+  createdAt DateTime @default(now())
+  payment Payment? @relation(fields: [paymentId], references: [id])
+  @@unique([provider, eventId])
+  @@index([paymentId, createdAt])
 }

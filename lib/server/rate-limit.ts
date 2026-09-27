@@ -1,32 +1,39 @@
 import "server-only";
+import { db } from "./db";
+import { hashToken } from "./tokens";
+import { AppError } from "./errors";
 
-/**
- * Small in-memory limiter. Good enough for login and support-chat abuse
- * on a single instance; swap for Upstash Redis when you run more than one.
- */
-type Bucket = { count: number; resetAt: number };
-const buckets = new Map<string, Bucket>();
-
-export function rateLimit(keyName: string, limit: number, windowMs: number) {
-  const now = Date.now();
-  const bucket = buckets.get(keyName);
-
-  if (!bucket || bucket.resetAt < now) {
-    buckets.set(keyName, { count: 1, resetAt: now + windowMs });
-    return { ok: true, remaining: limit - 1 };
-  }
-
-  bucket.count += 1;
-  if (bucket.count > limit) {
-    return { ok: false, remaining: 0, retryInMs: bucket.resetAt - now };
-  }
-  return { ok: true, remaining: limit - bucket.count };
+/** Atomic shared limiter. IP and email identifiers are hashed before storage. */
+export async function rateLimit(
+  keyName: string,
+  limit: number,
+  windowMs: number,
+) {
+  const key = hashToken(keyName);
+  const rows = await db.$queryRaw<{ hits: number; resetAt: Date }[]>`
+    INSERT INTO public."RateLimitBucket" ("key", "hits", "resetAt")
+    VALUES (${key}, 1, NOW() + ${windowMs} * INTERVAL '1 millisecond')
+    ON CONFLICT ("key") DO UPDATE SET
+      "hits" = CASE WHEN "RateLimitBucket"."resetAt" <= NOW() THEN 1 ELSE "RateLimitBucket"."hits" + 1 END,
+      "resetAt" = CASE WHEN "RateLimitBucket"."resetAt" <= NOW() THEN NOW() + ${windowMs} * INTERVAL '1 millisecond' ELSE "RateLimitBucket"."resetAt" END
+    RETURNING "hits", "resetAt"`;
+  return {
+    ok: rows[0].hits <= limit,
+    remaining: Math.max(0, limit - rows[0].hits),
+    retryInMs: Math.max(0, rows[0].resetAt.getTime() - Date.now()),
+  };
 }
 
-/* Periodically drop expired buckets so the map cannot grow forever. */
-if (typeof setInterval !== "undefined") {
-  setInterval(() => {
-    const now = Date.now();
-    for (const [k, v] of buckets) if (v.resetAt < now) buckets.delete(k);
-  }, 60_000).unref?.();
+export async function enforceLimit(
+  key: string,
+  limit: number,
+  windowMs: number,
+) {
+  if (!(await rateLimit(key, limit, windowMs)).ok) {
+    throw new AppError(
+      "RATE_LIMIT",
+      429,
+      "Shumë përpjekje. Prisni pak dhe provoni përsëri.",
+    );
+  }
 }

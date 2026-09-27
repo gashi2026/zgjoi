@@ -1,6 +1,6 @@
 # Zgjoi deployment runbook
 
-The site has a Next.js server, Prisma database access and partly connected APIs.
+The candidate has a Next.js server, Prisma database access and persistent private marketplace APIs.
 A successful deployment does not prove the marketplace or payments work. Keep the
 site's coming-soon lock enabled until the launch gates in
 [docs/LAUNCH-ROADMAP.md](docs/LAUNCH-ROADMAP.md) pass.
@@ -13,6 +13,7 @@ Use Node.js 24 (`.nvmrc` and `package.json`) and the committed npm lockfile:
 npm ci
 npm run build
 npm run typecheck
+npm run test:unit
 npm run test:smoke
 ```
 
@@ -22,9 +23,10 @@ errors stop the build. Webpack is retained for this framework upgrade to keep th
 existing bundler behavior. Dependency installation/generation failures must stop
 installation; there is no success fallback.
 
-The CI job uses intentionally unreachable localhost database URLs and no project
-secrets. Its HTTP checks exercise the production build with synthetic local
-configuration. They do not prove production login, messaging or payment behavior.
+The CI job creates a disposable PostgreSQL 17 service with synthetic credentials,
+applies the staging bootstrap and upgrade, builds, and checks the HTTP/database
+journey. Separate smoke checks deliberately use an unreachable database. Neither
+uses Supabase secrets or proves email/storage/provider/bank delivery or browser UX.
 
 Never add schema pushes, migrations, seeds or data-reset commands to install,
 build, preview deployment or the startup command. In particular, the former build
@@ -34,18 +36,20 @@ step `prisma db push --accept-data-loss` has been removed entirely.
 
 The existing project is `zgjoi`, connected to `gashi2026/zgjoi`, with `main` as the
 production branch. Make changes in a feature branch and review its pull request.
-The first commit published on a new branch must already contain the safe build
-configuration because a branch push can start a preview automatically.
+The first commit on any new branch must already contain safe build configuration
+because a branch push can start a Preview automatically. The current candidate
+branch has automatic deployment disabled in `vercel.json` until its Preview
+variables point to isolated staging. Follow [OWNER-SETUP.md](docs/OWNER-SETUP.md).
 
 `vercel.json` defines:
 
-| Setting | Value |
-| --- | --- |
-| Framework | Next.js |
-| Install command | `npm ci` |
-| Build command | `npm run build` |
+| Setting          | Value                                              |
+| ---------------- | -------------------------------------------------- |
+| Framework        | Next.js                                            |
+| Install command  | `npm ci`                                           |
+| Build command    | `npm run build`                                    |
 | Output directory | Next.js default; do not set a static export folder |
-| Node.js | 24.x, matching `package.json` |
+| Node.js          | 24.x, matching `package.json`                      |
 
 Check the deployment logs against those commands. Repository configuration is now
 explicit, but dashboard settings, environment values and deployment success still
@@ -56,31 +60,37 @@ Production and Preview; they did not establish whether their values differ.
 Do not merge or promote the framework upgrade until CI and Vercel checks pass,
 the preview database is isolated, and a controlled login/logout test with a staging
 account succeeds. Keep the current production deployment as the rollback target.
-A code rollback does not undo database mutations; this change requires no new
-production schema migration.
+A code rollback does not undo database mutations; the private marketplace candidate requires a reviewed production schema upgrade
+before its code can serve production. Its staging SQL is not that release migration.
 
 ## Environment settings
 
 Copy `.env.example` to `.env` only for local work. Use provider dashboards for
 actual deployment secrets; never commit or paste passwords into issues or logs.
 
-| Variable | Use and requirement |
-| --- | --- |
-| `DATABASE_URL` | Runtime PostgreSQL URL from the intended Supabase project; use the project's supported pooled connection settings for Prisma. |
-| `DIRECT_URL` | Direct/session connection for database administration when supported by the host network. No migrations run in this build. |
-| `ENCRYPTION_KEY` | Existing 32-byte key represented as 64 hex characters. Keep it stable; replacing it prevents decryption of existing protected data. |
-| `ZGJOI_PASSWORD` | Existing coming-soon lock. Keep production restricted during development. This is not customer authentication. |
-| `CRON_SECRET` | Independent random secret for scheduled jobs. The existing job still needs its fail-closed authorization and payment-state audit completed (P03/P14/P25). |
-| `STRIPE_SECRET_KEY` | Only provider test credentials in an isolated test environment until Kosovo company/payout support and the money workflow are approved and verified. |
-| `STRIPE_WEBHOOK_SECRET` | Signing secret for the matching provider test webhook endpoint. No live-money sign-off is implied by configuring it. |
+| Variable                | Use and requirement                                                                                                                                  |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`          | Runtime PostgreSQL URL from the intended Supabase project; use the project's supported pooled connection settings for Prisma.                        |
+| `DIRECT_URL`            | Direct/session connection for database administration when supported by the host network. No migrations run in this build.                           |
+| `ENCRYPTION_KEY`        | Existing 32-byte key represented as 64 hex characters. Keep it stable; replacing it prevents decryption of existing protected data.                  |
+| `ZGJOI_PASSWORD`        | Existing coming-soon lock. Keep production restricted during development. This is not customer authentication.                                       |
+| `CRON_SECRET`           | Independent random secret for scheduled jobs. The worker verifies this secret; no automatic time-based payment release is performed.                 |
+| `STRIPE_SECRET_KEY`     | Only provider test credentials in an isolated test environment until Kosovo company/payout support and the money workflow are approved and verified. |
+| `STRIPE_WEBHOOK_SECRET` | Signing secret for the matching provider test webhook endpoint. No live-money sign-off is implied by configuring it.                                 |
 
 Generate new encryption/cron secrets locally with `openssl rand -hex 32`. Do not
 regenerate an existing production encryption key as a routine setup step. The app
 uses custom Prisma-backed sessions; adding Supabase Auth settings will not wire
 its registration forms or fix ownership checks.
 
-Do not run the legacy seed against production. It still contains unsafe admin
-creation/promotion and credential logging behavior that must be fixed under P05.
+The catalog-only seed no longer creates/promotes users or logs credentials. It
+refuses a non-local database without the staging marker. Manage production
+categories through the authenticated admin UI after release.
+
+Additional flags, APP_URL and storage/email variables are documented in `.env.example`
+and [OWNER-SETUP.md](docs/OWNER-SETUP.md). Keep optional integrations disabled until
+their isolated tests pass. Vercel cron runs only on production deployments; a
+Preview needs an explicit staging invocation to test its worker.
 
 ## Existing Supabase database
 
@@ -116,11 +126,10 @@ outdated guide. Choose the canonical host and verify the other host redirects.
 
 After a reviewed release, verify the deployed commit, lock behavior, login/logout
 on test accounts, database connectivity, error logs and rollback target. Payment
-collection, webhooks, completion and payout require separate staging tests. The
-site lock currently also affects machine endpoints; resolve that deliberately
-with authorization tests before enabling scheduled/payment operations.
+collection, webhooks, completion and payout require separate staging tests. The candidate exempts webhook and cron paths from the site lock; those endpoints
+verify their own signature/secret. The existing live source has not received this repair.
 
-## References checked on 6 September 2026
+## References checked on 6–7 September 2026
 
 - [Next.js 16 upgrade guide](https://nextjs.org/docs/app/guides/upgrading/version-16)
 - [Next.js support policy](https://nextjs.org/support-policy)

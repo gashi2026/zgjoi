@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { equalSecret, previewCookie } from "./lib/server/tokens";
 
 /**
  * Two gates, in order.
@@ -18,18 +19,38 @@ const PROTECTED = ["/llogaria", "/pro", "/admin", "/kerkesa-e-re"];
 export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
+  // Provider signatures and worker bearer tokens are checked by their handlers.
+  if (
+    [
+      "/api/stripe/webhook",
+      "/api/cron/escrow",
+      "/robots.txt",
+      "/sitemap.xml",
+    ].includes(pathname)
+  )
+    return NextResponse.next();
+
   // ---- Gate 1: site lock ----------------------------------------------
   const password = process.env.ZGJOI_PASSWORD;
 
   if (password) {
-    const unlocked = req.cookies.get("zgjoi_preview")?.value === password;
+    const unlocked = equalSecret(
+      req.cookies.get("zgjoi_preview")?.value ?? "",
+      previewCookie(password),
+    );
 
     if (!unlocked) {
       // Locked visitors only get the lock page and the unlock endpoint.
       if (pathname === LOCK_PATH || pathname === "/api/hyrje") {
         return NextResponse.next();
       }
-      // Everything else renders the coming-soon page, URL unchanged.
+      if (pathname.startsWith("/api/")) {
+        return NextResponse.json(
+          { ok: false, message: "Zgjoi është në përgatitje." },
+          { status: 423, headers: { "Cache-Control": "no-store" } },
+        );
+      }
+      // Public landing remains available while the marketplace is closed.
       return NextResponse.rewrite(new URL(LOCK_PATH, req.url));
     }
 
@@ -41,7 +62,7 @@ export function proxy(req: NextRequest) {
 
   // ---- Gate 2: session gatekeeper (unchanged) --------------------------
   const needsAuth = PROTECTED.some(
-    (p) => pathname === p || pathname.startsWith(`${p}/`)
+    (p) => pathname === p || pathname.startsWith(`${p}/`),
   );
 
   if (!needsAuth) return NextResponse.next();

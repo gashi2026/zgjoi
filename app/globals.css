@@ -23,6 +23,17 @@ body {
   @apply bg-white text-ink antialiased;
 }
 
+/* Components respond to their available space, including laptop columns. */
+.service-search { container: service-search / inline-size; }
+@container service-search (min-width: 36rem) {
+  .service-search-form { grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr) auto; }
+}
+@container service-search (min-width: 24rem) and (max-width: 35.999rem) {
+  .service-search-form { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .service-search-form > button { grid-column: 1 / -1; }
+}
+.hive-scroll { scrollbar-width: thin; scrollbar-color: #e89d00 #fff3cf; }
+
 ::selection {
   background: #fff3cf;
   color: #111111;
@@ -133,3 +144,10 @@ textarea:focus-visible {
 .hexframe {
   clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
 }
+
+/* Keyboard and small-screen affordances for the functional marketplace. */
+:focus-visible { outline: 2px solid #b77900; outline-offset: 3px; }
+html { scroll-padding-top: 5rem; }
+@media (max-width: 640px) { input, select, textarea { font-size: 16px; } }
+.homepage-reference-footer input { font-size: 0.875rem; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; } }

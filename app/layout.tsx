@@ -3,6 +3,7 @@ import { Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
+import FooterSwitch from "@/components/homepage/FooterSwitch";
 import MobileBottomNav from "@/components/MobileBottomNav";
 import SupportChat from "@/components/SupportChat";
 
@@ -13,9 +14,14 @@ const jakarta = Plus_Jakarta_Sans({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://zgjoi.com"),
+  robots:
+    process.env.ZGJOI_PASSWORD || process.env.VERCEL_ENV === "preview"
+      ? { index: false, follow: false }
+      : undefined,
   title: "Zgjoi — Gjej profesionist për çdo shërbim. Lehtë.",
   description:
-    "Zgjoi është platforma më e besuar në Kosovë për të gjetur dhe punësuar profesionistë lokalë: elektricistë, hidraulikë, pastrues, piktorë dhe më shumë.",
+    "Zgjoi është platformë në Kosovë për të gjetur dhe punësuar profesionistë lokalë: elektricistë, hidraulikë, pastrues, piktorë dhe më shumë.",
 };
 
 export default function RootLayout({
@@ -26,11 +32,21 @@ export default function RootLayout({
   return (
     <html lang="sq" className={jakarta.variable}>
       <body className="font-sans">
-        <Header />
-        <main className="min-h-[60vh]">{children}</main>
-        <Footer />
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:block focus:p-4"
+        >
+          Kalo te përmbajtja
+        </a>
+        <Header productionHome={process.env.VERCEL_ENV === "preview"} />
+        <main id="main-content" className="min-h-[60vh]">
+          {children}
+        </main>
+        <FooterSwitch enabled={process.env.VERCEL_ENV === "preview"}>
+          <Footer />
+        </FooterSwitch>
         <MobileBottomNav />
-        <SupportChat />
+        <SupportChat productionHome={process.env.VERCEL_ENV === "preview"} />
       </body>
     </html>
   );

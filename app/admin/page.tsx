@@ -1,108 +1,151 @@
-import type { Metadata } from "next";
+import { daysAgo } from "@/lib/server/time";
 import Link from "next/link";
-import { redirect } from "next/navigation";
-import { ArrowRight, BadgeCheck, Headset, TrendingUp } from "lucide-react";
-import AccountShell from "@/components/AccountShell";
-import { Card, SectionTitle } from "@/components/account/Bits";
-import { adminNav } from "@/lib/nav";
+import { pageGuard } from "@/lib/server/guard";
 import { db } from "@/lib/server/db";
-import { currentUser } from "@/lib/server/auth";
-
-export const dynamic = "force-dynamic";
-export const metadata: Metadata = { title: "Admin — Zgjoi" };
-
-const eur = (cents: number) => `${(cents / 100).toFixed(2)}€`;
-
-export default async function AdminDashboard() {
-  const me = await currentUser();
-  if (!me || me.role !== "ADMIN") redirect("/hyr?next=/admin");
-
-  const [userCount, proCount, pendingVerifs, openTickets, payments, requests] = await Promise.all([
+import Frame, { Panel } from "@/components/marketplace/Frame";
+import { money } from "@/lib/format";
+import { paymentsReady } from "@/lib/server/payments";
+import { bookingFunnel } from "@/lib/server/metrics";
+export default async function Page() {
+  const actor = await pageGuard("ADMIN");
+  const since = daysAgo(30);
+  const [
+    users,
+    pros,
+    pending,
+    requests,
+    completed,
+    held,
+    released,
+    tickets,
+    events,
+    heartbeat,
+    failedMail,
+    funnel,
+  ] = await Promise.all([
     db.user.count(),
-    db.proProfile.count(),
+    db.proProfile.count({
+      where: {
+        verification: "APPROVED",
+        user: { suspendedAt: null, role: "PRO" },
+      },
+    }),
     db.proProfile.count({ where: { verification: "PENDING" } }),
-    db.supportTicket.count({ where: { state: "OPEN" } }),
-    db.payment.aggregate({ _sum: { amount: true, commissionAmount: true } }),
     db.serviceRequest.count(),
+    db.serviceRequest.count({
+      where: { state: "COMPLETED", completedAt: { not: null } },
+    }),
+    db.payment.aggregate({ where: { state: "HELD" }, _sum: { amount: true } }),
+    db.payment.aggregate({
+      where: { state: "RELEASED" },
+      _sum: { commissionAmount: true },
+    }),
+    db.supportTicket.count({ where: { state: "OPEN" } }),
+    db.auditLog.groupBy({
+      by: ["action"],
+      where: {
+        createdAt: { gte: since },
+        action: {
+          in: [
+            "ACCOUNT_CREATED",
+            "INQUIRY_CREATED",
+            "OFFER_SENT",
+            "OFFER_ACCEPTED",
+            "PAYMENT_HELD",
+            "CONFIRM_COMPLETION",
+            "FUNDS_TRANSFERRED",
+            "REVIEW_PUBLISHED",
+          ],
+        },
+      },
+      _count: true,
+    }),
+    db.setting.findUnique({ where: { key: "maintenanceHeartbeat" } }),
+    db.outbox.count({ where: { state: "FAILED", OR: [{ lastError: null }, { lastError: { not: "MESSAGE_SUPPRESSED" } }] } }),
+    bookingFunnel(since),
   ]);
-
-  const stats = [
-    { label: "Përdorues gjithsej", value: String(userCount), hint: `${proCount} profesionistë` },
-    { label: "Kërkesa shërbimi", value: String(requests), hint: "të gjitha kohët" },
-    { label: "Vëllimi i pagesave", value: eur(payments._sum.amount ?? 0), hint: `komisioni ${eur(payments._sum.commissionAmount ?? 0)}` },
-    { label: "Verifikime në pritje", value: String(pendingVerifs), hint: "kërkojnë shqyrtim" },
-  ];
-
-  const shellUser = { name: me.name, initials: me.name.slice(0, 2).toUpperCase(), hue: 38, caption: "Administrator" };
-
   return (
-    <AccountShell
-      title="Paneli i administrimit"
-      subtitle="Gjendja e platformës në kohë reale."
-      nav={adminNav}
-      user={shellUser}
-    >
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {stats.map((s) => (
-          <Card key={s.label}>
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted">{s.label}</p>
-            <p className="mt-1 text-2xl font-extrabold text-ink">{s.value}</p>
-            <p className="mt-0.5 text-xs text-muted">{s.hint}</p>
-          </Card>
+    <Frame actor={actor} title="Administrimi i Zgjoi">
+      <div className="grid gap-4 sm:grid-cols-3">
+        {[
+          ["Llogari", users],
+          ["Profesionistë të miratuar", pros],
+          ["Kërkesa", requests],
+          ["Punë të përfunduara", completed],
+          ["Pagesa të mbajtura", money(held._sum.amount ?? 0)],
+          [
+            "Komision nga transfere",
+            money(released._sum.commissionAmount ?? 0),
+          ],
+        ].map(([label, value]) => (
+          <Panel key={label}>
+            <p className="text-sm text-muted">{label}</p>
+            <p className="mt-2 text-2xl font-bold">{value}</p>
+          </Panel>
         ))}
       </div>
-
-      <div className="mt-8 grid gap-6 lg:grid-cols-2">
-        <Card>
-          <SectionTitle>
-            <span className="flex items-center gap-2">
-              <BadgeCheck size={18} className="text-gold-dark" /> Çka pret veprim
-            </span>
-          </SectionTitle>
-          <ul className="space-y-3">
-            <li className="flex items-center justify-between rounded-2xl bg-cream p-4">
-              <div>
-                <p className="text-sm font-bold text-ink">Verifikime profesionistësh</p>
-                <p className="text-xs text-muted">{pendingVerifs} në pritje</p>
-              </div>
-              <Link href="/admin/perdoruesit" className="flex items-center gap-1 text-sm font-bold text-gold-dark hover:underline">
-                Shqyrto <ArrowRight size={14} />
-              </Link>
-            </li>
-            <li className="flex items-center justify-between rounded-2xl bg-cream p-4">
-              <div>
-                <p className="text-sm font-bold text-ink">Bisedat e mbështetjes</p>
-                <p className="text-xs text-muted">{openTickets} të hapura</p>
-              </div>
-              <Link href="/admin/mbeshtetja" className="flex items-center gap-1 text-sm font-bold text-gold-dark hover:underline">
-                Përgjigju <ArrowRight size={14} />
-              </Link>
-            </li>
-          </ul>
-        </Card>
-
-        <Card>
-          <SectionTitle>
-            <span className="flex items-center gap-2">
-              <TrendingUp size={18} className="text-gold-dark" /> Hapat e ardhshëm
-            </span>
-          </SectionTitle>
-          <ul className="space-y-2.5 text-sm text-muted">
-            <li className="flex items-start gap-2">
-              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-gold" />
-              Importo kategoritë te <Link href="/admin/kategorite" className="font-semibold text-gold-dark hover:underline">Kategoritë</Link> nëse s&apos;e ke bërë ende.
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-gold" />
-              Vlerësimet moderohen te <Link href="/admin/vleresimet" className="font-semibold text-gold-dark hover:underline">Vlerësimet</Link>.
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-gold" />
-              Pagesat dhe komisionet te <Link href="/admin/transaksionet" className="font-semibold text-gold-dark hover:underline">Transaksionet</Link>.
-            </li>
-          </ul>
-        </Card>
-      </div>
-    </AccountShell>
+      <Panel>
+        <h2 className="mb-3 text-lg font-bold">Ecuria e kërkesave të 30 ditëve të fundit</h2>
+        <p className="mb-4 text-sm text-muted">I njëjti grup kërkesash, sipas datës së krijimit. Çdo kërkesë numërohet vetëm një herë në secilin hap, pavarësisht sa oferta ose veprime ka. Këto janë të dhëna të këtij mjedisi.</p>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead><tr className="border-b border-line"><th className="py-3">Hapi i arritur</th><th className="py-3">Kërkesa</th><th className="py-3">Nga të gjitha</th></tr></thead>
+            <tbody>{[
+              ["Kërkesë private", funnel.inquiries], ["Të paktën një ofertë zyrtare", funnel.offered],
+              ["Ofertë e pranuar", funnel.accepted], ["Pagesë e konfirmuar ndonjëherë", funnel.funded],
+              ["Përfundim i konfirmuar nga klienti", funnel.completed],
+            ].map(([label, count]) => <tr key={label} className="border-b border-line"><th className="py-3 font-normal">{label}</th><td>{count}</td><td>{funnel.inquiries ? `${Math.round(Number(count) / funnel.inquiries * 100)}%` : "—"}</td></tr>)}</tbody>
+          </table>
+        </div>
+        <p className="mt-3 text-xs text-muted">Hapat janë historikë: rimbursimi ose anulimi i mëvonshëm nuk e fshin një hap të arritur. Kjo tabelë nuk është raport i të ardhurave ose bilanc i fondeve.</p>
+        {!funnel.coherent && <p role="alert" className="mt-3 text-sm text-red-800">Numrat kërkojnë kontroll të integritetit para interpretimit.</p>}
+      </Panel>
+      <Panel>
+        <Link href="/admin/perdoruesit" className="mr-5 text-gold-dark">
+          {pending} profile në shqyrtim
+        </Link>
+        <Link href="/admin/mbeshtetja" className="text-gold-dark">
+          {tickets} biseda të hapura
+        </Link>
+      </Panel>
+      <Panel>
+        <h2 className="mb-3 text-lg font-bold">
+          Veprimet në 30 ditët e fundit
+        </h2>
+        <p className="mb-3 text-sm text-muted">
+          Numër ngjarjesh të regjistruara; këto nuk janë norma konvertimi ose
+          vizitorë unikë.
+        </p>
+        {events.map((e) => (
+          <p key={e.action}>
+            {e.action}: {e._count}
+          </p>
+        ))}
+        {!events.length && <p>Nuk ka ngjarje të regjistruara ende.</p>}
+      </Panel>
+      <Panel>
+        <h2 className="mb-3 text-lg font-bold">Gjendja operative</h2>
+        <p>Pagesat: {paymentsReady() ? "Vetëm provë" : "Të çaktivizuara"}</p>
+        <p>
+          Emaili:{" "}
+          {process.env.EMAIL_DELIVERY_ENABLED === "true" &&
+          process.env.RESEND_API_KEY &&
+          process.env.EMAIL_FROM
+            ? "Konfiguruar; verifikoni dorëzimin"
+            : "Kërkon konfigurim"}
+        </p>
+        <p>{failedMail} email-e kërkojnë shqyrtim</p>
+        <p>
+          Kontrolli periodik:{" "}
+          {heartbeat
+            ? JSON.stringify(heartbeat.value)
+            : "Nuk ka ekzekutim të regjistruar"}
+        </p>
+        <p className="mt-2 text-sm text-muted">
+          Ky panel nuk provon funksionimin e bankës, emailit ose ngarkimit të
+          dokumenteve. Kontrollet e plota mbahen në planin e lançimit.
+        </p>
+      </Panel>
+    </Frame>
   );
 }
