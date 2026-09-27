@@ -48,7 +48,7 @@ export default function Categories() {
                 {c.name}
               </span>
               <span className="mt-1 text-[11px] text-muted">
-                {c.count} profesionistë
+                Shiko profesionistët
               </span>
             </HexTile>
           ))}

@@ -1,3 +1,4 @@
+import { categorySlugs } from "@/lib/service-categories";
 import type { MetadataRoute } from "next";
 import { db } from "@/lib/server/db";
 import { activeCategories } from "@/lib/server/catalog";
@@ -10,7 +11,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     where: {
       verification: "APPROVED",
       user: { suspendedAt: null, role: "PRO" },
-      categorySlug: { in: categories.map((c) => c.slug) },
+      categorySlug: { in: categories.flatMap((c) => categorySlugs(c.slug)) },
     },
     take: 5000,
     orderBy: { id: "asc" },

@@ -1,3 +1,4 @@
+import { serviceCategory } from "@/lib/service-categories";
 import { pageGuard } from "@/lib/server/guard";
 import { db } from "@/lib/server/db";
 import { activeCategories } from "@/lib/server/catalog";
@@ -54,7 +55,7 @@ export default async function ProfileEditor({ pro }: { pro: boolean }) {
         name: "categorySlug",
         label: "Kategoria kryesore",
         type: "select",
-        value: profile.categorySlug,
+        value: serviceCategory(profile.categorySlug)?.slug ?? "",
         required: true,
         options: categories.map((c) => ({ value: c.slug, label: c.name })),
       },

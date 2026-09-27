@@ -108,7 +108,7 @@ test("database-backed private marketplace and authorization journey", async (t) 
   const passwordHash = await hashPassword(password);
   const category = await db.category.create({
     data: {
-      slug: "test-elektricist",
+      slug: "elektricist",
       name: "Elektricist test",
       icon: "zap",
       active: true,
@@ -1793,7 +1793,7 @@ test("database-backed private marketplace and authorization journey", async (t) 
       );
       const signup = await http("/regjistrohu-profesionist");
       assert.equal(signup.status, 200);
-      assert.match(signup.text, /Elektricist test/);
+      assert.match(signup.text, /Elektricist/);
     },
   );
   await t.test(
@@ -1813,4 +1813,177 @@ test("database-backed private marketplace and authorization journey", async (t) 
       );
     },
   );
+});
+
+test("approved catalogue and immutable tiered commissions", async (t) => {
+  const { activeCategories, searchPros } = await import("../lib/server/catalog");
+  const { requireActiveCategory } = await import("../lib/server/service-catalog");
+  const { serviceCategories } = await import("../lib/service-categories");
+  const { commissionMonth, COMMISSION_POLICY_VERSION } = await import("../lib/commission-policy");
+  const { eliteMonth, bookingCommission, refreshCommissionMonth } = await import("../lib/server/commissions");
+  const { createInquiry, createOffer, acceptOffer } = await import("../lib/server/marketplace");
+  const { nextRecurringDate, readRecurrence } = await import("../lib/recurring-bookings");
+  const { serializable } = await import("../lib/server/transaction");
+  const passwordHash = await hashPassword(`synthetic-${randomUUID()}`);
+  async function account(role: "CLIENT" | "PRO", categorySlug = "pastrim") {
+    return db.user.create({ data: { name: "Synthetic commission account", email: `${randomUUID()}@ci.zgjoi.invalid`,
+      passwordHash, role, city: "Prishtinë", emailVerified: new Date(),
+      ...(role === "PRO" ? { proProfile: { create: { slug: randomUUID(), categorySlug,
+        about: "Synthetic professional for commission policy tests only.", priceFrom: 2500, verification: "APPROVED" } } } : {}) },
+      include: { proProfile: true } });
+  }
+  const customer = await account("CLIENT"), stranger = await account("CLIENT"), pro = await account("PRO", "hidraulik");
+  const cj: Jar = new Map([["zgjoi_session", (await persistSession(customer.id, passwordHash)).token]]);
+  const sj: Jar = new Map([["zgjoi_session", (await persistSession(stranger.id, passwordHash)).token]]);
+  const pj: Jar = new Map([["zgjoi_session", (await persistSession(pro.id, passwordHash)).token]]);
+  async function completed(professional = pro, completedAt = new Date(), amount = 10000) {
+    const scheduledAt = new Date(Math.floor((completedAt.getTime() - 86400000) / 60000) * 60000);
+    const request = await db.serviceRequest.create({ data: { clientId: customer.id,
+      selectedProfileId: professional.proProfile!.id, acceptedProfileId: professional.proProfile!.id,
+      categorySlug: professional.proProfile!.categorySlug, title: "Punë e përsëritur prove", detail: "Detaje private për kontrollin e komisionit.",
+      city: "Prishtinë", timing: "Orar prove", answers: {}, state: "COMPLETED", completedAt,
+      scheduledAt, conversation: { create: {} } } });
+    const quote = await db.quote.create({ data: { requestId: request.id, profileId: professional.proProfile!.id,
+      amount, lines: [], message: "Përshkrim i plotë për ofertën e testimit.", duration: "60 min", scheduledAt,
+      expiresAt: new Date(scheduledAt.getTime() - 3600000), state: "ACCEPTED", acceptedAt: new Date(scheduledAt.getTime() - 7200000) } });
+    await db.serviceRequest.update({ where: { id: request.id }, data: { acceptedQuoteId: quote.id } });
+    const commissionAmount = Math.round(amount * 0.15);
+    const payment = await db.payment.create({ data: { requestId: request.id, amount, commissionBps: 1500,
+      commissionAmount, proAmount: amount - commissionAmount, state: "HELD", heldAt: completedAt,
+      strategy: "PLATFORM_CHARGE", provider: "stripe_test" } });
+    return { request, quote, payment };
+  }
+
+  await t.test("only approved services can be listed, selected or booked, including legacy aliases", async () => {
+    await db.category.create({ data: { slug: "marketing", name: "Marketing", icon: "megaphone", active: true } });
+    const categories = await activeCategories();
+    assert.deepEqual(categories.map(c => c.slug), serviceCategories.map(c => c.slug));
+    assert(!categories.some(c => c.name.includes("test")));
+    assert.equal((await requireActiveCategory("hidraulik")).slug, "mjeshter-i-ujit");
+    await assert.rejects(requireActiveCategory("marketing"));
+    const removed = await account("PRO", "marketing");
+    const result = await searchPros({ kategoria: "hidraulik" });
+    assert(result.pros.some(p => p.id === pro.proProfile!.id && p.categorySlug === "mjeshter-i-ujit"));
+    assert.equal((await searchPros({ kategoria: "marketing" })).count, 0);
+    await assert.rejects(createInquiry(customer, { profileId: removed.proProfile!.id,
+      title: "Punë e përjashtuar", detail: "Kërkesë prove për kategori jashtë katalogut.", city: "Prishtinë", timing: "Sipas marrëveshjes", clientKey: randomUUID() }));
+    const row = await db.category.create({ data: { slug: "mjeshter-i-ujit", name: "Private overridden name", icon: "droplets", active: false } });
+    await assert.rejects(requireActiveCategory("hidraulik"));
+    assert.equal((await searchPros({ kategoria: "hidraulik" })).count, 0);
+    await db.category.update({ where: { id: row.id }, data: { active: true } });
+    assert.equal((await activeCategories()).find(c => c.slug === row.slug)?.name, "Mjeshtër i Ujit");
+  });
+
+  await t.test("recurring visits enforce ownership, paid completion, consent, deduplication and a 5% snapshot", async () => {
+    const f = await completed();
+    const path = `/api/requests/${f.request.id}/recurrence`;
+    ok(await http(path, sj, { cadence: "WEEKLY" }), 404);
+    ok(await http(path, pj, { cadence: "WEEKLY" }), 403);
+    await db.payment.update({ where: { id: f.payment.id }, data: { state: "PENDING" } });
+    ok(await http(path, cj, { cadence: "WEEKLY" }), 409);
+    await db.payment.update({ where: { id: f.payment.id }, data: { state: "HELD" } });
+    const replies = await Promise.all([http(path, cj, { cadence: "WEEKLY" }), http(path, cj, { cadence: "WEEKLY" })]);
+    replies.forEach(r => ok(r));
+    assert.equal(replies[0].data.id, replies[1].data.id);
+    const nextId = replies[0].data.id as string;
+    ok(await http(path, cj, { cadence: "MONTHLY" }), 409);
+    const next = await db.serviceRequest.findUniqueOrThrow({ where: { id: nextId } });
+    const recurrence = readRecurrence(next.answers)!;
+    assert.equal(recurrence.parentRequestId, f.request.id);
+    assert.equal(recurrence.scheduledAt, nextRecurringDate(f.quote.scheduledAt!, "WEEKLY").toISOString());
+    assert.equal(await db.payment.count({ where: { requestId: next.id } }), 0);
+    const offer = { requestId: next.id, clientKey: randomUUID(), expectedVersion: 0, amount: "60.00",
+      description: "Shërbim i përsëritur me kushtet e shënuara.", timing: "Orari i vizitës pasuese", duration: "60",
+      scheduledAt: recurrence.scheduledAt, expiresAt: new Date(Date.now() + 3600000).toISOString() };
+    ok(await http("/api/offers", pj, { ...offer, scheduledAt: new Date(Date.parse(recurrence.scheduledAt) + 3600000).toISOString() }), 409);
+    const sent = ok(await http("/api/offers", pj, offer));
+    const page = await http(`/llogaria/kerkesat/${next.id}`, cj);
+    assert(page.text.includes("Vizitë e përsëritur"));
+    ok(await http("/api/offers/accept", cj, { quoteId: sent.quoteId, expectedVersion: 1, commissionBps: 0 }));
+    let payment = await db.payment.findUniqueOrThrow({ where: { requestId: next.id } });
+    assert.equal(payment.commissionBps, 500);
+    assert.equal(payment.commissionAmount, 300);
+    assert.equal(payment.proAmount, 5700);
+    assert.equal(payment.state, "PENDING");
+    await db.setting.upsert({ where: { key: "commissionBps" }, create: { key: "commissionBps", value: 4900 }, update: { value: 4900 } });
+    ok(await http("/api/offers/accept", cj, { quoteId: sent.quoteId, expectedVersion: 1 }));
+    payment = await db.payment.findUniqueOrThrow({ where: { requestId: next.id } });
+    assert.equal(payment.commissionBps, 500);
+    const audit = await db.auditLog.findFirstOrThrow({ where: { target: next.id, action: "OFFER_ACCEPTED" } });
+    assert(JSON.stringify(audit.meta).includes('"tier":"recurring"'));
+    assert(JSON.stringify(audit.meta).includes(COMMISSION_POLICY_VERSION));
+    const ordinary = await createInquiry(customer, { profileId: pro.proProfile!.id, title: "Punë standarde e re",
+      detail: "Kërkesë prove për një ofertë të veçantë.", city: "Prishtinë", timing: "Sipas marrëveshjes", clientKey: randomUUID(),
+      recurrence: { parentRequestId: f.request.id }, commissionBps: 500 });
+    const ordinaryRequest = await db.serviceRequest.findUniqueOrThrow({ where: { id: ordinary.id } });
+    assert.equal(readRecurrence(ordinaryRequest.answers), null);
+    assert.equal((await bookingCommission(db, ordinaryRequest, new Date())).bps, 1500);
+    await db.setting.update({ where: { key: "commissionBps" }, data: { value: 1500 } });
+  });
+
+  await t.test("eligibility is rechecked after a parent refund and forged links cannot gain a discount", async () => {
+    const f = await completed();
+    // Different time from the previous fixture avoids a calendar collision.
+    await db.quote.update({ where: { id: f.quote.id }, data: { scheduledAt: new Date(f.quote.scheduledAt!.getTime() + 7200000) } });
+    const next = ok(await http(`/api/requests/${f.request.id}/recurrence`, cj, { cadence: "FORTNIGHTLY" }));
+    const request = await db.serviceRequest.findUniqueOrThrow({ where: { id: next.id } });
+    const scheduledAt = new Date(readRecurrence(request.answers)!.scheduledAt);
+    assert.equal((await bookingCommission(db, request, scheduledAt)).bps, 500);
+    await db.payment.update({ where: { id: f.payment.id }, data: { state: "REFUNDED", refundedAt: new Date() } });
+    await assert.rejects(bookingCommission(db, request, scheduledAt));
+    await assert.rejects(bookingCommission(db, { ...request, creationKey: null }, scheduledAt));
+    const page = await http(`/pro/kerkesat/${request.id}`, pj);
+    assert.equal(page.status, 200);
+    assert(page.text.includes("Kushtet e rezervimit të përsëritur kanë ndryshuar"));
+    assert(!page.text.includes("Dërgo ofertën"));
+  });
+
+  await t.test("Elite closes the previous full month once, excludes unpaid/refunded/test leakage, and applies 10%", async () => {
+    const oldMode = process.env.PAYMENTS_MODE;
+    process.env.PAYMENTS_MODE = "stripe_test";
+    try {
+      const now = new Date(), period = commissionMonth(now);
+      const at = new Date(period.from.getTime() + 86400000);
+      const professionals = [];
+      for (let i = 0; i < 21; i++) {
+        const person = await account("PRO");
+        professionals.push(person);
+        await completed(person, at, 10000 + i * 100);
+      }
+      const unpaidPro = await account("PRO"), refundPro = await account("PRO"), suspendedPro = await account("PRO");
+      const unpaid = await completed(unpaidPro, at, 900000);
+      await db.payment.update({ where: { id: unpaid.payment.id }, data: { state: "PENDING", heldAt: null } });
+      const refund = await completed(refundPro, at, 900000);
+      await db.payment.update({ where: { id: refund.payment.id }, data: { state: "REFUNDED", refundedAt: now } });
+      await completed(suspendedPro, at, 900000);
+      await db.user.update({ where: { id: suspendedPro.id }, data: { suspendedAt: now } });
+      const snapshots = await Promise.all([serializable(tx => eliteMonth(tx, now, true)), serializable(tx => eliteMonth(tx, now, true))]);
+      assert.deepEqual(snapshots[0], snapshots[1]);
+      const ids = snapshots[0].winners.filter(w => w.categorySlug === "pastrim").map(w => w.profileId).sort();
+      assert.deepEqual(ids, [professionals[20].proProfile!.id, professionals[19].proProfile!.id].sort());
+      await completed(professionals[0], at, 990000);
+      assert.deepEqual((await eliteMonth(db, now, false)).winners, snapshots[0].winners);
+      const professional = professionals[20];
+      const inquiry = await createInquiry(customer, { profileId: professional.proProfile!.id, title: "Punë me komision Elite",
+        detail: "Kërkesë e veçantë për komisionin e kategorisë.", city: "Prishtinë", timing: "Sipas marrëveshjes", clientKey: randomUUID() });
+      const sent = await createOffer(professional, { requestId: inquiry.id, expectedVersion: 0, clientKey: randomUUID(), amount: "60.00",
+        description: "Oferta e plotë për punën e testimit Elite.", timing: "Orar i dakorduar", duration: "60",
+        expiresAt: new Date(Date.now() + 3600000).toISOString(), scheduledAt: new Date(Date.now() + 5 * 86400000).toISOString() });
+      await acceptOffer(customer, { quoteId: sent.quoteId, expectedVersion: 1 });
+      const payment = await db.payment.findUniqueOrThrow({ where: { requestId: inquiry.id } });
+      assert.equal(payment.commissionBps, 1000);
+      assert.equal(payment.commissionAmount, 600);
+      assert.equal(payment.proAmount, 5400);
+      const snapshotKey = `commissionElite:${COMMISSION_POLICY_VERSION}:test:${period.month}`;
+      assert.equal(await db.auditLog.count({ where: { action: "COMMISSION_MONTH_CLOSED", target: snapshotKey } }), 1);
+      process.env.PAYMENTS_MODE = "disabled";
+      assert.equal((await eliteMonth(db, now, false)).winners.length, 0);
+      const original = await db.payment.findUniqueOrThrow({ where: { id: payment.id } });
+      await refreshCommissionMonth(now);
+      assert.deepEqual(await db.payment.findUniqueOrThrow({ where: { id: payment.id } }), original);
+    } finally {
+      if (oldMode === undefined) delete process.env.PAYMENTS_MODE;
+      else process.env.PAYMENTS_MODE = oldMode;
+    }
+  });
 });

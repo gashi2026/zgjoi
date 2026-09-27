@@ -1,3 +1,4 @@
+import { categorySlugs, serviceCategory } from "@/lib/service-categories";
 import { pageGuard } from "@/lib/server/guard";
 import { db } from "@/lib/server/db";
 import { publicProSelect, activeCategories } from "@/lib/server/catalog";
@@ -13,7 +14,7 @@ export default async function Page() {
       profile: {
         verification: "APPROVED",
         user: { suspendedAt: null, role: "PRO" },
-        categorySlug: { in: categories.map((c) => c.slug) },
+        categorySlug: { in: categories.flatMap((c) => categorySlugs(c.slug)) },
       },
     },
     orderBy: { createdAt: "desc" },
@@ -34,7 +35,7 @@ export default async function Page() {
             <CatalogCard
               pro={row.profile}
               category={
-                categories.find((c) => c.slug === row.profile.categorySlug)
+                categories.find((c) => c.slug === serviceCategory(row.profile.categorySlug)?.slug)
                   ?.name
               }
             />

@@ -2,12 +2,14 @@ import SearchBar from "./SearchBar";
 import { Bee, FlightPath } from "../Brand";
 import Honeycomb from "./Honeycomb";
 import MobileHexBelt from "./MobileHexBelt";
+import { serviceCategories } from "@/lib/service-categories";
+import { DEFAULT_SERVICES } from "@/lib/honeycomb-slots";
 import presentation from "@/lib/homepage-reference-settings.json";
 
 export default function Hero() {
   const { heroTitle: title, heroAccent: accent, heroSubtitle: subtitle } = presentation.site;
-  const services = presentation.honeycomb;
-  const catalog = presentation.categories;
+  const services = DEFAULT_SERVICES;
+  const catalog = serviceCategories.map(c => ({ slug: c.slug, name: c.name, icon: c.icon }));
   const beltCats = catalog;
 
   const [line1, line2] = title.includes("\n") ? title.split("\n") : [title, ""];

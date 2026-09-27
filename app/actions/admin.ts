@@ -1,4 +1,6 @@
 "use server";
+import { serviceCategory, allowedCategorySlugs } from "@/lib/service-categories";
+import { activeServiceCategories } from "@/lib/server/service-catalog";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/lib/server/db";
@@ -21,16 +23,11 @@ function refresh() {
 export async function seedCategories() {
   const actor = await requireRole("ADMIN");
   await db.$transaction(async (tx) => {
-    await tx.category.createMany({
-      data: baseCategories.map((c, i) => ({
-        slug: c.slug,
-        name: c.name,
-        icon: c.icon,
-        position: i,
-        active: true,
-      })),
-      skipDuplicates: true,
+    for (const [position, c] of baseCategories.entries()) await tx.category.upsert({
+      where: { slug: c.slug }, create: { slug: c.slug, name: c.name, icon: c.icon, position, active: true },
+      update: { name: c.name, icon: c.icon, position },
     });
+    await tx.category.updateMany({ where: { slug: { notIn: allowedCategorySlugs } }, data: { active: false } });
     await tx.auditLog.create({
       data: {
         actorId: actor.id,
@@ -46,7 +43,7 @@ export async function createCategory(fd: FormData) {
   const name = cleanText(2, 100).parse(fd.get("name")),
     icon = cleanText(1, 80).parse(fd.get("icon") || "sparkles");
   const slug = slugify(String(fd.get("slug") || name));
-  invariant(slug, "SLUG", 400, "Emri duhet të përmbajë shkronja ose numra.");
+  invariant(serviceCategory(slug)?.slug === slug, "CATEGORY", 400, "Vetëm 14 kategoritë e miratuara janë të disponueshme.");
   await db.$transaction(async (tx) => {
     const last = await tx.category.aggregate({ _max: { position: true } });
     const category = await tx.category.upsert({
@@ -69,6 +66,8 @@ export async function updateCategory(fd: FormData) {
     id = entityId.parse(fd.get("id")),
     name = cleanText(2, 100).parse(fd.get("name")),
     icon = cleanText(1, 80).parse(fd.get("icon") || "sparkles");
+  const existing = await db.category.findUniqueOrThrow({ where: { id } });
+  invariant(serviceCategory(existing.slug), "CATEGORY", 400, "Kjo kategori nuk është në listën e miratuar.");
   await db.$transaction([
     db.category.update({ where: { id }, data: { name, icon } }),
     db.auditLog.create({
@@ -82,6 +81,7 @@ export async function toggleCategory(fd: FormData) {
     id = entityId.parse(fd.get("id"));
   await db.$transaction(async (tx) => {
     const c = await tx.category.findUniqueOrThrow({ where: { id } });
+    invariant(serviceCategory(c.slug), "CATEGORY", 400, "Kjo kategori nuk është në listën e miratuar.");
     await tx.category.update({ where: { id }, data: { active: !c.active } });
     await tx.auditLog.create({
       data: {
@@ -151,17 +151,14 @@ export async function saveSiteSettings(fd: FormData) {
 }
 export async function saveHoneycomb(fd: FormData) {
   const actor = await requireRole("ADMIN");
-  const categories = await db.category.findMany({
-      where: { active: true },
-      select: { slug: true },
-    }),
+  const categories = await activeServiceCategories(),
     map: Record<string, string> = {};
   for (const [key, value] of fd.entries()) {
     if (key.startsWith("cell:")) {
       const cell = key.slice(5),
         slug = String(value);
       invariant(
-        /^[\d,-]{1,20}$/.test(cell),
+        /^[\d.,-]{1,20}$/.test(cell),
         "CELL",
         400,
         "Qeliza nuk është e vlefshme.",

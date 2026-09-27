@@ -1,3 +1,4 @@
+import { serviceCategories, serviceCategory } from "./service-categories";
 /** Original zgjoi.com marketing fixtures, production commit 4e6c58a.
  * Presentation-only: not live marketplace totals, accounts, reviews, or offers.
  * Only the Preview reference homepage imports this module; never API/data queries.
@@ -6,7 +7,6 @@ export type Category = {
   slug: string;
   name: string;
   icon: string;
-  count: number;
   group: string;
 };
 
@@ -42,53 +42,7 @@ export type Testimonial = {
   city: string;
 };
 
-export const categories: Category[] = [
-  // Shtëpia & ndërtimi
-  { slug: "ndertim", name: "Ndërtim", icon: "home", count: 640, group: "Shtëpia" },
-  { slug: "hidraulik", name: "Hidraulik", icon: "droplets", count: 520, group: "Shtëpia" },
-  { slug: "elektricist", name: "Elektricist", icon: "zap", count: 480, group: "Shtëpia" },
-  { slug: "pastrim", name: "Pastrim", icon: "sparkles", count: 730, group: "Shtëpia" },
-  { slug: "piktor", name: "Piktor", icon: "paintbrush", count: 310, group: "Shtëpia" },
-  { slug: "kopsht", name: "Kopsht", icon: "leaf", count: 260, group: "Shtëpia" },
-  { slug: "transport", name: "Transport", icon: "truck", count: 340, group: "Shtëpia" },
-  { slug: "riparime", name: "Riparime", icon: "wrench", count: 410, group: "Shtëpia" },
-  { slug: "mobilje", name: "Montim mobiljesh", icon: "hammer", count: 220, group: "Shtëpia" },
-  { slug: "klima", name: "Klimatizim", icon: "wind", count: 180, group: "Shtëpia" },
-  { slug: "siguria", name: "Siguri & alarme", icon: "shield", count: 120, group: "Shtëpia" },
-  { slug: "internet", name: "Rrjete & internet", icon: "wifi", count: 140, group: "Shtëpia" },
-  // Arsimi & mësimi
-  { slug: "tutor", name: "Kurse", icon: "bookOpen", count: 380, group: "Arsimi" },
-  { slug: "gjuhe-te-huaja", name: "Gjuhë të huaja", icon: "globe", count: 290, group: "Arsimi" },
-  { slug: "muzike", name: "Mësues muzike", icon: "music", count: 160, group: "Arsimi" },
-  { slug: "programim", name: "Programim & IT", icon: "code", count: 210, group: "Arsimi" },
-  { slug: "matematike", name: "Matematikë", icon: "calculator", count: 340, group: "Arsimi" },
-  // Kujdesi & fëmijët
-  { slug: "nane", name: "Nënë kujdestare", icon: "baby", count: 175, group: "Kujdesi" },
-  { slug: "kujdes-pleq", name: "Kujdes për të moshuarit", icon: "heart", count: 130, group: "Kujdesi" },
-  { slug: "trajner-personal", name: "Trajner personal", icon: "dumbbell", count: 195, group: "Kujdesi" },
-  { slug: "nutricionist", name: "Nutricionist", icon: "apple", count: 88, group: "Kujdesi" },
-  // Arte & ngjarje
-  { slug: "fotograf", name: "Fotograf", icon: "camera", count: 420, group: "Arte" },
-  { slug: "dekorues", name: "Dekorues", icon: "palette", count: 230, group: "Arte" },
-  { slug: "florist", name: "Florist", icon: "flower", count: 145, group: "Arte" },
-  { slug: "balet", name: "Mësues baleti", icon: "drama", count: 62, group: "Arte" },
-  { slug: "dj", name: "DJ & muzikë live", icon: "headphones", count: 110, group: "Arte" },
-  { slug: "kameraman", name: "Kameraman & video", icon: "video", count: 180, group: "Arte" },
-  // Shoferi & udhëtimi
-  { slug: "shofer-personal", name: "Shofer personal", icon: "car", count: 95, group: "Udhëtimi" },
-  { slug: "shofer-dasme", name: "Shofer për dasma", icon: "star", count: 78, group: "Udhëtimi" },
-  // Bukuria & moda
-  { slug: "parukeri", name: "Parukeri", icon: "scissors", count: 560, group: "Bukuria" },
-  { slug: "makeup", name: "Makeup artist", icon: "sparkles2", count: 310, group: "Bukuria" },
-  { slug: "stilist", name: "Stilist & mode", icon: "shirt", count: 140, group: "Bukuria" },
-  // Biznesi
-  { slug: "kontabilist", name: "Kontabilist", icon: "briefcase", count: 265, group: "Biznesi" },
-  { slug: "avokat", name: "Avokat", icon: "scale", count: 190, group: "Biznesi" },
-  { slug: "marketing", name: "Marketing & media", icon: "megaphone", count: 225, group: "Biznesi" },
-  { slug: "perkthyes", name: "Përkthyes", icon: "languages", count: 170, group: "Biznesi" },
-  { slug: "postier", name: "Postier", icon: "mail", count: 85, group: "Biznesi" },
-  { slug: "evente", name: "Organizues eventesh", icon: "calendar", count: 120, group: "Arte" },
-];
+export const categories = serviceCategories.map(({ slug, name, icon, group }) => ({ slug, name, icon, group }));
 
 export const cities = [
   "Prishtinë",
@@ -113,7 +67,7 @@ export const cities = [
   "Shtimje",
 ];
 
-export const professionals: Professional[] = [
+const originalProfessionals: Professional[] = [
   {
     id: "arben-elektricist",
     name: "Arben Krasniqi",
@@ -275,6 +229,11 @@ export const professionals: Professional[] = [
     hue: 25,
   },
 ];
+
+export const professionals: Professional[] = originalProfessionals.flatMap(pro => {
+  const category = serviceCategory(pro.category);
+  return category ? [{ ...pro, category: category.slug, profession: category.name }] : [];
+});
 
 export const testimonials: Testimonial[] = [
   { quote: "E gjeta elektricistin brenda 10 minutash. Perfekt!", name: "Blendi", city: "Prishtinë" },

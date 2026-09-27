@@ -1,3 +1,5 @@
+import { categorySlugs, serviceCategory } from "../service-categories";
+import { activeServiceCategories } from "./service-catalog";
 import "server-only";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
@@ -28,13 +30,7 @@ export const publicProSelect = {
   availability: { select: { weekday: true, startMin: true, endMin: true } },
 } satisfies Prisma.ProProfileSelect;
 
-export async function activeCategories() {
-  return db.category.findMany({
-    where: { active: true },
-    orderBy: [{ position: "asc" }, { name: "asc" }],
-    select: { id: true, slug: true, name: true, icon: true },
-  });
-}
+export const activeCategories = activeServiceCategories;
 
 export async function searchPros(input: Record<string, unknown> = {}) {
   const p = z
@@ -54,8 +50,8 @@ export async function searchPros(input: Record<string, unknown> = {}) {
     user: { suspendedAt: null, role: "PRO" },
     categorySlug: {
       in: categories
-        .filter((c) => !p.kategoria || c.slug === p.kategoria)
-        .map((c) => c.slug),
+        .filter((c) => !p.kategoria || c.slug === serviceCategory(p.kategoria)?.slug)
+        .flatMap((c) => categorySlugs(c.slug)),
     },
     ratingAvg: { gte: p.minRating },
     ...(p.maxPrice ? { priceFrom: { lte: Math.round(p.maxPrice * 100) } } : {}),
@@ -92,7 +88,7 @@ export async function searchPros(input: Record<string, unknown> = {}) {
                               .replace(/[\u0300-\u036f]/g, ""),
                           ),
                       )
-                      .map((c) => c.slug),
+                      .flatMap((c) => categorySlugs(c.slug)),
                   },
                 },
               ],
@@ -132,7 +128,7 @@ export async function searchPros(input: Record<string, unknown> = {}) {
     db.proProfile.count({ where }),
   ]);
   return {
-    pros,
+    pros: pros.map(pro => ({ ...pro, categorySlug: serviceCategory(pro.categorySlug)!.slug })),
     count,
     page: p.page,
     pages: Math.ceil(count / 18),
@@ -142,12 +138,12 @@ export async function searchPros(input: Record<string, unknown> = {}) {
 
 export async function publicProfile(id: string) {
   const categories = await activeCategories();
-  return db.proProfile.findFirst({
+  const profile = await db.proProfile.findFirst({
     where: {
       OR: [{ id }, { slug: id }],
       verification: "APPROVED",
       user: { suspendedAt: null, role: "PRO" },
-      categorySlug: { in: categories.map((c) => c.slug) },
+      categorySlug: { in: categories.flatMap((c) => categorySlugs(c.slug)) },
     },
     select: {
       ...publicProSelect,
@@ -165,6 +161,7 @@ export async function publicProfile(id: string) {
       },
     },
   });
+  return profile ? { ...profile, categorySlug: serviceCategory(profile.categorySlug)!.slug } : null;
 }
 
 export async function favorite(

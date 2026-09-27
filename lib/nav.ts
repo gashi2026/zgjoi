@@ -27,6 +27,7 @@ export const adminNav: NavItem[] = [
   { href: "/admin/sistemi", label: "Shërbimet", icon: "settings" },
   { href: "/admin/perdoruesit", label: "Përdoruesit", icon: "users" },
   { href: "/admin/kategorite", label: "Kategoritë & Faqja", icon: "layers" },
+  { href: "/admin/komisionet", label: "Komisionet", icon: "receipt" },
   { href: "/admin/pagesat", label: "Pagesat", icon: "wallet" },
   { href: "/admin/transaksionet", label: "Transaksionet", icon: "receipt" },
   { href: "/admin/vleresimet", label: "Vlerësimet", icon: "shieldAlert" },

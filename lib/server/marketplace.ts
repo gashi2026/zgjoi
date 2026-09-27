@@ -1,10 +1,14 @@
+import { requireActiveCategory } from "./service-catalog";
+import { bookingCommission } from "./commissions";
+import { readRecurrence } from "../recurring-bookings";
+import { eligibleRecurringBooking } from "./recurring";
 import "server-only";
 import { Prisma, type ServiceRequest } from "@prisma/client";
 import { db } from "./db";
 import { type Actor } from "./auth";
 import { AppError, invariant } from "./errors";
 import { notify } from "./notifications";
-import { commissionBps, splitAmount } from "./settings";
+import { splitAmount } from "./settings";
 import { enforceLimit } from "./rate-limit";
 import { hashToken } from "./tokens";
 import { assertAppointmentAvailable, assertAvailabilityPreservesBookings } from "./appointments";
@@ -87,19 +91,12 @@ export async function createInquiry(actor: Actor, input: unknown) {
       409,
       "Ky profesionist nuk pranon kërkesa për momentin.",
     );
-    invariant(
-      await tx.category.findFirst({
-        where: { slug: profile.categorySlug, active: true },
-      }),
-      "CATEGORY",
-      409,
-      "Kategoria nuk është aktive.",
-    );
+    const category = await requireActiveCategory(profile.categorySlug, tx);
     const request = await tx.serviceRequest.create({
       data: {
         clientId: actor.id,
         selectedProfileId: profile.id,
-        categorySlug: profile.categorySlug,
+        categorySlug: category.slug,
         title: data.title,
         detail: data.detail,
         city: data.city,
@@ -175,6 +172,9 @@ export async function createOffer(actor: Actor, input: unknown) {
       409,
       "Kërkesa ka ndryshuar. Rifreskoni faqen para se të dërgoni ofertën.",
     );
+    await requireActiveCategory(request.categorySlug, tx);
+    if (readRecurrence(request.answers)) invariant(await eligibleRecurringBooking(tx, request, scheduledAt),
+      "RECURRENCE_UNAVAILABLE", 409, "Oferta duhet të respektojë orarin dhe kushtet e vizitës së përsëritur.");
     await assertAppointmentAvailable(tx, actor.proProfile!.id, scheduledAt, data.duration, request.id);
     const revision =
       (
@@ -238,7 +238,6 @@ export async function createOffer(actor: Actor, input: unknown) {
 export async function acceptOffer(actor: Actor, input: unknown) {
   role(actor, "CLIENT");
   const data = acceptanceInput.parse(input);
-  const bps = await commissionBps();
   return serializable(async (tx) => {
     const quote = await tx.quote.findUnique({
       where: { id: data.quoteId },
@@ -291,6 +290,9 @@ export async function acceptOffer(actor: Actor, input: unknown) {
       409,
       "Kërkesa ka ndryshuar. Rifreskoni faqen.",
     );
+    await requireActiveCategory(request.categorySlug, tx);
+    const commission = await bookingCommission(tx, request, quote.scheduledAt, true);
+    const bps = commission.bps;
     await assertAppointmentAvailable(tx, quote.profileId, quote.scheduledAt!, quote.duration ?? "", request.id);
     const updated = await tx.serviceRequest.updateMany({
       where: {
@@ -348,7 +350,7 @@ export async function acceptOffer(actor: Actor, input: unknown) {
         actorId: actor.id,
         action: "OFFER_ACCEPTED",
         target: request.id,
-        meta: { quoteId: quote.id, amount: quote.amount },
+        meta: { quoteId: quote.id, amount: quote.amount, commission },
       },
     });
     return {
@@ -382,6 +384,7 @@ export async function getRequest(actor: Actor, id: string) {
           amount: true,
           currency: true,
           state: true,
+          commissionBps: true,
           commissionAmount: true,
           proAmount: true,
           provider: true,

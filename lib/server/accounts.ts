@@ -1,3 +1,5 @@
+import { requireActiveCategory } from "./service-catalog";
+import { serviceCategory } from "../service-categories";
 import "server-only";
 import bcrypt from "bcryptjs";
 import { Prisma } from "@prisma/client";
@@ -37,19 +39,10 @@ export async function authenticate(input: unknown, ip: string) {
 export async function signup(input: unknown, ip: string) {
   const data = signupInput.parse(input);
   await enforceLimit(`signup:${ip}`, 10, 60 * 60_000);
-  if (data.role === "PRO") {
-    invariant(
-      await db.category.findFirst({
-        where: { slug: data.categorySlug!, active: true },
-      }),
-      "CATEGORY",
-      400,
-      "Zgjidhni një kategori aktive.",
-    );
-  }
   const passwordHash = await hashPassword(data.password);
   try {
     const user = await serializable(async (tx) => {
+      if (data.role === "PRO") data.categorySlug = (await requireActiveCategory(data.categorySlug!, tx)).slug;
       const created = await tx.user.create({
         data: {
           name: data.name,
@@ -243,22 +236,14 @@ export async function updateAccount(actor: Actor, input: unknown) {
       data: { name: data.name, city: data.city, phone: data.phone || null },
     });
     if (actor.role === "PRO" && actor.proProfile) {
-      if (data.categorySlug)
-        invariant(
-          await tx.category.findFirst({
-            where: { slug: data.categorySlug, active: true },
-          }),
-          "CATEGORY",
-          400,
-          "Kategoria nuk është aktive.",
-        );
+      if (data.categorySlug) data.categorySlug = (await requireActiveCategory(data.categorySlug, tx)).slug;
       const before = await tx.proProfile.findUniqueOrThrow({
         where: { id: actor.proProfile.id },
       });
       const reviewAgain =
         data.name !== actor.name ||
         (data.categorySlug !== undefined &&
-          data.categorySlug !== before.categorySlug) ||
+          data.categorySlug !== serviceCategory(before.categorySlug)?.slug) ||
         (data.about !== undefined && data.about !== before.about);
       await tx.proProfile.update({
         where: { id: actor.proProfile.id },

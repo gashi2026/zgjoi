@@ -1,3 +1,4 @@
+import { refreshCommissionMonth } from "@/lib/server/commissions";
 import { db } from "@/lib/server/db";
 import { json } from "@/lib/server/http";
 import { equalSecret } from "@/lib/server/tokens";
@@ -16,6 +17,7 @@ export async function GET(req: Request) {
     return json({ error: "FORBIDDEN" }, 403);
   try {
     const now = new Date();
+    const commissions = await refreshCommissionMonth(now);
     const expired = await expireOffers(now);
     const [sessions, tokens, limits] = await db.$transaction([
       db.session.deleteMany({ where: { expiresAt: { lt: now } } }),
@@ -38,6 +40,7 @@ export async function GET(req: Request) {
     return json({
       ok: true,
       expired,
+      commissions,
       cleaned: {
         sessions: sessions.count,
         tokens: tokens.count,

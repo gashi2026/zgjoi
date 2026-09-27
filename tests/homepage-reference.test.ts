@@ -1,3 +1,5 @@
+import { serviceCategories } from "../lib/service-categories";
+import { DEFAULT_SERVICES } from "../lib/honeycomb-slots";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
@@ -26,25 +28,13 @@ function render(node: React.ReactNode, pathname = "/") {
   }, React.createElement(PathnameContext.Provider, { value: pathname }, node)));
 }
 
-test("reference contains only the original public homepage settings and exact hive assignments", () => {
-  assert.deepEqual(Object.keys(presentation).sort(), ["categories", "honeycomb", "site"]);
+test("original presentation keeps its title while the hive uses only the 14 approved categories", () => {
+  assert.deepEqual(Object.keys(presentation), ["site"]);
   assert.equal(presentation.site.heroTitle, "Gjej profesionist për çdo shërbim.");
   assert.equal(presentation.site.heroAccent, "Lehtë.");
-  assert.equal(presentation.categories.length, 39);
-  assert.deepEqual(presentation.honeycomb, {
-    "0,5": "sigurim", "0,7": "kontabilist", "1,5": "perkthyes",
-    "2,3": "postier", "2,7": "shtepiak", "3,1": "shtepiak",
-    "3,5": "elektricist", "4,1": "shofer", "4,3": "berber", "6,1": "transport",
-    "0.5,6": "klimatizim", "1.5,4": "kurse", "1.5,6": "dado",
-    "2.5,2": "moler", "2.5,4": "marketing", "2.5,6": "mjeshter-i-ujit",
-    "3.5,2": "kopshtar", "3.5,4": "pastrim", "4.5,0": "balet",
-    "4.5,2": "avokat", "5.5,0": "internet", "5.5,2": "montim",
-  });
-  for (const category of presentation.categories) {
-    assert.deepEqual(Object.keys(category).sort(), ["icon", "name", "slug"]);
-    assert.match(category.icon, /^(?:[a-zA-Z][a-zA-Z0-9]*|data:image\/png;base64,[A-Za-z0-9+/=]+)$/);
-    assert(!category.name.includes("[TEST]"));
-  }
+  const slugs = serviceCategories.map(c => c.slug);
+  assert.equal(new Set(Object.values(DEFAULT_SERVICES)).size, 14);
+  for (const slug of Object.values(DEFAULT_SERVICES)) assert(slugs.includes(slug as typeof slugs[number]));
 });
 
 test("original homepage renders the complete section order, hive geometry and search presentation", () => {
@@ -66,7 +56,10 @@ test("original homepage renders the complete section order, hive geometry and se
   assert(html.includes('viewBox="0 0 100 115.47"'));
   assert(html.includes("animate-bee-hover"));
   assert(html.includes("kategoria=mjeshter-i-ujit"));
-  assert(html.includes("kategoria=kontabilist"));
+  const links = [...html.matchAll(/kategoria=([^"&<>]+)/g)].map(match => decodeURIComponent(match[1]));
+  assert.deepEqual([...new Set(links)].sort(), serviceCategories.map(c => c.slug).sort());
+  for (const removed of ["kontabilist", "marketing", "transport", "trainer-personal", "fotograf", "internet"])
+    assert(!html.includes(`kategoria=${removed}`));
   assert(!html.includes("[TEST]"));
   assert(!html.includes("/profesionisti/arben-elektricist"));
   assert(html.includes("Pagesa nis pas pranimit të ofertës"));

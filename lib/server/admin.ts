@@ -1,3 +1,4 @@
+import { requireActiveCategory } from "./service-catalog";
 import "server-only";
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
@@ -89,16 +90,10 @@ export async function adminCommand(actor: Actor, input: unknown) {
     return serializable(async (tx) => {
       await adminAccess(actor, tx);
       if (action === "USER_CREATE") {
-        if (data.role === "PRO")
-          invariant(
-            data.categorySlug &&
-              (await tx.category.findFirst({
-                where: { slug: data.categorySlug, active: true },
-              })),
-            "CATEGORY",
-            400,
-            "Zgjidhni kategorinë e profesionistit.",
-          );
+        if (data.role === "PRO") {
+          invariant(data.categorySlug, "CATEGORY", 400, "Zgjidhni kategorinë e profesionistit.");
+          data.categorySlug = (await requireActiveCategory(data.categorySlug, tx)).slug;
+        }
         invariant(
           !(await tx.user.findUnique({ where: { email: data.email } })),
           "EXISTS",
@@ -257,9 +252,7 @@ export async function adminCommand(actor: Actor, input: unknown) {
       if (action === "PRO_APPROVE")
         invariant(
           profile.about.length >= 30 &&
-            (await tx.category.findFirst({
-              where: { slug: profile.categorySlug, active: true },
-            })),
+            (await requireActiveCategory(profile.categorySlug, tx)),
           "PROFILE",
           409,
           "Plotësoni profilin dhe kategorinë aktive.",

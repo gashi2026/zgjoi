@@ -1,3 +1,4 @@
+import { allowedCategorySlugs } from "../lib/service-categories";
 /** Catalog-only seed for local/staging development. Never creates/promotes users. */
 import { PrismaClient } from "@prisma/client";
 import { categories } from "../lib/data";
@@ -14,21 +15,11 @@ async function main() {
       "Catalog seed is restricted to local/staging databases. Production categories are managed through the authenticated admin UI.",
     );
   await db.$transaction(async (tx) => {
-    await tx.category.createMany({
-      data: categories.map((category, position) => ({
-        slug: category.slug,
-        name: category.name,
-        icon: category.icon,
-        position,
-        active: true,
-      })),
-      skipDuplicates: true,
+    for (const [position, c] of categories.entries()) await tx.category.upsert({
+      where: { slug: c.slug }, create: { slug: c.slug, name: c.name, icon: c.icon, position, active: true },
+      update: { name: c.name, icon: c.icon, position },
     });
-    await tx.setting.upsert({
-      where: { key: "commissionBps" },
-      create: { key: "commissionBps", value: 1500 },
-      update: {},
-    });
+    await tx.category.updateMany({ where: { slug: { notIn: allowedCategorySlugs } }, data: { active: false } });
     await tx.auditLog.create({
       data: { action: "CATALOG_SEEDED", target: "categories" },
     });

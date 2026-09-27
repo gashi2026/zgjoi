@@ -22,19 +22,6 @@ export async function setSetting(key: string, value: unknown) {
 
 /* ------------------------------------------------------ money settings */
 
-/** Commission in basis points (1500 = 15%). Admin-overridable via Setting. */
-export async function commissionBps(): Promise<number> {
-  const row = await db.setting.findUnique({ where: { key: "commissionBps" } });
-  const v = row?.value ?? 1500;
-  invariant(
-    typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= 5000,
-    "COMMISSION_CONFIG",
-    503,
-    "Konfigurimi i pagesës kërkon kontroll.",
-  );
-  return v;
-}
-
 /** Split a client payment into commission + professional payout. */
 export function splitAmount(totalCents: number, bps: number) {
   invariant(

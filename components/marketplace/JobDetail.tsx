@@ -3,7 +3,9 @@ import { pageGuard } from "@/lib/server/guard";
 import { getRequest } from "@/lib/server/marketplace";
 import { AppError } from "@/lib/server/errors";
 import { paymentsReady } from "@/lib/server/payments";
-import { commissionBps } from "@/lib/server/settings";
+import { bookingCommission } from "@/lib/server/commissions";
+import { db } from "@/lib/server/db";
+import { readRecurrence, recurrenceLabels } from "@/lib/recurring-bookings";
 import { money, stateLabel, dateTime } from "@/lib/format";
 import { appointmentEnd } from "@/lib/appointments";
 import Frame, { Panel } from "./Frame";
@@ -27,11 +29,18 @@ export default async function JobDetail({
   const latest = request.quotes.find(
     (q) => q.state === "SENT" && q.expiresAt && q.expiresAt > new Date(),
   );
+  const recurrence = readRecurrence(request.answers);
   const funded = request.payment?.state === "HELD";
-  const commission =
-    pro && ["OPEN", "QUOTED"].includes(request.state)
-      ? await commissionBps()
-      : null;
+  let commission: Awaited<ReturnType<typeof bookingCommission>> | null = null;
+  let commissionError: string | null = null;
+  if (pro && ["OPEN", "QUOTED"].includes(request.state)) {
+    try {
+      commission = await bookingCommission(db, request, latest?.scheduledAt ?? (recurrence ? new Date(recurrence.scheduledAt) : null));
+    } catch (error) {
+      if (!(error instanceof AppError) || error.code !== "RECURRENCE_UNAVAILABLE") throw error;
+      commissionError = error.message;
+    }
+  }
   const active = ["BOOKED", "IN_PROGRESS"].includes(request.state);
   const jobAction = (
     action: string,
@@ -58,6 +67,10 @@ export default async function JobDetail({
         <p className="mt-3 text-sm text-muted">
           Koha e kërkuar: {request.timing}
         </p>
+        {recurrence && <p className="mt-3 rounded-xl bg-cream p-3">
+          Vizitë e përsëritur: {recurrenceLabels[recurrence.cadence]} · {dateTime(new Date(recurrence.scheduledAt))} (ora e Kosovës).
+          Çdo vizitë kërkon ofertë dhe pranim të veçantë. Nuk ka tarifim automatik të kartës.
+        </p>}
         {request.address && <p className="mt-2">Adresa: {request.address}</p>}
         <p className="mt-2 text-xs text-muted">
           Krijuar: {dateTime(request.createdAt)}
@@ -146,12 +159,13 @@ export default async function JobDetail({
             )}
           </article>
         ))}
-        {pro && ["OPEN", "QUOTED"].includes(request.state) && (
+        {commissionError && <p className="rounded-xl bg-cream p-3" role="alert">{commissionError}</p>}
+        {pro && commission && ["OPEN", "QUOTED"].includes(request.state) && (
           <div className="space-y-4">
             <p className="text-sm text-muted">
-              Komisioni aktual i platformës është {(commission ?? 0) / 100}% e
+              Komisioni aktual i platformës është {commission.bps / 100}% e
               çmimit total. Shumat e rezervimit shfaqen pas pranimit. Pagesat
-              janë ende në provë.
+              janë ende në provë. Norma fiksohet në pranimin e ofertës dhe nuk ndryshon për pagesat ekzistuese.
             </p>
             <ApiForm
               key={request.version}
@@ -238,7 +252,7 @@ export default async function JobDetail({
           <p className="mt-2">Totali: {money(request.payment.amount)}</p>
           {pro && (
             <p className="mt-1 text-sm">
-              Komisioni: {money(request.payment.commissionAmount)} · Për ju:{" "}
+              Komisioni ({request.payment.commissionBps / 100}%): {money(request.payment.commissionAmount)} · Për ju:{" "}
               {money(request.payment.proAmount)}
             </p>
           )}
@@ -348,6 +362,16 @@ export default async function JobDetail({
               />
             </div>
           </details>
+        </Panel>
+      )}
+      {!pro && request.state === "COMPLETED" && request.payment &&
+        ["HELD", "RELEASED"].includes(request.payment.state) && !request.payment.dispute && (
+        <Panel>
+          <h2 className="mb-3 text-lg font-bold">Përsërit shërbimin</h2>
+          <p className="mb-4 text-sm text-muted">Kërkoni vizitën pasuese me të njëjtin profesionist. Komisioni për profesionistin është 5% për vizitën e përsëritur që plotëson kushtet. Profesionisti dërgon ofertën dhe ju e pranoni para pagesës. Asnjë tarifim automatik.</p>
+          <ApiForm endpoint={`/api/requests/${id}/recurrence`} label="Kërko vizitën pasuese"
+            fields={[{ name: "cadence", label: "Shpeshtësia", type: "select", required: true,
+              options: Object.entries(recurrenceLabels).map(([value, label]) => ({ value, label })) }]} />
         </Panel>
       )}
       {!pro && request.state === "COMPLETED" && (

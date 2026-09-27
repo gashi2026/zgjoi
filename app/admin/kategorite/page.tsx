@@ -1,11 +1,12 @@
+import Link from "next/link";
+import { serviceCategory, serviceCategories, allowedCategorySlugs } from "@/lib/service-categories";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { Download, Hexagon, Image as ImageIcon, Plus, Power, Save, Trash2, Type } from "lucide-react";
+import { Download, Hexagon, Image as ImageIcon, Power, Save, Trash2, Type } from "lucide-react";
 import AccountShell from "@/components/AccountShell";
 import { Card, SectionTitle } from "@/components/account/Bits";
 import BeltIcon from "@/components/BeltIcons";
 import EditCategoryModal from "@/components/admin/EditCategoryModal";
-import IconPicker from "@/components/admin/IconPicker";
 import { adminNav } from "@/lib/nav";
 import { db } from "@/lib/server/db";
 import { currentUser } from "@/lib/server/auth";
@@ -14,7 +15,6 @@ import { categories as baseCategories } from "@/lib/data";
 import {
   deleteCategory, saveHoneycomb, saveSiteSettings, seedCategories, toggleCategory,
 } from "@/app/actions/admin";
-import { addCategory } from "@/app/actions/categories";
 import { DEFAULT_SERVICES, CELL_LABELS } from "@/lib/honeycomb-slots";
 
 export const dynamic = "force-dynamic";
@@ -30,12 +30,12 @@ export default async function AdminCategoriesPage({
   if (!me || me.role !== "ADMIN") redirect("/hyr?next=/admin/kategorite");
 
   const [cats, site, combMap] = await Promise.all([
-    db.category.findMany({ orderBy: { position: "asc" } }),
+    db.category.findMany({ where: { slug: { in: allowedCategorySlugs } }, orderBy: { position: "asc" } }),
     getSiteSettings(),
     getHoneycombMap(),
   ]);
 
-  const active = cats.filter((c) => c.active);
+  const active = cats.filter((c) => c.active).map(c => ({ ...c, slug: serviceCategory(c.slug)!.slug, name: serviceCategory(c.slug)!.name }));
   const options = active.length > 0
     ? active.map((c) => ({ slug: c.slug, name: c.name }))
     : baseCategories.map((c) => ({ slug: c.slug, name: c.name }));
@@ -61,45 +61,15 @@ export default async function AdminCategoriesPage({
         </div>
       )}
 
-      {cats.length === 0 && (
-        <Card>
-          <p className="text-sm text-muted">Databaza nuk ka ende kategori. Importo listën bazë:</p>
-          <form action={seedCategories} className="mt-4">
-            <button className="flex items-center gap-2 rounded-full bg-gold px-6 py-2.5 text-sm font-bold text-ink hover:bg-gold-dark">
-              <Download size={15} /> Importo kategoritë bazë
-            </button>
-          </form>
-        </Card>
-      )}
-
-      {/* add a category, with its own icon */}
-      <Card className={cats.length === 0 ? "mt-6" : ""}>
-        <SectionTitle>
-          <span className="flex items-center gap-2">
-            <Plus size={18} className="text-gold-dark" /> Shto kategori të re
-          </span>
-        </SectionTitle>
-        <form action={addCategory} className="space-y-4">
-          <div>
-            <label className="text-sm font-semibold text-ink" htmlFor="new-cat-name">Emri</label>
-            <input
-              id="new-cat-name"
-              name="name"
-              required
-              placeholder="p.sh. Veteriner"
-              className="mt-1.5 w-full rounded-xl border border-line bg-cream px-4 py-2.5 text-sm outline-none focus:border-gold sm:max-w-sm"
-            />
-          </div>
-          <div>
-            <label className="text-sm font-semibold text-ink">Ikona</label>
-            <div className="mt-1.5 sm:max-w-md">
-              <IconPicker name="icon" />
-            </div>
-          </div>
-          <button className="rounded-full bg-gold px-6 py-2.5 text-sm font-bold text-ink hover:bg-gold-dark">
-            Shto kategorinë
+      <Card>
+        <SectionTitle>14 kategoritë e miratuara</SectionTitle>
+        <p className="text-sm text-muted">Lista publike përdor vetëm kategoritë më poshtë. Kategoritë e vjetra ruhen vetëm për historikun.</p>
+        <p className="mt-3">{serviceCategories.map(c => c.name).join(" · ")}</p>
+        <Link href="/admin/komisionet" className="mt-4 inline-block font-semibold text-gold-dark">Shiko normat e komisionit: 15% / 10% / 5%</Link>
+        <form action={seedCategories} className="mt-4">
+          <button className="flex items-center gap-2 rounded-full bg-gold px-6 py-2.5 text-sm font-bold text-ink hover:bg-gold-dark">
+            <Download size={15} /> Sinkronizo kategoritë e miratuara
           </button>
-          <p className="text-xs text-muted">Linku (slug) krijohet vetë nga emri.</p>
         </form>
       </Card>
 
@@ -115,7 +85,7 @@ export default async function AdminCategoriesPage({
                     <BeltIcon name={c.icon} size={20} />
                   </span>
                   <div>
-                    <p className={`text-sm font-bold ${c.active ? "text-ink" : "text-muted line-through"}`}>{c.name}</p>
+                    <p className={`text-sm font-bold ${c.active ? "text-ink" : "text-muted line-through"}`}>{serviceCategory(c.slug)?.name}</p>
                     <p className="text-xs text-muted">/{c.slug}</p>
                   </div>
                 </div>
