@@ -5,6 +5,7 @@ import { AppError } from "@/lib/server/errors";
 import { paymentsReady } from "@/lib/server/payments";
 import { bookingCommission } from "@/lib/server/commissions";
 import { db } from "@/lib/server/db";
+import { helplineLink } from "@/lib/server/arrival";
 import { readRecurrence, recurrenceLabels } from "@/lib/recurring-bookings";
 import { money, stateLabel, dateTime } from "@/lib/format";
 import { appointmentEnd } from "@/lib/appointments";
@@ -47,6 +48,11 @@ export default async function JobDetail({
     }
   }
   const active = ["BOOKED", "IN_PROGRESS"].includes(request.state);
+  // Arrita: the prefilled WhatsApp link to the Zgjoi helpline, for the pro after check-in.
+  const arrival = request.booking?.arrival;
+  const whatsapp = pro && arrival
+    ? helplineLink({ request: { client: await db.user.findUniqueOrThrow({ where: { id: request.clientId }, select: { name: true, phone: true } }) } }, arrival, request.id)
+    : null;
   const counterpart = pro ? request.client.name : (request.selectedPro?.user.name ?? "Profesionisti");
   const category = serviceCategory(request.categorySlug)?.name ?? request.categorySlug;
   const status = jobStatus(request.state);
@@ -250,7 +256,7 @@ export default async function JobDetail({
         {request.booking && (
           <div className="mt-4">
             <BookingPanel b={request.booking} pro={pro} requestId={id} requestState={request.state} version={request.version}
-              paidCents={request.payment?.state === "HELD" ? request.booking.dueCents : 0} />
+              paidCents={request.payment?.state === "HELD" ? request.booking.dueCents : 0} whatsapp={whatsapp} />
           </div>
         )}
         {request.conversation && (

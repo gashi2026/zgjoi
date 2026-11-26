@@ -1,5 +1,5 @@
 /** Pro trust history (owner, 26 Nov 2026). Pure classification and totals. */
-/** Started more than this many minutes after the booked start = late. */
+/** Arrived (Arrita check-in, else job start) more than this many minutes after the booked start = late. */
 export const LATE_AFTER_MINUTES = 15;
 /** Cancellations are counted over this window. */
 export const CANCELLATION_WINDOW_DAYS = 90;
@@ -11,12 +11,13 @@ export const TRUST_PUBLIC = true;
 export const PRO_SIDE_CANCELLATIONS = ["PRO", "PRO_NO_SHOW"];
 export const NOT_FINISHED_REASONS = [...PRO_SIDE_CANCELLATIONS, "DISPUTE_REFUND"];
 
-export type TrustJob = { state: string; scheduledAt: Date | null; startedAt: Date | null; cancelledAt: Date | null; cancelledBy: string | null; hasDispute: boolean };
+export type TrustJob = { state: string; scheduledAt: Date | null; startedAt: Date | null; arrivedAt?: Date | null; cancelledAt: Date | null; cancelledBy: string | null; hasDispute: boolean };
 export type JobClass = "ON_TIME" | "LATE" | "NOT_FINISHED" | null;
 
 export function classifyJob(job: TrustJob): JobClass {
   if (job.state === "COMPLETED") {
-    if (job.scheduledAt && job.startedAt && job.startedAt.getTime() - job.scheduledAt.getTime() > LATE_AFTER_MINUTES * 60_000) return "LATE";
+    const arrived = job.arrivedAt ?? job.startedAt;
+    if (job.scheduledAt && arrived && arrived.getTime() - job.scheduledAt.getTime() > LATE_AFTER_MINUTES * 60_000) return "LATE";
     return "ON_TIME";
   }
   if (job.state === "CANCELLED" && job.cancelledBy && NOT_FINISHED_REASONS.includes(job.cancelledBy)) return "NOT_FINISHED";

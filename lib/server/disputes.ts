@@ -1,5 +1,6 @@
 import "server-only";
 import { z } from "zod";
+import type { Prisma } from "@prisma/client";
 import type { Actor } from "./auth";
 import { serializable, isParticipant } from "./marketplace";
 import { invariant } from "./errors";
@@ -20,24 +21,31 @@ export async function openDispute(actor: Actor, input: unknown) {
       include: { payment: { include: { dispute: true } }, selectedPro: { select: { userId: true } } },
     });
     invariant(request && isParticipant(request, actor), "NOT_FOUND", 404, "Kërkesa nuk u gjet.");
-    if (request.payment?.dispute) return { ok: true, id: request.payment.dispute.id };
-    invariant(request.payment?.state === "HELD" && !request.payment.operation, "STATE", 409, "Për këtë pagesë kontaktoni mbështetjen për shqyrtim.");
-    const now = new Date();
-    invariant(canOpenDispute(request, now), "DISPUTE_WINDOW", 409, `Një problem mund të raportohet deri në ${DISPUTE_OPEN_DAYS} ditë pas punës. Kontaktoni mbështetjen.`);
-    const role = actor.role === "PRO" ? "PRO" : "CLIENT";
-    const dispute = await tx.dispute.create({ data: {
-      paymentId: request.payment.id, openedById: actor.id, openedByRole: role, reason: data.reason,
-      priorState: request.state, respondBy: responseDeadline(now),
-    } });
-    await tx.payment.update({ where: { id: request.payment.id }, data: { state: "DISPUTED" } });
-    await tx.serviceRequest.update({ where: { id: request.id }, data: { state: "DISPUTED", version: { increment: 1 } } });
-    const other = role === "PRO" ? request.clientId : request.selectedPro?.userId;
-    if (other) await notify(tx, other, "DISPUTE", "U hap një kontest për punën; shtoni deklaratën tuaj brenda 48 orëve", jobHref(role === "PRO" ? "CLIENT" : "PRO", request.id));
-    const admins = await tx.user.findMany({ where: { role: "ADMIN", suspendedAt: null }, select: { id: true } });
-    for (const admin of admins) await notify(tx, admin.id, "DISPUTE", "Një kontest kërkon shqyrtim", `/admin/kontestet/${dispute.id}`);
-    await tx.auditLog.create({ data: { actorId: actor.id, action: "DISPUTE_OPENED", target: request.id, meta: { disputeId: dispute.id, role } } });
-    return { ok: true, id: dispute.id };
+    return createDispute(tx, actor, request, data.reason);
   });
+}
+
+type DisputeJob = Prisma.ServiceRequestGetPayload<{ include: { payment: { include: { dispute: true } }; selectedPro: { select: { userId: true } } } }>;
+/** Opens a dispute inside an existing transaction (also used when a customer
+ * reports a no-show although the pro checked in with “Arrita”). */
+export async function createDispute(tx: Prisma.TransactionClient, actor: Actor, request: DisputeJob, reason: string) {
+  if (request.payment?.dispute) return { ok: true, id: request.payment.dispute.id };
+  invariant(request.payment?.state === "HELD" && !request.payment.operation, "STATE", 409, "Për këtë pagesë kontaktoni mbështetjen për shqyrtim.");
+  const now = new Date();
+  invariant(canOpenDispute(request, now), "DISPUTE_WINDOW", 409, `Një problem mund të raportohet deri në ${DISPUTE_OPEN_DAYS} ditë pas punës. Kontaktoni mbështetjen.`);
+  const role = actor.role === "PRO" ? "PRO" : "CLIENT";
+  const dispute = await tx.dispute.create({ data: {
+    paymentId: request.payment.id, openedById: actor.id, openedByRole: role, reason,
+    priorState: request.state, respondBy: responseDeadline(now),
+  } });
+  await tx.payment.update({ where: { id: request.payment.id }, data: { state: "DISPUTED" } });
+  await tx.serviceRequest.update({ where: { id: request.id }, data: { state: "DISPUTED", version: { increment: 1 } } });
+  const other = role === "PRO" ? request.clientId : request.selectedPro?.userId;
+  if (other) await notify(tx, other, "DISPUTE", "U hap një kontest për punën; shtoni deklaratën tuaj brenda 48 orëve", jobHref(role === "PRO" ? "CLIENT" : "PRO", request.id));
+  const admins = await tx.user.findMany({ where: { role: "ADMIN", suspendedAt: null }, select: { id: true } });
+  for (const admin of admins) await notify(tx, admin.id, "DISPUTE", "Një kontest kërkon shqyrtim", `/admin/kontestet/${dispute.id}`);
+  await tx.auditLog.create({ data: { actorId: actor.id, action: "DISPUTE_OPENED", target: request.id, meta: { disputeId: dispute.id, role } } });
+  return { ok: true, id: dispute.id };
 }
 
 /** The other side adds their statement, once, within 48 hours. */

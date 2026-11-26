@@ -23,6 +23,9 @@ const env = {
   // Non-production email allowlist: only the synthetic CI domain.
   EMAIL_ALLOWLIST: "example.test",
   DOCUMENT_UPLOADS_ENABLED: "false",
+  // No network geocoding in CI; tests seed the booking coordinates.
+  GEOCODING_PROVIDER: "off",
+  ZGJOI_HELPLINE_WHATSAPP: "",
 };
 const app = spawn(
   process.execPath,

@@ -17,8 +17,10 @@ import {
   hoursLabel, returnsEstimateCredit, MINUTE_STEP, MAX_BOOKING_MINUTES, MIN_RATE_CENTS, MAX_RATE_CENTS, type CancelReason,
 } from "../book-now";
 import { clientKey, cleanText, entityId, euroAmount } from "../marketplace-validation";
-import { money } from "../format";
+import { money, clockTime } from "../format";
 import { checkCancellationAlert } from "./trust";
+import { createDispute } from "./disputes";
+import { nobodyHomeGate, noShowGate, NO_SHOW_AFTER_MINUTES } from "../arrival";
 
 type FlowDB = Pick<Prisma.TransactionClient, "category">;
 /** Per-category hiring paths: code default, overridden by the Category row. */
@@ -163,7 +165,7 @@ export async function createBooking(actor: Actor, input: unknown) {
 export const bookingActionInput = z.discriminatedUnion("action", [
   z.object({ action: z.literal("PROPOSE_HOURS"), clientKey, minutes: z.coerce.number().int(), note: z.string().trim().max(500).optional() }),
   z.object({ action: z.enum(["CONFIRM_HOURS", "DECLINE_HOURS"]), changeId: entityId }),
-  z.object({ action: z.enum(["CANCEL", "NO_SHOW", "NOBODY_HOME"]), expectedVersion: z.number().int().nonnegative() }),
+  z.object({ action: z.enum(["CANCEL", "NO_SHOW", "NOBODY_HOME"]), expectedVersion: z.number().int().nonnegative(), statement: z.string().max(4000).optional() }),
 ]);
 
 async function loadBooking(tx: Prisma.TransactionClient, actor: Actor, requestId: string) {
@@ -248,27 +250,60 @@ export async function bookingAction(actor: Actor, requestId: string, input: unkn
     const by = actor.role === "PRO" ? "PRO" : "CLIENT";
     invariant(reason === "CANCEL" || (reason === "NO_SHOW" && by === "CLIENT") || (reason === "NOBODY_HOME" && by === "PRO"),
       "FORBIDDEN", 403, "Nuk keni qasje në këtë veprim.");
-    const paid = paidSoFar(booking);
-    const outcome = cancellationOutcome({ by, reason, startsAt: booking.startsAt, now, paidCents: paid });
-    const todo = outcome.refundCents > 0 ? { todoKind: "REFUND", todoCents: outcome.refundCents }
-      : outcome.owedFeeCents > 0 ? { todoKind: "COLLECT", todoCents: outcome.owedFeeCents } : null;
-    await tx.bookingChange.updateMany({ where: { bookingId: booking.id, kind: "HOURS", state: "PROPOSED" }, data: { state: "SUPERSEDED", decidedAt: now } });
-    await tx.bookingChange.create({ data: { bookingId: booking.id, kind: "CANCELLATION", state: "RECORDED", actorId: actor.id,
-      note: outcome.label, ...(todo ?? {}), meta: { by, reason, paidCents: paid, ...outcome } } });
-    await tx.booking.update({ where: { id: booking.id }, data: { status: "CANCELLED", cancelledAt: now, cancelledBy: by, cancelReason: reason,
-      feeCents: outcome.feeCents, feeProCents: outcome.feeProCents, feePlatformCents: outcome.feePlatformCents, refundCents: outcome.refundCents } });
-    if (request.payment.state === "PENDING") await tx.payment.update({ where: { id: request.payment.id }, data: { state: "EXPIRED" } });
-    // A credited estimate returns to the customer for their next hire with this pro
-    // (customer-fault cases follow RETURN_CREDIT_ON_CUSTOMER_FAULT).
-    if (returnsEstimateCredit(outcome.rule)) await tx.estimate.updateMany({ where: { creditedRequestId: request.id, state: "CREDITED" }, data: { state: "PAID", creditedRequestId: null, creditedAt: null } });
-    const cancelledBy = reason === "NO_SHOW" ? "PRO_NO_SHOW" : reason === "NOBODY_HOME" ? "NOBODY_HOME" : by;
-    await tx.serviceRequest.update({ where: { id: request.id }, data: { state: "CANCELLED", cancelledAt: now, cancelledBy, version: { increment: 1 } } });
-    if (cancelledBy === "PRO" || cancelledBy === "PRO_NO_SHOW") await checkCancellationAlert(tx, booking.profileId, now);
-    await tx.quote.updateMany({ where: { requestId: request.id, state: { in: ["SENT", "ACCEPTED"] } }, data: { state: "WITHDRAWN" } });
-    if (other) await notify(tx, other, "BOOKING_CANCELLED", reason === "CANCEL" ? "Rezervimi u anulua" : "U raportua mosparaqitje; rezervimi u mbyll", otherHref);
-    await tx.auditLog.create({ data: { actorId: actor.id, action: "BOOKING_CANCELLED", target: request.id, meta: { rule: outcome.rule, by, reason, todo } } });
+    // Arrita gates (owner, 26 Nov 2026).
+    const arrival = await tx.bookingArrival.findUnique({ where: { bookingId: booking.id } });
+    if (reason === "NOBODY_HOME") {
+      const gate = nobodyHomeGate(arrival, now);
+      invariant(gate.ok, "ARRIVAL_GATE", 409, gate.ok ? "" : gate.message);
+    }
+    if (reason === "NO_SHOW") {
+      const gate = noShowGate(booking.startsAt, arrival, now);
+      invariant(gate !== "TOO_EARLY", "TOO_EARLY", 409, `Mosparaqitja raportohet ${NO_SHOW_AFTER_MINUTES} minuta pas orës së fillimit, nëse profesionisti nuk ka shënuar “Arrita”.`);
+      if (gate === "DISPUTE") {
+        const statement = cancel.statement?.trim() ?? "";
+        invariant(statement.length >= 20, "STATEMENT", 400,
+          `Profesionisti shënoi “Arrita” në ${clockTime(arrival!.checkedInAt)} te adresa. Shkruani çfarë ndodhi (së paku 20 shkronja) dhe ankesa shkon te administrata si kontest.`);
+        noContact(statement);
+        const job = await tx.serviceRequest.findUniqueOrThrow({ where: { id: request.id },
+          include: { payment: { include: { dispute: true } }, selectedPro: { select: { userId: true } } } });
+        invariant(job.payment?.state === "HELD", "STATE", 409,
+          `Profesionisti shënoi “Arrita” në ${clockTime(arrival!.checkedInAt)}. Pagesa nuk është shënuar ende, ndaj kontaktoni ndihmën e Zgjoi.`);
+        const opened = await createDispute(tx, actor, job, `Klienti raporton se profesionisti nuk erdhi (profesionisti shënoi “Arrita” në ${clockTime(arrival!.checkedInAt)}): ${statement}`);
+        return { ok: true, id: opened.id, dispute: true, message: "Profesionisti kishte shënuar arritjen, ndaj raporti juaj u dërgua si kontest te administrata." };
+      }
+    }
+    const outcome = await recordCancellation(tx, booking, { by, reason, actorId: actor.id, now, notifyUserId: other ?? null, notifyHref: otherHref });
     return { ok: true, message: outcome.label };
   });
+}
+
+type LoadedBooking = Awaited<ReturnType<typeof loadBooking>>;
+/** Records a cancellation or no-show on a booking: fee split, refund/collect
+ * to-do, history, estimate credit and the job state. */
+export async function recordCancellation(tx: Prisma.TransactionClient, booking: Pick<LoadedBooking, "id" | "profileId" | "startsAt" | "dueCents" | "request">,
+  o: { by: "CLIENT" | "PRO"; reason: CancelReason; actorId: string; now: Date; notifyUserId: string | null; notifyHref: string; note?: string }) {
+  const { by, reason, now } = o;
+  const request = booking.request;
+  const paid = paidSoFar(booking);
+  const outcome = cancellationOutcome({ by, reason, startsAt: booking.startsAt, now, paidCents: paid });
+  const todo = outcome.refundCents > 0 ? { todoKind: "REFUND", todoCents: outcome.refundCents }
+    : outcome.owedFeeCents > 0 ? { todoKind: "COLLECT", todoCents: outcome.owedFeeCents } : null;
+  await tx.bookingChange.updateMany({ where: { bookingId: booking.id, kind: "HOURS", state: "PROPOSED" }, data: { state: "SUPERSEDED", decidedAt: now } });
+  await tx.bookingChange.create({ data: { bookingId: booking.id, kind: "CANCELLATION", state: "RECORDED", actorId: o.actorId,
+    note: outcome.label, ...(todo ?? {}), meta: { by, reason, paidCents: paid, ...outcome } } });
+  await tx.booking.update({ where: { id: booking.id }, data: { status: "CANCELLED", cancelledAt: now, cancelledBy: by, cancelReason: reason,
+    feeCents: outcome.feeCents, feeProCents: outcome.feeProCents, feePlatformCents: outcome.feePlatformCents, refundCents: outcome.refundCents } });
+  if (request.payment.state === "PENDING") await tx.payment.update({ where: { id: request.payment.id }, data: { state: "EXPIRED" } });
+  // A credited estimate returns to the customer for their next hire with this pro
+  // (customer-fault cases follow RETURN_CREDIT_ON_CUSTOMER_FAULT).
+  if (returnsEstimateCredit(outcome.rule)) await tx.estimate.updateMany({ where: { creditedRequestId: request.id, state: "CREDITED" }, data: { state: "PAID", creditedRequestId: null, creditedAt: null } });
+  const cancelledBy = reason === "NO_SHOW" ? "PRO_NO_SHOW" : reason === "NOBODY_HOME" ? "NOBODY_HOME" : by;
+  await tx.serviceRequest.update({ where: { id: request.id }, data: { state: "CANCELLED", cancelledAt: now, cancelledBy, version: { increment: 1 } } });
+  if (cancelledBy === "PRO" || cancelledBy === "PRO_NO_SHOW") await checkCancellationAlert(tx, booking.profileId, now);
+  await tx.quote.updateMany({ where: { requestId: request.id, state: { in: ["SENT", "ACCEPTED"] } }, data: { state: "WITHDRAWN" } });
+  if (o.notifyUserId) await notify(tx, o.notifyUserId, "BOOKING_CANCELLED", reason === "CANCEL" ? "Rezervimi u anulua" : "U raportua mosparaqitje; rezervimi u mbyll", o.notifyHref);
+  await tx.auditLog.create({ data: { actorId: o.actorId, action: "BOOKING_CANCELLED", target: request.id, meta: { rule: outcome.rule, by, reason, todo, note: o.note } } });
+  return outcome;
 }
 
 /* ------------------------------------------------------ admin to-dos */
