@@ -36,6 +36,7 @@ try {
   execute(roles);
   execute("supabase/staging/bootstrap.sql");
   execute("supabase/staging/marketplace.sql");
+  execute("supabase/staging/book-now.sql");
   console.log(
     "Disposable Postgres: foundation bootstrap and marketplace upgrade both applied.",
   );

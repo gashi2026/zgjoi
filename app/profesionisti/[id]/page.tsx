@@ -5,6 +5,8 @@ import { currentUser } from "@/lib/server/auth";
 import { db } from "@/lib/server/db";
 import { money, dateTime } from "@/lib/format";
 import ApiForm from "@/components/marketplace/ApiForm";
+import { categoryFlow, bookableTerms } from "@/lib/server/bookings";
+import { hoursLabel } from "@/lib/book-now";
 export const dynamic = "force-dynamic";
 export async function generateMetadata({
   params,
@@ -29,10 +31,12 @@ export default async function Page({
   const { id } = await params;
   const pro = await publicProfile(id);
   if (!pro) notFound();
-  const [actor, categories] = await Promise.all([
+  const [actor, categories, flow] = await Promise.all([
     currentUser(),
     activeCategories(),
+    categoryFlow(db, pro.categorySlug),
   ]);
+  const terms = bookableTerms(pro, flow);
   const saved =
     actor?.role === "CLIENT"
       ? Boolean(
@@ -73,11 +77,28 @@ export default async function Page({
             : "Pa vlerësime ende"}
         </p>
         <p className="mt-2 text-sm text-muted">
-          Bisedoni privatisht për punën. Çmimi përfundimtar dhe koha vijnë si ofertë në bisedë, dhe ju e punësoni me “Puneso”.
+          {terms
+            ? `Rezervoni direkt me tarifë për orë (${money(terms.rateCents)}/orë, së paku ${hoursLabel(terms.minMinutes)}), ose bisedoni privatisht dhe e punësoni me “Puneso”.`
+            : "Bisedoni privatisht për punën. Çmimi përfundimtar dhe koha vijnë si ofertë në bisedë, dhe ju e punësoni me “Puneso”."}
         </p>
+        {terms && (
+          <div className="mt-4 inline-flex flex-wrap items-center gap-2 rounded-2xl border border-gold/50 bg-white px-4 py-3 text-sm">
+            <svg aria-hidden viewBox="0 0 24 24" className="h-4 w-4"><path d="M12 2 21 7v10l-9 5-9-5V7z" className="fill-gold" /></svg>
+            <span className="font-semibold">{money(terms.rateCents)} / orë</span>
+            <span className="text-muted">· minimumi {hoursLabel(terms.minMinutes)} · paguhet paraprakisht</span>
+          </div>
+        )}
         <div className="mt-5 flex flex-wrap items-start gap-4">
+          {terms && (
+            <Link
+              className="rounded-full bg-gold px-5 py-3 font-semibold"
+              href={`/rezervo-tani?pro=${pro.id}`}
+            >
+              Rezervo tani
+            </Link>
+          )}
           <Link
-            className="rounded-full bg-gold px-5 py-3 font-semibold"
+            className={terms ? "rounded-full border-2 border-gold px-5 py-3 font-semibold" : "rounded-full bg-gold px-5 py-3 font-semibold"}
             href={`/kerkesa-e-re?pro=${pro.id}`}
           >
             Fillo bisedën

@@ -5,6 +5,7 @@ import { money, dateTime, stateLabel } from "@/lib/format";
 import { paymentsReady } from "@/lib/server/payments";
 import Frame, { Panel } from "@/components/marketplace/Frame";
 import ApiForm from "@/components/marketplace/ApiForm";
+import { hoursLabel } from "@/lib/book-now";
 export default async function Page({
   searchParams,
 }: {
@@ -24,6 +25,13 @@ export default async function Page({
           completedAt: true,
           client: { select: { name: true } },
           acceptedPro: { select: { user: { select: { name: true } } } },
+          booking: {
+            select: {
+              minutes: true, hourlyRateCents: true, startsAt: true, status: true, dueCents: true, creditCents: true,
+              changes: { where: { todoKind: { not: null } }, orderBy: { createdAt: "asc" },
+                select: { id: true, todoKind: true, todoCents: true, todoDoneAt: true, note: true, createdAt: true } },
+            },
+          },
         },
       },
       dispute: true,
@@ -33,6 +41,13 @@ export default async function Page({
     take: 50,
     skip: (page - 1) * 50,
   });
+  const todos = await db.bookingChange.findMany({
+    where: { todoKind: { not: null }, todoDoneAt: null },
+    orderBy: { createdAt: "asc" },
+    take: 50,
+    include: { booking: { select: { requestId: true, request: { select: { title: true, client: { select: { name: true } } } } } } },
+  });
+  const due = (p: (typeof payments)[number]) => Math.max(0, p.amount - p.estimateCreditCents);
   return (
     <Frame
       actor={actor}
@@ -46,6 +61,22 @@ export default async function Page({
             : "Pagesat online janë të çaktivizuara. Gjatë beta-s, pasi të konfirmoni pagesën e klientit jashtë platformës, përdorni “Shëno si të paguar” te rezervimi përkatës."}
         </p>
       </Panel>
+      <Panel>
+        <h2 className="text-lg font-bold">Detyra nga rezervimet (rimbursime dhe tarifa)</h2>
+        <p className="mt-1 text-sm text-muted">Gjatë beta-s asnjë para nuk lëviz automatikisht. Kryeni rimbursimin ose mbledhjen jashtë platformës dhe shënojeni këtu.</p>
+        {!todos.length && <p className="mt-3 text-sm">Nuk ka detyra të hapura.</p>}
+        {todos.map((t) => (
+          <div key={t.id} className="mt-4 rounded-xl bg-cream p-3">
+            <p className="font-semibold">
+              {t.todoKind === "REFUND" ? "Rimburso klientin" : "Mblidh nga klienti"}: {money(t.todoCents ?? 0)} · {t.booking.request.title} · {t.booking.request.client.name}
+            </p>
+            {t.note && <p className="text-sm">{t.note}</p>}
+            <p className="text-xs text-muted">{dateTime(t.createdAt)}</p>
+            <ApiForm endpoint="/api/admin/bookings" values={{ id: t.id, action: "TODO_DONE" }} label="Shëno si të kryer"
+              fields={[{ name: "reason", label: "Si u krye? (p.sh. para në dorë, transfer)", required: true, minLength: 5, maxLength: 500 }]} />
+          </div>
+        ))}
+      </Panel>
       {!payments.length && <Panel>Nuk ka pagesa të regjistruara.</Panel>}
       {payments.map((p) => (
         <Panel key={p.id}>
@@ -56,8 +87,17 @@ export default async function Page({
           <p className="mt-2">
             {money(p.amount)} · {stateLabel(p.state)} · {dateTime(p.createdAt)}
           </p>
+          {p.request.booking && (
+            <p className="text-sm">
+              Rezervo tani · {hoursLabel(p.request.booking.minutes)} × {money(p.request.booking.hourlyRateCents)}/orë · fillimi{" "}
+              {dateTime(p.request.booking.startsAt)}{p.request.booking.status === "CANCELLED" && " · Anuluar"}
+            </p>
+          )}
+          {p.estimateCreditCents > 0 && (
+            <p className="text-sm">Kredi nga vlerësimi: −{money(Math.min(p.estimateCreditCents, p.amount))} · Për t’u paguar nga klienti: {money(due(p))}</p>
+          )}
           <p className="text-sm text-muted">
-            Komisioni: {money(p.commissionAmount)} · Profesionisti:{" "}
+            Mënyra: {p.method === "OFFLINE" ? "jashtë platformës (beta)" : p.method} · Komisioni (regjistruar, mblidhet më vonë): {money(p.commissionAmount)} · Profesionisti:{" "}
             {money(p.proAmount)} · {stateLabel(p.request.state)}
           </p>
           {p.operation && (
@@ -99,7 +139,7 @@ export default async function Page({
                   endpoint="/api/admin/payments"
                   values={{ id: p.id, action: "MARK_PAID_OFFLINE" }}
                   label="Shëno si të paguar"
-                  confirmation={`Konfirmoni që klienti ka paguar ${money(p.amount)} jashtë platformës? Profesionisti do të njoftohet se mund të fillojë punën. Ky veprim regjistrohet në auditim.`}
+                  confirmation={`Konfirmoni që klienti ka paguar ${money(due(p))} jashtë platformës? Profesionisti do të njoftohet se mund të fillojë punën. Ky veprim regjistrohet në auditim.`}
                   fields={[
                     {
                       name: "reason",

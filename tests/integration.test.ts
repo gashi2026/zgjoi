@@ -953,6 +953,99 @@ test("database-backed private marketplace and authorization journey", async (t) 
     ok(await http(`/api/requests/${chat.id}`, aj, { action: "CANCEL", expectedVersion: hired.version }));
     assert((await http(`/llogaria/kerkesat/${chat.id}`, aj)).text.includes("Statusi: Anuluar"));
   });
+  await t.test("book now: hourly rate and minimum, rate × hours, confirmed hour changes, admin mark-paid, cancellations and the estimate credit", async () => {
+    const customer = await account("CLIENT", "BookNowClient"), professional = await account("PRO", "BookNowPro");
+    const cj: Jar = new Map([["zgjoi_session", (await persistSession(customer.id, passwordHash)).token]]);
+    const pjar: Jar = new Map([["zgjoi_session", (await persistSession(professional.id, passwordHash)).token]]);
+    const profileId = professional.proProfile!.id;
+    const start = (days: number) => new Date(Date.now() + days * 86400000).toISOString();
+    const book = (extra: Record<string, unknown> = {}) => http("/api/bookings", cj, { profileId, clientKey: randomUUID(), startsAt: start(4),
+      minutes: 180, detail: "Kontroll i instalimit elektrik në kuzhinë.", city: "Prishtinë", address: "Rruga e Testit 1", ...extra });
+    // Not bookable until the pro sets a rate.
+    ok(await book(), 409);
+    assert(!(await http(`/profesionisti/${professional.proProfile!.slug}`)).text.includes("Rezervo tani"));
+    ok(await http("/api/account/booking-settings", cj, { enabled: true, hourlyRate: "15", minMinutes: 120 }), 403);
+    ok(await http("/api/account/booking-settings", pjar, { enabled: true, hourlyRate: "15", minMinutes: 45 }), 400);
+    ok(await http("/api/account/booking-settings", pjar, { enabled: true, hourlyRate: "15", minMinutes: 120 }));
+    assert((await http(`/profesionisti/${professional.proProfile!.slug}`)).text.includes("Rezervo tani"));
+    assert.equal((await http(`/rezervo-tani?pro=${profileId}`, cj)).status, 200);
+    ok(await book({ minutes: 90 }), 400);
+    ok(await book({ detail: "Më shkruani te test@example.com për detajet." }), 400);
+    ok(await http("/api/bookings", pjar, { profileId, clientKey: randomUUID(), startsAt: start(4), minutes: 180, detail: "Punë testi për rezervimin.", city: "Prishtinë" }), 403);
+    const created = ok(await book());
+    const booking = await db.booking.findUniqueOrThrow({ where: { requestId: created.id }, include: { request: { include: { payment: true, acceptedQuote: true, conversation: true } } } });
+    assert.equal(booking.totalCents, 4500);
+    assert.equal(booking.commissionCents, 675);
+    assert.equal(booking.request.state, "BOOKED");
+    assert.equal(booking.request.payment?.amount, 4500);
+    assert.equal(booking.request.payment?.method, "OFFLINE");
+    assert.equal(booking.request.acceptedQuote?.duration, "180 min");
+    assert(booking.request.conversation);
+    // The same slot cannot be booked twice.
+    ok(await book(), 409);
+    const chat = await http(`/llogaria/kerkesat/${created.id}`, cj);
+    assert(chat.text.includes("Rezervo tani · me orë") && chat.text.includes("Anulo rezervimin"));
+    // Generic unpaid cancel and reschedule are routed to the booking rules.
+    ok(await http(`/api/requests/${created.id}`, cj, { action: "CANCEL", expectedVersion: 1 }), 409);
+    // Hour change: proposal alone never changes the price.
+    ok(await http(`/api/bookings/${created.id}`, cj, { action: "PROPOSE_HOURS", clientKey: randomUUID(), minutes: 240 }), 403);
+    const proposed = ok(await http(`/api/bookings/${created.id}`, pjar, { action: "PROPOSE_HOURS", clientKey: randomUUID(), minutes: 240 }));
+    assert.equal((await db.booking.findUniqueOrThrow({ where: { id: booking.id } })).totalCents, 4500);
+    assert.equal((await db.payment.findUniqueOrThrow({ where: { requestId: created.id } })).amount, 4500);
+    ok(await http(`/api/bookings/${created.id}`, pjar, { action: "CONFIRM_HOURS", changeId: proposed.id }), 403);
+    ok(await http(`/api/bookings/${created.id}`, cj, { action: "CONFIRM_HOURS", changeId: proposed.id }));
+    const changed = await db.booking.findUniqueOrThrow({ where: { id: booking.id }, include: { changes: true } });
+    assert.equal(changed.minutes, 240);
+    assert.equal(changed.totalCents, 6000);
+    assert.equal((await db.payment.findUniqueOrThrow({ where: { requestId: created.id } })).amount, 6000);
+    assert.equal(changed.changes[0].state, "CONFIRMED");
+    // A declined proposal keeps the confirmed total.
+    const second = ok(await http(`/api/bookings/${created.id}`, pjar, { action: "PROPOSE_HOURS", clientKey: randomUUID(), minutes: 120 }));
+    ok(await http(`/api/bookings/${created.id}`, cj, { action: "DECLINE_HOURS", changeId: second.id }));
+    assert.equal((await db.booking.findUniqueOrThrow({ where: { id: booking.id } })).totalCents, 6000);
+    // Admin marks it paid with the existing beta flow; a free (>24h) cancel then leaves a refund to-do.
+    const payment = await db.payment.findUniqueOrThrow({ where: { requestId: created.id } });
+    ok(await http("/api/admin/payments", adminj, { action: "MARK_PAID_OFFLINE", id: payment.id, reason: "Para në dorë, konfirmuar me telefon nga klienti." }));
+    const version = (await db.serviceRequest.findUniqueOrThrow({ where: { id: created.id } })).version;
+    ok(await http(`/api/bookings/${created.id}`, cj, { action: "NO_SHOW", expectedVersion: version }), 409);
+    ok(await http(`/api/bookings/${created.id}`, cj, { action: "CANCEL", expectedVersion: version }));
+    const cancelled = await db.booking.findUniqueOrThrow({ where: { id: booking.id }, include: { changes: true, request: true } });
+    assert.equal(cancelled.status, "CANCELLED");
+    assert.equal(cancelled.request.state, "CANCELLED");
+    assert.equal(cancelled.feeCents, 0);
+    assert.equal(cancelled.refundCents, 6000);
+    const todo = cancelled.changes.find(c => c.kind === "CANCELLATION")!;
+    assert.deepEqual([todo.todoKind, todo.todoCents], ["REFUND", 6000]);
+    assert((await http("/admin/pagesat", adminj)).text.includes("Rimburso klientin"));
+    ok(await http("/api/admin/bookings", adminj, { action: "TODO_DONE", id: todo.id, reason: "Kthyer në dorë." }));
+    assert((await db.bookingChange.findUniqueOrThrow({ where: { id: todo.id } })).todoDoneAt);
+
+    // Paid estimate with this pro: the full €15 is credited; a late cancel costs €15 and returns the credit.
+    const estimate = await db.estimate.create({ data: { clientId: customer.id, profileId, state: "PAID", paidAt: new Date() } });
+    const credited = ok(await book({ startsAt: start(6), minutes: 120 }));
+    const withCredit = await db.booking.findUniqueOrThrow({ where: { requestId: credited.id }, include: { request: { include: { payment: true } } } });
+    assert.equal(withCredit.totalCents, 3000);
+    assert.equal(withCredit.creditCents, 1500);
+    assert.equal(withCredit.dueCents, 1500);
+    assert.equal(withCredit.commissionCents, 450, "commission on the full €30");
+    assert.equal(withCredit.request.payment?.estimateCreditCents, 1500);
+    assert.equal((await db.estimate.findUniqueOrThrow({ where: { id: estimate.id } })).creditedRequestId, credited.id);
+    const soon = new Date(Date.now() + 3 * 3600000);
+    await db.booking.update({ where: { id: withCredit.id }, data: { startsAt: soon } });
+    ok(await http(`/api/bookings/${credited.id}`, cj, { action: "CANCEL", expectedVersion: withCredit.request.version }));
+    const late = await db.booking.findUniqueOrThrow({ where: { id: withCredit.id }, include: { changes: true } });
+    assert.deepEqual([late.feeCents, late.feeProCents, late.feePlatformCents, late.refundCents], [1500, 1000, 500, 0]);
+    assert.equal(late.changes.find(c => c.kind === "CANCELLATION")?.todoKind, "COLLECT", "unpaid late fee becomes an admin to-do");
+    assert.equal((await db.estimate.findUniqueOrThrow({ where: { id: estimate.id } })).state, "PAID", "credit returns for the next hire");
+
+    // The chat path credits the same estimate when the customer hires with Puneso.
+    const opened = ok(await http("/api/requests", cj, { profileId, detail: "Ndërrimi i një ndërprerësi në korridor.", city: "Prishtinë", clientKey: randomUUID() }));
+    const sent = ok(await http("/api/offers", pjar, { requestId: opened.id, clientKey: randomUUID(), expectedVersion: 0, amount: "10", expiresInHours: 24 }));
+    ok(await http("/api/offers/accept", cj, { quoteId: sent.quoteId, expectedVersion: 1 }));
+    const hired = await db.payment.findUniqueOrThrow({ where: { requestId: opened.id } });
+    assert.equal(hired.estimateCreditCents, 1500);
+    assert.equal(hired.amount, 1000, "no minimum price; the customer owes nothing more under €15");
+  });
   async function unpaidBooking() {
     const customer = await account("CLIENT", "BookingClient"), professional = await account("PRO", "BookingPro");
     const customerJar: Jar = new Map([["zgjoi_session", (await persistSession(customer.id, passwordHash)).token]]);
@@ -1902,8 +1995,9 @@ test("database-backed private marketplace and authorization journey", async (t) 
       const checks = await db.$queryRaw<
         { tables: bigint; rls: bigint; exposed: bigint }[]
       >`SELECT count(*) AS tables, count(*) FILTER (WHERE c.relrowsecurity) AS rls, count(*) FILTER (WHERE has_table_privilege('anon',c.oid,'SELECT,INSERT,UPDATE,DELETE') OR has_table_privilege('authenticated',c.oid,'SELECT,INSERT,UPDATE,DELETE')) AS exposed FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind='r'`;
-      assert.equal(Number(checks[0].tables), 28);
-      assert.equal(Number(checks[0].rls), 28);
+      // 28 marketplace tables + Booking, BookingChange and Estimate (Book now).
+      assert.equal(Number(checks[0].tables), 31);
+      assert.equal(Number(checks[0].rls), 31);
       assert.equal(Number(checks[0].exposed), 0);
       await assert.rejects(
         db.payment.update({ where: { requestId }, data: { amount: 100 } }),

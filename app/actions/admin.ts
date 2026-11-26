@@ -190,3 +190,23 @@ export async function saveHoneycomb(fd: FormData) {
   ]);
   refresh();
 }
+
+/** Per-category hiring paths: flip Book now or the paid estimate for one
+ * approved category. Creates the category row when only the code default exists. */
+export async function setHiringFlow(fd: FormData) {
+  const actor = await requireRole("ADMIN");
+  const slug = z.string().min(1).max(80).parse(fd.get("slug"));
+  const field = z.enum(["bookNowEnabled", "estimateEnabled"]).parse(fd.get("field"));
+  const value = z.enum(["true", "false"]).parse(fd.get("value")) === "true";
+  const category = serviceCategory(slug);
+  invariant(category, "CATEGORY", 400, "Kjo kategori nuk është në listën e miratuar.");
+  await db.$transaction(async (tx) => {
+    await tx.category.upsert({
+      where: { slug: category.slug },
+      create: { slug: category.slug, name: category.name, icon: category.icon, [field]: value },
+      update: { [field]: value },
+    });
+    await tx.auditLog.create({ data: { actorId: actor.id, action: "CATEGORY_HIRING_FLOW", target: category.slug, meta: { field, value } } });
+  });
+  refresh();
+}

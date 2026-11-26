@@ -157,6 +157,10 @@ model ProProfile {
   weeklySpent    Int               @default(0)
   autoBid        Boolean           @default(false)
   budgetResetAt  DateTime          @default(now())
+  /// Book now (hourly): the pro's own rate and minimum booking length.
+  /// Null until the pro opts in; only used in categories with Book now.
+  hourlyRateCents   Int?
+  bookingMinMinutes Int?
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
 
@@ -171,6 +175,8 @@ model ProProfile {
   leadCharges LeadCharge[]
   availability Availability[]
   favorites Favorite[]
+  bookings  Booking[]
+  estimates Estimate[]
 
   @@index([categorySlug])
   @@index([verification])
@@ -222,6 +228,11 @@ model Category {
   icon      String
   position  Int      @default(0)
   active    Boolean  @default(true)
+  /// Hiring-path overrides. Null = the code default in lib/book-now.ts
+  /// (Elektricist/Mjeshtër i Ujit: Book now + estimate; Dado/Pastrim: Book now).
+  bookNowEnabled     Boolean?
+  estimateEnabled    Boolean?
+  estimatePriceCents Int?
   questions Question[]
 }
 
@@ -275,6 +286,7 @@ model ServiceRequest {
   review        Review?
   conversation  Conversation?
   leadCharges   LeadCharge[]
+  booking       Booking?
 
   @@index([clientId])
   @@index([categorySlug, city, state])
@@ -334,6 +346,11 @@ model Payment {
   providerCheckoutId    String? @unique
   providerRefundId      String? @unique
   connectedAccountId    String?
+  /// Phase-2 seam: how the customer pays. Beta = OFFLINE (admin marks paid);
+  /// CARD is reserved for the future card provider and is not integrated.
+  method                String @default("OFFLINE")
+  /// A paid €15 estimate with the same pro, credited to this job (any path).
+  estimateCreditCents   Int @default(0)
   operation             String?
   operationStartedAt    DateTime?
   attempt               Int @default(0)
@@ -405,6 +422,91 @@ model Dispute {
   createdAt  DateTime  @default(now())
 
   payment Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+}
+
+// ------------------------------------------------------- Book now (hourly)
+
+/// A Book now job: the customer picked hours from the pro's own rate and
+/// minimum. The ServiceRequest/Quote/Payment rows carry chat, status and the
+/// admin mark-as-paid flow; this row snapshots the hourly terms.
+model Booking {
+  id               String    @id @default(cuid())
+  requestId        String    @unique
+  profileId        String
+  clientId         String
+  startsAt         DateTime
+  hourlyRateCents  Int
+  minMinutes       Int
+  minutes          Int
+  totalCents       Int
+  commissionBps    Int
+  commissionCents  Int
+  proCents         Int
+  creditCents      Int       @default(0)
+  dueCents         Int
+  status           String    @default("CONFIRMED") // CONFIRMED | CANCELLED
+  cancelledAt      DateTime?
+  cancelledBy      String? // CLIENT | PRO
+  cancelReason     String? // CANCEL | NO_SHOW | NOBODY_HOME
+  feeCents         Int       @default(0)
+  feeProCents      Int       @default(0)
+  feePlatformCents Int       @default(0)
+  refundCents      Int       @default(0)
+  creationKey      String    @unique
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  request ServiceRequest  @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  profile ProProfile      @relation(fields: [profileId], references: [id])
+  changes BookingChange[]
+
+  @@index([profileId, startsAt])
+  @@index([clientId, createdAt])
+}
+
+/// History of a booking: hour-change proposals and cancellations. Admin
+/// to-dos (refunds, fees, differences) are tracked here; no money moves.
+model BookingChange {
+  id           String    @id @default(cuid())
+  bookingId    String
+  kind         String // HOURS | CANCELLATION
+  state        String // PROPOSED | CONFIRMED | DECLINED | SUPERSEDED | RECORDED
+  actorId      String?
+  minutes      Int?
+  totalCents   Int?
+  note         String?
+  todoKind     String? // REFUND | COLLECT
+  todoCents    Int?
+  todoDoneAt   DateTime?
+  todoDoneById String?
+  meta         Json?
+  decidedAt    DateTime?
+  creationKey  String?   @unique
+  createdAt    DateTime  @default(now())
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([bookingId, createdAt])
+  @@index([todoKind, todoDoneAt])
+}
+
+/// A paid €15 estimate visit (step 4 builds the flow). If the customer hires
+/// the same pro by any path, the full amount is credited to that job once.
+model Estimate {
+  id                String    @id @default(cuid())
+  clientId          String
+  profileId         String
+  requestId         String?
+  amountCents       Int       @default(1500)
+  state             String    @default("PENDING") // PENDING | PAID | CREDITED | REFUNDED
+  paidAt            DateTime?
+  creditedRequestId String?   @unique
+  creditedAt        DateTime?
+  createdAt         DateTime  @default(now())
+
+  profile ProProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@index([clientId, profileId, state])
 }
 
 // ------------------------------------------------------------- reviews

@@ -1,0 +1,286 @@
+import "server-only";
+import type { Prisma } from "@prisma/client";
+import { z } from "zod";
+import { type Actor } from "./auth";
+import { invariant } from "./errors";
+import { notify } from "./notifications";
+import { enforceLimit } from "./rate-limit";
+import { hashToken } from "./tokens";
+import { serializable } from "./transaction";
+import { requireActiveCategory } from "./service-catalog";
+import { bookingCommission } from "./commissions";
+import { assertAppointmentAvailable } from "./appointments";
+import { containsContactDetails } from "../contact-filter";
+import { serviceCategory, categorySlugs } from "../service-categories";
+import {
+  hiringFlow, checkHours, bookingTotal, priceJob, estimateCredit, cancellationOutcome, adjustmentTodo,
+  hoursLabel, MINUTE_STEP, MAX_BOOKING_MINUTES, MIN_RATE_CENTS, MAX_RATE_CENTS, type CancelReason,
+} from "../book-now";
+import { clientKey, cleanText, entityId, euroAmount } from "../marketplace-validation";
+import { money } from "../format";
+
+type FlowDB = Pick<Prisma.TransactionClient, "category">;
+/** Per-category hiring paths: code default, overridden by the Category row. */
+export async function categoryFlow(tx: FlowDB, slug: string) {
+  const category = serviceCategory(slug);
+  const rows = category ? await tx.category.findMany({ where: { slug: { in: categorySlugs(slug) } } }) : [];
+  const row = rows.find(r => r.slug === category?.slug) ?? rows[0];
+  return hiringFlow(slug, row ?? {});
+}
+
+function noContact(text: string) {
+  invariant(!containsContactDetails(text), "CONTACT_DETAILS", 400,
+    "Mos shkruani numra telefoni, email, lidhje ose rrjete sociale. Adresën e shënoni në fushën e saj.");
+}
+
+/* -------------------------------------------------- pro rate settings */
+
+export const bookingSettingsInput = z.object({
+  enabled: z.union([z.boolean(), z.enum(["true", "false", "on"])]).transform(v => v === true || v === "true" || v === "on"),
+  hourlyRate: euroAmount.optional(),
+  minMinutes: z.coerce.number().int().optional(),
+});
+
+export async function saveBookingSettings(actor: Actor, input: unknown) {
+  invariant(actor.role === "PRO" && actor.proProfile, "FORBIDDEN", 403, "Nuk keni qasje në këtë veprim.");
+  const data = bookingSettingsInput.parse(input);
+  const profile = actor.proProfile;
+  return serializable(async (tx) => {
+    const current = await tx.proProfile.findUniqueOrThrow({ where: { id: profile.id } });
+    const flow = await categoryFlow(tx, current.categorySlug);
+    invariant(flow.bookNow || !data.enabled, "BOOK_NOW_UNAVAILABLE", 409, "“Rezervo tani” nuk ofrohet në kategorinë tuaj. Klientët ju shkruajnë në bisedë.");
+    if (data.enabled) {
+      invariant(data.hourlyRate && data.hourlyRate >= MIN_RATE_CENTS && data.hourlyRate <= MAX_RATE_CENTS, "RATE", 400,
+        `Tarifa për orë duhet të jetë nga ${money(MIN_RATE_CENTS)} deri në ${money(MAX_RATE_CENTS)}.`);
+      const min = data.minMinutes ?? 0;
+      invariant(Number.isInteger(min) && min >= MINUTE_STEP && min <= MAX_BOOKING_MINUTES && min % MINUTE_STEP === 0, "MIN_HOURS", 400,
+        "Zgjidhni minimumin e orëve (nga 0,5 deri në 12 orë).");
+    }
+    await tx.proProfile.update({ where: { id: profile.id }, data: data.enabled
+      ? { hourlyRateCents: data.hourlyRate!, bookingMinMinutes: data.minMinutes! }
+      : { hourlyRateCents: null, bookingMinMinutes: null } });
+    await tx.auditLog.create({ data: { actorId: actor.id, action: "BOOKING_SETTINGS_UPDATED", target: profile.id,
+      meta: { enabled: data.enabled, hourlyRateCents: data.enabled ? data.hourlyRate : null, minMinutes: data.enabled ? data.minMinutes : null } } });
+    return { ok: true, message: data.enabled ? "Tarifa u ruajt. Klientët mund t’ju rezervojnë me “Rezervo tani”." : "“Rezervo tani” u çaktivizua." };
+  });
+}
+
+/** Public: whether a profile can be booked right now, and on what terms. */
+export function bookableTerms(profile: { categorySlug: string; hourlyRateCents: number | null; bookingMinMinutes: number | null },
+  flow: { bookNow: boolean }) {
+  return flow.bookNow && profile.hourlyRateCents && profile.bookingMinMinutes
+    ? { rateCents: profile.hourlyRateCents, minMinutes: profile.bookingMinMinutes } : null;
+}
+
+/* ------------------------------------------------------ book now */
+
+export const bookNowInput = z.object({
+  profileId: entityId,
+  clientKey,
+  startsAt: z.string().datetime(),
+  minutes: z.coerce.number().int(),
+  detail: cleanText(10, 4000),
+  city: cleanText(1, 60),
+  address: z.string().trim().max(300).optional(),
+});
+
+async function creditEstimate(tx: Prisma.TransactionClient, clientId: string, profileId: string, requestId: string) {
+  const candidates = await tx.estimate.findMany({ where: { clientId, profileId, state: "PAID", creditedRequestId: null } });
+  const credit = estimateCredit(candidates, clientId, profileId);
+  if (!credit.estimateId) return credit;
+  const updated = await tx.estimate.updateMany({ where: { id: credit.estimateId, state: "PAID", creditedRequestId: null },
+    data: { state: "CREDITED", creditedRequestId: requestId, creditedAt: new Date() } });
+  invariant(updated.count === 1, "STALE", 409, "Kredia e vlerësimit ka ndryshuar. Provoni përsëri.");
+  return credit;
+}
+/** Estimate credit on the chat path (acceptOffer). Book now applies it itself. */
+export async function applyEstimateCreditToPayment(tx: Prisma.TransactionClient, request: { id: string; clientId: string }, profileId: string, paymentId: string) {
+  const credit = await creditEstimate(tx, request.clientId, profileId, request.id);
+  if (credit.creditCents) await tx.payment.update({ where: { id: paymentId }, data: { estimateCreditCents: credit.creditCents } });
+  return credit;
+}
+
+export async function createBooking(actor: Actor, input: unknown) {
+  invariant(actor.role === "CLIENT", "FORBIDDEN", 403, "Nuk keni qasje në këtë veprim.");
+  const data = bookNowInput.parse(input);
+  noContact(`${data.detail}`);
+  const startsAt = new Date(data.startsAt), now = new Date();
+  invariant(startsAt.getTime() > now.getTime() + 60 * 60_000 && startsAt.getTime() < now.getTime() + 60 * 86_400_000, "TIMING", 400,
+    "Zgjidhni një fillim së paku një orë nga tani dhe brenda 60 ditëve.");
+  await enforceLimit(`booking:${actor.id}`, 10, 60 * 60_000);
+  const creationKey = hashToken(`booking:${actor.id}:${data.clientKey}`);
+  return serializable(async (tx) => {
+    const previous = await tx.booking.findUnique({ where: { creationKey } });
+    if (previous) return { ok: true, id: previous.requestId, redirect: `/llogaria/kerkesat/${previous.requestId}` };
+    const profile = await tx.proProfile.findFirst({ where: { id: data.profileId, verification: "APPROVED", user: { suspendedAt: null, role: "PRO" } },
+      include: { user: { select: { id: true } } } });
+    invariant(profile && profile.userId !== actor.id, "PRO_UNAVAILABLE", 409, "Ky profesionist nuk pranon rezervime për momentin.");
+    const category = await requireActiveCategory(profile.categorySlug, tx);
+    const terms = bookableTerms(profile, await categoryFlow(tx, category.slug));
+    invariant(terms, "BOOK_NOW_UNAVAILABLE", 409, "Ky profesionist nuk pranon “Rezervo tani”. Filloni një bisedë me të.");
+    const hours = checkHours(data.minutes, terms.minMinutes);
+    invariant(hours.ok, "HOURS", 400, hours.ok ? "" : hours.message);
+    const totalCents = bookingTotal(terms.rateCents, data.minutes);
+    const label = `${hoursLabel(data.minutes)} × ${money(terms.rateCents)}/orë`;
+    const request = await tx.serviceRequest.create({ data: {
+      clientId: actor.id, selectedProfileId: profile.id, acceptedProfileId: profile.id, categorySlug: category.slug,
+      title: `Rezervim · ${hoursLabel(data.minutes)}`, detail: data.detail, city: data.city, address: data.address || null,
+      timing: "Rezervo tani", answers: { bookNow: { version: 1, minutes: data.minutes, rateCents: terms.rateCents } },
+      state: "BOOKED", scheduledAt: startsAt, creationKey: hashToken(`booking-request:${creationKey}`), conversation: { create: {} },
+    } });
+    await assertAppointmentAvailable(tx, profile.id, startsAt, `${data.minutes} min`, request.id);
+    const commission = await bookingCommission(tx, request, startsAt, true);
+    const credit = await creditEstimate(tx, actor.id, profile.id, request.id);
+    const price = priceJob(totalCents, commission.bps, credit.creditCents);
+    const quote = await tx.quote.create({ data: {
+      requestId: request.id, profileId: profile.id, amount: totalCents,
+      lines: [{ label, qty: data.minutes / 60, priceCents: terms.rateCents }],
+      message: `Rezervo tani · ${label}`, availableAt: "Rezervo tani", duration: `${data.minutes} min`,
+      scheduledAt: startsAt, state: "ACCEPTED", acceptedAt: now, revision: 1,
+    } });
+    await tx.serviceRequest.update({ where: { id: request.id }, data: { acceptedQuoteId: quote.id, version: 1 } });
+    await tx.payment.create({ data: {
+      requestId: request.id, amount: totalCents, commissionBps: price.commissionBps, commissionAmount: price.commissionCents,
+      proAmount: price.proCents, currency: "EUR", strategy: "PLATFORM_CHARGE", provider: "disabled", state: "PENDING",
+      method: "OFFLINE", estimateCreditCents: price.creditCents,
+    } });
+    await tx.booking.create({ data: {
+      requestId: request.id, profileId: profile.id, clientId: actor.id, startsAt,
+      hourlyRateCents: terms.rateCents, minMinutes: terms.minMinutes, minutes: data.minutes,
+      totalCents, commissionBps: price.commissionBps, commissionCents: price.commissionCents, proCents: price.proCents,
+      creditCents: price.creditCents, dueCents: price.dueCents, creationKey,
+    } });
+    await notify(tx, profile.userId, "BOOKED", "Keni një rezervim të ri me “Rezervo tani”; pagesa është në pritje", `/pro/kerkesat/${request.id}`);
+    await tx.auditLog.create({ data: { actorId: actor.id, action: "BOOK_NOW_CREATED", target: request.id,
+      meta: { minutes: data.minutes, rateCents: terms.rateCents, totalCents, commission, creditCents: price.creditCents, estimateId: credit.estimateId } } });
+    return { ok: true, id: request.id, redirect: `/llogaria/kerkesat/${request.id}` };
+  });
+}
+
+/* ------------------------------------------------ changes and cancels */
+
+export const bookingActionInput = z.discriminatedUnion("action", [
+  z.object({ action: z.literal("PROPOSE_HOURS"), clientKey, minutes: z.coerce.number().int(), note: z.string().trim().max(500).optional() }),
+  z.object({ action: z.enum(["CONFIRM_HOURS", "DECLINE_HOURS"]), changeId: entityId }),
+  z.object({ action: z.enum(["CANCEL", "NO_SHOW", "NOBODY_HOME"]), expectedVersion: z.number().int().nonnegative() }),
+]);
+
+async function loadBooking(tx: Prisma.TransactionClient, actor: Actor, requestId: string) {
+  entityId.parse(requestId);
+  const booking = await tx.booking.findUnique({ where: { requestId },
+    include: { request: { include: { payment: true, selectedPro: { select: { userId: true } } } } } });
+  const mine = booking && ((actor.role === "CLIENT" && booking.clientId === actor.id) ||
+    (actor.role === "PRO" && actor.proProfile?.id === booking.profileId));
+  invariant(booking && mine && booking.request.payment, "NOT_FOUND", 404, "Rezervimi nuk u gjet.");
+  return booking as typeof booking & { request: { payment: NonNullable<typeof booking.request.payment> } };
+}
+const paidSoFar = (b: { dueCents: number; request: { payment: { state: string } } }) =>
+  b.request.payment.state === "HELD" ? b.dueCents : 0;
+
+export async function bookingAction(actor: Actor, requestId: string, input: unknown) {
+  const data = bookingActionInput.parse(input);
+  if (data.action === "PROPOSE_HOURS") await enforceLimit(`booking-change:${actor.id}`, 20, 60 * 60_000);
+  return serializable(async (tx) => {
+    const booking = await loadBooking(tx, actor, requestId);
+    const request = booking.request;
+    const other = actor.role === "PRO" ? request.clientId : request.selectedPro?.userId;
+    const otherHref = `${actor.role === "PRO" ? "/llogaria" : "/pro"}/kerkesat/${request.id}`;
+    const now = new Date();
+    if (data.action === "PROPOSE_HOURS") {
+      invariant(actor.role === "PRO", "FORBIDDEN", 403, "Vetëm profesionisti propozon ndryshimin e orëve.");
+      const key = hashToken(`booking-change:${actor.id}:${data.clientKey}`);
+      const previous = await tx.bookingChange.findUnique({ where: { creationKey: key } });
+      if (previous) return { ok: true, id: previous.id };
+      invariant(booking.status === "CONFIRMED" && ["BOOKED", "IN_PROGRESS"].includes(request.state), "STATE", 409,
+        "Orët mund të ndryshohen vetëm për një rezervim aktiv.");
+      const hours = checkHours(data.minutes, MINUTE_STEP);
+      invariant(hours.ok, "HOURS", 400, hours.ok ? "" : hours.message);
+      invariant(data.minutes !== booking.minutes, "UNCHANGED", 400, "Zgjidhni një numër tjetër orësh nga ai i rezervuar.");
+      if (data.note) noContact(data.note);
+      await tx.bookingChange.updateMany({ where: { bookingId: booking.id, kind: "HOURS", state: "PROPOSED" }, data: { state: "SUPERSEDED", decidedAt: now } });
+      const change = await tx.bookingChange.create({ data: {
+        bookingId: booking.id, kind: "HOURS", state: "PROPOSED", actorId: actor.id, minutes: data.minutes,
+        totalCents: bookingTotal(booking.hourlyRateCents, data.minutes), note: data.note || null, creationKey: key,
+        meta: { fromMinutes: booking.minutes, fromTotalCents: booking.totalCents },
+      } });
+      if (other) await notify(tx, other, "BOOKING_HOURS", "Profesionisti propozoi ndryshim të orëve; konfirmoni në bisedë", otherHref);
+      await tx.auditLog.create({ data: { actorId: actor.id, action: "BOOKING_HOURS_PROPOSED", target: request.id, meta: { changeId: change.id, minutes: data.minutes } } });
+      return { ok: true, id: change.id, message: "Propozimi u dërgua. Totali i ri vlen pasi klienti ta konfirmojë." };
+    }
+    if (data.action === "CONFIRM_HOURS" || data.action === "DECLINE_HOURS") {
+      invariant(actor.role === "CLIENT", "FORBIDDEN", 403, "Vetëm klienti e konfirmon ndryshimin e orëve.");
+      const change = await tx.bookingChange.findFirst({ where: { id: data.changeId, bookingId: booking.id, kind: "HOURS" } });
+      invariant(change, "NOT_FOUND", 404, "Propozimi nuk u gjet.");
+      const target = data.action === "CONFIRM_HOURS" ? "CONFIRMED" : "DECLINED";
+      if (change.state === target) return { ok: true };
+      invariant(change.state === "PROPOSED" && booking.status === "CONFIRMED" && ["BOOKED", "IN_PROGRESS"].includes(request.state),
+        "STALE", 409, "Propozimi nuk është më i hapur. Rifreskoni faqen.");
+      if (target === "DECLINED") {
+        await tx.bookingChange.update({ where: { id: change.id }, data: { state: "DECLINED", decidedAt: now } });
+        if (other) await notify(tx, other, "BOOKING_HOURS", "Klienti nuk e pranoi ndryshimin e orëve; totali fillestar mbetet", otherHref);
+        await tx.auditLog.create({ data: { actorId: actor.id, action: "BOOKING_HOURS_DECLINED", target: request.id, meta: { changeId: change.id } } });
+        return { ok: true, message: "Ndryshimi u refuzua. Mbetet totali fillestar." };
+      }
+      const minutes = change.minutes!, totalCents = change.totalCents!;
+      if (request.state === "BOOKED" && booking.startsAt > now)
+        await assertAppointmentAvailable(tx, booking.profileId, booking.startsAt, `${minutes} min`, request.id);
+      const price = priceJob(totalCents, booking.commissionBps, booking.creditCents);
+      const todo = adjustmentTodo(paidSoFar(booking), price.dueCents);
+      await tx.bookingChange.update({ where: { id: change.id }, data: { state: "CONFIRMED", decidedAt: now, ...(todo ?? {}) } });
+      await tx.booking.update({ where: { id: booking.id }, data: { minutes, totalCents, commissionCents: price.commissionCents, proCents: price.proCents, dueCents: price.dueCents } });
+      await tx.payment.update({ where: { id: request.payment.id }, data: { amount: totalCents, commissionAmount: price.commissionCents, proAmount: price.proCents } });
+      if (request.acceptedQuoteId) await tx.quote.update({ where: { id: request.acceptedQuoteId }, data: { amount: totalCents, duration: `${minutes} min` } });
+      await tx.serviceRequest.update({ where: { id: request.id }, data: { version: { increment: 1 } } });
+      if (other) await notify(tx, other, "BOOKING_HOURS", "Klienti konfirmoi orët dhe totalin e ri", otherHref);
+      await tx.auditLog.create({ data: { actorId: actor.id, action: "BOOKING_HOURS_CONFIRMED", target: request.id,
+        meta: { changeId: change.id, minutes, totalCents, dueCents: price.dueCents, todo } } });
+      return { ok: true, message: `U konfirmua: ${hoursLabel(minutes)} · ${money(totalCents)}.` };
+    }
+    // Cancellations and no-show reports.
+    const cancel = data as Extract<typeof data, { expectedVersion: number }>;
+    const reason = cancel.action as CancelReason;
+    if (booking.status === "CANCELLED") return { ok: true };
+    invariant(request.version === cancel.expectedVersion, "STALE", 409, "Rezervimi ka ndryshuar. Rifreskoni faqen.");
+    invariant(request.state === "BOOKED", "STATE", 409, "Rezervimi nuk mund të anulohet pasi puna ka filluar. Raportoni problemin te puna.");
+    if (reason === "CANCEL") invariant(booking.startsAt > now, "STARTED", 409, "Ora e fillimit ka kaluar. Raportoni mosparaqitjen nëse nuk u bë puna.");
+    else invariant(booking.startsAt <= now, "TOO_EARLY", 409, "Mosparaqitja raportohet vetëm pas orës së fillimit.");
+    const by = actor.role === "PRO" ? "PRO" : "CLIENT";
+    invariant(reason === "CANCEL" || (reason === "NO_SHOW" && by === "CLIENT") || (reason === "NOBODY_HOME" && by === "PRO"),
+      "FORBIDDEN", 403, "Nuk keni qasje në këtë veprim.");
+    const paid = paidSoFar(booking);
+    const outcome = cancellationOutcome({ by, reason, startsAt: booking.startsAt, now, paidCents: paid });
+    const todo = outcome.refundCents > 0 ? { todoKind: "REFUND", todoCents: outcome.refundCents }
+      : outcome.owedFeeCents > 0 ? { todoKind: "COLLECT", todoCents: outcome.owedFeeCents } : null;
+    await tx.bookingChange.updateMany({ where: { bookingId: booking.id, kind: "HOURS", state: "PROPOSED" }, data: { state: "SUPERSEDED", decidedAt: now } });
+    await tx.bookingChange.create({ data: { bookingId: booking.id, kind: "CANCELLATION", state: "RECORDED", actorId: actor.id,
+      note: outcome.label, ...(todo ?? {}), meta: { by, reason, paidCents: paid, ...outcome } } });
+    await tx.booking.update({ where: { id: booking.id }, data: { status: "CANCELLED", cancelledAt: now, cancelledBy: by, cancelReason: reason,
+      feeCents: outcome.feeCents, feeProCents: outcome.feeProCents, feePlatformCents: outcome.feePlatformCents, refundCents: outcome.refundCents } });
+    if (request.payment.state === "PENDING") await tx.payment.update({ where: { id: request.payment.id }, data: { state: "EXPIRED" } });
+    // A credited estimate returns to the customer for their next hire with this pro.
+    await tx.estimate.updateMany({ where: { creditedRequestId: request.id, state: "CREDITED" }, data: { state: "PAID", creditedRequestId: null, creditedAt: null } });
+    await tx.serviceRequest.update({ where: { id: request.id }, data: { state: "CANCELLED", cancelledAt: now, version: { increment: 1 } } });
+    await tx.quote.updateMany({ where: { requestId: request.id, state: { in: ["SENT", "ACCEPTED"] } }, data: { state: "WITHDRAWN" } });
+    if (other) await notify(tx, other, "BOOKING_CANCELLED", reason === "CANCEL" ? "Rezervimi u anulua" : "U raportua mosparaqitje; rezervimi u mbyll", otherHref);
+    await tx.auditLog.create({ data: { actorId: actor.id, action: "BOOKING_CANCELLED", target: request.id, meta: { rule: outcome.rule, by, reason, todo } } });
+    return { ok: true, message: outcome.label };
+  });
+}
+
+/* ------------------------------------------------------ admin to-dos */
+
+export async function completeBookingTodo(actor: Actor, changeId: string, note: string) {
+  invariant(actor.role === "ADMIN", "FORBIDDEN", 403, "Nuk keni qasje.");
+  entityId.parse(changeId);
+  const clean = note.trim().replace(/\s+/g, " ");
+  invariant(clean.length >= 5 && clean.length <= 500, "NOTE", 400, "Shënoni si u krye (5–500 shkronja).");
+  return serializable(async (tx) => {
+    const change = await tx.bookingChange.findUnique({ where: { id: changeId } });
+    invariant(change && change.todoKind, "NOT_FOUND", 404, "Detyra nuk u gjet.");
+    if (change.todoDoneAt) return { ok: true, already: true };
+    await tx.bookingChange.update({ where: { id: change.id }, data: { todoDoneAt: new Date(), todoDoneById: actor.id } });
+    await tx.auditLog.create({ data: { actorId: actor.id, action: "BOOKING_TODO_DONE", target: change.id,
+      meta: { bookingId: change.bookingId, todoKind: change.todoKind, todoCents: change.todoCents, note: clean } } });
+    return { ok: true, message: "Detyra u shënua si e kryer." };
+  });
+}
