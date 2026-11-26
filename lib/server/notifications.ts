@@ -5,6 +5,7 @@ import { encrypt, decrypt } from "./crypto";
 import { invariant } from "./errors";
 import { notificationPreferences } from "./notification-preferences";
 import { hashToken } from "./tokens";
+import { emailRecipientAllowed, maskEmail } from "../email-allowlist";
 
 type EmailJob = {
   id: string;
@@ -137,6 +138,11 @@ export async function deliverOneVerificationEmail(id: string, recipient: string)
       message.tokenId && job.key === `account-email:${message.tokenId}`,
     "EMAIL_RECIPIENT", 400, "Konfirmoni marrësin e emailit.",
   );
+  invariant(
+    emailRecipientAllowed(recipient, process.env),
+    "EMAIL_NOT_ALLOWLISTED", 409,
+    "Kjo adresë nuk është në listën e lejuar për emailet e provës (EMAIL_ALLOWLIST).",
+  );
   const token = await db.authToken.findUnique({
     where: { id: message.tokenId },
     select: {
@@ -245,6 +251,16 @@ async function submitEmailJobs(jobs: EmailJob[]) {
       if (message.expiresAt && !(Date.parse(message.expiresAt) > Date.now()))
         throw new Error("EXPIRED_MESSAGE");
       if (message.to.endsWith(".invalid")) throw new Error("TEST_ADDRESS");
+      // Outside production only allowlisted owner/test addresses receive mail.
+      if (!emailRecipientAllowed(message.to, process.env)) {
+        console.info(JSON.stringify({
+          event: "email_skipped_not_allowlisted",
+          environment: process.env.VERCEL_ENV ?? "local",
+          recipient: maskEmail(message.to),
+          job: job.id,
+        }));
+        throw new Error("NOT_ALLOWLISTED");
+      }
       const response = await fetch("https://api.resend.com/emails", {
         method: "POST",
         signal: AbortSignal.timeout(10_000),
@@ -277,7 +293,7 @@ async function submitEmailJobs(jobs: EmailJob[]) {
     } catch (error) {
       const code =
         error instanceof Error &&
-        /^(TEST_ADDRESS|EXPIRED_MESSAGE|MESSAGE_SUPPRESSED|EMAIL_STATUS_\d+|EMAIL_NO_RECEIPT)$/.test(
+        /^(TEST_ADDRESS|NOT_ALLOWLISTED|EXPIRED_MESSAGE|MESSAGE_SUPPRESSED|EMAIL_STATUS_\d+|EMAIL_NO_RECEIPT)$/.test(
           error.message,
         )
           ? error.message
@@ -287,11 +303,11 @@ async function submitEmailJobs(jobs: EmailJob[]) {
         data: {
           state:
             job.attempts >= 8 ||
-            ["TEST_ADDRESS", "EXPIRED_MESSAGE", "MESSAGE_SUPPRESSED"].includes(code)
+            ["TEST_ADDRESS", "NOT_ALLOWLISTED", "EXPIRED_MESSAGE", "MESSAGE_SUPPRESSED"].includes(code)
               ? "FAILED"
               : "PENDING",
           ...(code === "MESSAGE_SUPPRESSED" || job.attempts >= 8 ||
-          ["TEST_ADDRESS", "EXPIRED_MESSAGE"].includes(code)
+          ["TEST_ADDRESS", "NOT_ALLOWLISTED", "EXPIRED_MESSAGE"].includes(code)
             ? { payloadEnc: "" }
             : {}),
           lastError: code,
