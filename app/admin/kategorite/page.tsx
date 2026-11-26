@@ -146,7 +146,7 @@ export default async function AdminCategoriesPage({
             <label className="text-sm font-semibold text-ink" htmlFor="heroSubtitle">Nën-titulli</label>
             <input
               id="heroSubtitle" name="heroSubtitle"
-              defaultValue={site?.heroSubtitle ?? "Zgjoi është platforma më e besuar në Kosovë për të gjetur dhe punësuar profesionistë lokalë."}
+              defaultValue={site?.heroSubtitle ?? "Gjej profesionistë lokalë të shqyrtuar në Kosovë dhe kërko një ofertë private. Tani në beta."}
               className="mt-1.5 w-full rounded-xl border border-line bg-cream px-4 py-3 text-sm outline-none focus:border-gold"
             />
           </div>

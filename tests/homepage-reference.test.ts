@@ -40,8 +40,8 @@ test("original presentation keeps its title while the hive uses only the 14 appr
 test("original homepage renders the complete section order, hive geometry and search presentation", () => {
   const html = render(React.createElement(ProductionHomepage));
   const headings = ["Gjej profesionist për çdo shërbim.", "Kategoritë kryesore",
-    "Për klientët", "Pse Zgjoi?", "Si funksionon", "Profesionistë të rekomanduar",
-    "Çfarë thonë klientët"];
+    "Për klientët", "Pse Zgjoi?", "Si funksionon", "Bëhu ndër profesionistët e parë",
+    "Çfarë ju premtojmë gjatë beta-s"];
   let after = 0;
   for (const heading of headings) {
     const found = html.indexOf(heading, after);
@@ -65,6 +65,19 @@ test("original homepage renders the complete section order, hive geometry and se
   assert(html.includes("Pagesa nis pas pranimit të ofertës"));
   assert(html.includes("nëse dëshiron"));
   assert(!html.includes("Paguaj vetëm pas përfundimit"));
+});
+
+test("beta homepage and about page contain no invented stats, ratings, testimonials or trust claims", () => {
+  const html = render(React.createElement(ProductionHomepage)) + render(React.createElement(ReferenceFooter));
+  for (const invented of ["10K+", "5K+", "50K+", "4.9★", ">4.9<", "Klientë të kënaqur", "Profesionistë aktivë",
+    "më e besuar", "Arben Krasniqi", "Blendi", "Paguan vetëm pas punës"])
+    assert(!html.includes(invented), `invented marketing content: ${invented}`);
+  assert(html.includes("Beta"));
+  assert(html.includes("Kategori shërbimesh"));
+  const about = readFileSync("app/rreth-nesh/page.tsx", "utf8");
+  for (const invented of ["10K+", "5K+", "50K+", "më e besuar", "\"36\""])
+    assert(!about.includes(invented), `invented about-page content: ${invented}`);
+  assert(!JSON.stringify(presentation).includes("më e besuar"));
 });
 
 test("original footer is scoped to Preview homepage and cannot claim an unsaved subscription", () => {

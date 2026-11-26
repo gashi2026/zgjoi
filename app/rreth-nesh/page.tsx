@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import { MapPin, Quote, ShieldCheck, Star, Users, Zap } from "lucide-react";
+import { Quote, ShieldCheck, Star, Users, Zap } from "lucide-react";
+import { serviceCategories } from "@/lib/service-categories";
 
 export const metadata: Metadata = {
   title: "Rreth nesh — Zgjoi",
@@ -40,9 +41,9 @@ export default function RrethNeshPage() {
               Rreth Zgjoi
             </h1>
             <p className="mx-auto mt-5 max-w-2xl text-lg leading-relaxed text-muted">
-              Zgjoi është platforma që lidh njerëzit e Kosovës me profesionistët
-              e besuar pranë tyre — shpejt, me transparencë dhe me pagesë të
-              sigurt.
+              Zgjoi lidh njerëzit e Kosovës me profesionistë lokalë të
+              shqyrtuar — me kërkesa private, oferta të qarta dhe bisedë brenda
+              platformës. Tani jemi në beta dhe po hapemi gradualisht.
             </p>
           </div>
         </section>
@@ -96,14 +97,18 @@ export default function RrethNeshPage() {
         <section className="bg-white">
           <div className="mx-auto max-w-5xl px-4 py-16 sm:px-6 lg:px-8">
             <h2 className="text-2xl font-extrabold tracking-tight text-ink sm:text-3xl">
-              Zgjoi në numra
+              Zgjoi sot
             </h2>
+            <p className="mt-2 text-sm text-muted">
+              Jemi në fillim. Nuk publikojmë shifra që nuk i kemi ende; numrat
+              e vërtetë do të shfaqen këtu kur të ketë punë të përfunduara.
+            </p>
             <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
               {[
-                { v: "10K+", l: "Klientë të kënaqur" },
-                { v: "5K+", l: "Profesionistë aktivë" },
-                { v: "50K+", l: "Punë të përfunduara" },
-                { v: "36", l: "Kategori shërbimesh" },
+                { v: String(serviceCategories.length), l: "Kategori shërbimesh" },
+                { v: "Beta", l: "Po hapemi gradualisht në Kosovë" },
+                { v: "1 te 1", l: "Kërkesë private te profesionisti që zgjidhni" },
+                { v: "Shqyrtim", l: "Profilet miratohen para publikimit" },
               ].map((s) => (
                 <div
                   key={s.l}
