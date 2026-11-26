@@ -1,4 +1,5 @@
 import { z } from "zod";
+import "./zod-sq";
 import { email, password } from "./validation";
 import { appointmentMinutes } from "./appointments";
 

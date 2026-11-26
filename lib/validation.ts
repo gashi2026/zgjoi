@@ -1,4 +1,5 @@
 import { z } from "zod";
+import "./zod-sq";
 
 /* Shared between client forms and server actions, so the rules can never
    drift apart. Messages are in Albanian — they are shown to users. */

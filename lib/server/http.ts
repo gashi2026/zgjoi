@@ -2,6 +2,7 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { ZodError } from "zod";
+import "../zod-sq";
 import { AppError } from "./errors";
 import { databaseFailureDetails } from "./error-diagnostics";
 
