@@ -7,6 +7,9 @@ import { money, dateTime } from "@/lib/format";
 import ApiForm from "@/components/marketplace/ApiForm";
 import { categoryFlow, bookableTerms } from "@/lib/server/bookings";
 import { hoursLabel } from "@/lib/book-now";
+import { proTrust } from "@/lib/server/trust";
+import { TRUST_PUBLIC } from "@/lib/trust";
+import TrustDonut from "@/components/marketplace/TrustDonut";
 export const dynamic = "force-dynamic";
 export async function generateMetadata({
   params,
@@ -37,6 +40,7 @@ export default async function Page({
     categoryFlow(db, pro.categorySlug),
   ]);
   const terms = bookableTerms(pro, flow);
+  const trust = TRUST_PUBLIC ? await proTrust(pro.id) : null;
   const saved =
     actor?.role === "CLIENT"
       ? Boolean(
@@ -76,6 +80,7 @@ export default async function Page({
             ? `★ ${pro.ratingAvg.toFixed(1)} (${pro.ratingCount} vlerësime)`
             : "Pa vlerësime ende"}
         </p>
+        {trust && <TrustDonut summary={trust} />}
         <p className="mt-2 text-sm text-muted">
           {terms
             ? `Rezervoni direkt me tarifë për orë (${money(terms.rateCents)}/orë, së paku ${hoursLabel(terms.minMinutes)}), ose bisedoni privatisht dhe e punësoni me “Puneso”.`

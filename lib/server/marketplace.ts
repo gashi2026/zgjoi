@@ -28,6 +28,7 @@ import { clockTime } from "../format";
 import { expireDueOffersFor } from "./offer-expiry";
 import { serializable } from "./transaction";
 import { applyEstimateCreditToPayment } from "./bookings";
+import { checkCancellationAlert } from "./trust";
 export { serializable } from "./transaction";
 
 export function isParticipant(
@@ -409,6 +410,14 @@ export async function getRequest(actor: Actor, id: string) {
               reason: true,
               resolution: true,
               resolvedAt: true,
+              openedByRole: true,
+              respondBy: true,
+              response: true,
+              respondedAt: true,
+              outcome: true,
+              finalPriceCents: true,
+              refundCents: true,
+              customerCreditCents: true,
             },
           },
         },
@@ -710,6 +719,8 @@ export async function changeJob(
         where: { id },
         data: {
           state: "IN_PROGRESS",
+          // Trust history: the first start is compared with the booked time.
+          ...(request.startedAt ? {} : { startedAt: new Date() }),
           ...(action === "REQUEST_COMPLETION"
             ? { completionRequestedAt: new Date() }
             : {}),
@@ -731,9 +742,13 @@ export async function changeJob(
         data: {
           state: "CANCELLED",
           cancelledAt: new Date(),
+          // Only a hired job has a side that ended it; open chats just close.
+          ...(request.state === "BOOKED" ? { cancelledBy: actor.role === "PRO" ? "PRO" : "CLIENT" } : {}),
           version: { increment: 1 },
         },
       });
+      if (request.state === "BOOKED" && actor.role === "PRO" && request.acceptedProfileId)
+        await checkCancellationAlert(tx, request.acceptedProfileId);
       await tx.quote.updateMany({
         where: { requestId: id, state: { in: ["SENT", "ACCEPTED"] } },
         data: { state: "WITHDRAWN" },

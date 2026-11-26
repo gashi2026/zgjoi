@@ -273,6 +273,11 @@ model ServiceRequest {
   completionRequestedAt DateTime?
   completedAt DateTime?
   cancelledAt DateTime?
+  /// Who ended a hired job early: CLIENT | PRO | PRO_NO_SHOW | NOBODY_HOME | DISPUTE_REFUND.
+  /// Pro-side values count in the trust history and the 3-cancellation review alert.
+  cancelledBy String?
+  /// When the pro pressed “Fillo punën”; > 15 min after scheduledAt counts as late.
+  startedAt   DateTime?
   scheduledAt  DateTime?
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
@@ -292,6 +297,7 @@ model ServiceRequest {
   @@index([categorySlug, city, state])
   @@index([state])
   @@index([selectedProfileId, state, updatedAt])
+  @@index([acceptedProfileId, state])
 }
 
 model Quote {
@@ -420,8 +426,28 @@ model Dispute {
   resolution String?   @db.Text
   resolvedAt DateTime?
   createdAt  DateTime  @default(now())
+  /// CLIENT | PRO — who flagged the job; the other side may respond.
+  openedByRole String?
+  /// Job state before the dispute; restored unless the decision ends the job.
+  priorState   String?
+  respondBy    DateTime?
+  response     String?   @db.Text
+  respondedById String?
+  respondedAt  DateTime?
+  decidedById  String?
+  /// Admin-set final job price; commission and the pro's share recalculate from it.
+  finalPriceCents Int?
+  refundCents  Int       @default(0)
+  customerCreditCents Int @default(0)
+  /// Admin to-do for the decision (REFUND | CREDIT); no money moves in the beta.
+  todoKind     String?
+  todoCents    Int?
+  todoDoneAt   DateTime?
+  todoDoneById String?
 
   payment Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  @@index([todoKind, todoDoneAt], map: "Dispute_todo_idx")
 }
 
 // ------------------------------------------------------- Book now (hourly)

@@ -18,6 +18,7 @@ import {
 } from "../book-now";
 import { clientKey, cleanText, entityId, euroAmount } from "../marketplace-validation";
 import { money } from "../format";
+import { checkCancellationAlert } from "./trust";
 
 type FlowDB = Pick<Prisma.TransactionClient, "category">;
 /** Per-category hiring paths: code default, overridden by the Category row. */
@@ -260,7 +261,9 @@ export async function bookingAction(actor: Actor, requestId: string, input: unkn
     // A credited estimate returns to the customer for their next hire with this pro
     // (customer-fault cases follow RETURN_CREDIT_ON_CUSTOMER_FAULT).
     if (returnsEstimateCredit(outcome.rule)) await tx.estimate.updateMany({ where: { creditedRequestId: request.id, state: "CREDITED" }, data: { state: "PAID", creditedRequestId: null, creditedAt: null } });
-    await tx.serviceRequest.update({ where: { id: request.id }, data: { state: "CANCELLED", cancelledAt: now, version: { increment: 1 } } });
+    const cancelledBy = reason === "NO_SHOW" ? "PRO_NO_SHOW" : reason === "NOBODY_HOME" ? "NOBODY_HOME" : by;
+    await tx.serviceRequest.update({ where: { id: request.id }, data: { state: "CANCELLED", cancelledAt: now, cancelledBy, version: { increment: 1 } } });
+    if (cancelledBy === "PRO" || cancelledBy === "PRO_NO_SHOW") await checkCancellationAlert(tx, booking.profileId, now);
     await tx.quote.updateMany({ where: { requestId: request.id, state: { in: ["SENT", "ACCEPTED"] } }, data: { state: "WITHDRAWN" } });
     if (other) await notify(tx, other, "BOOKING_CANCELLED", reason === "CANCEL" ? "Rezervimi u anulua" : "U raportua mosparaqitje; rezervimi u mbyll", otherHref);
     await tx.auditLog.create({ data: { actorId: actor.id, action: "BOOKING_CANCELLED", target: request.id, meta: { rule: outcome.rule, by, reason, todo } } });

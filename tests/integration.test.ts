@@ -1046,6 +1046,66 @@ test("database-backed private marketplace and authorization journey", async (t) 
     assert.equal(hired.estimateCreditCents, 1500);
     assert.equal(hired.amount, 1000, "no minimum price; the customer owes nothing more under €15");
   });
+  await t.test("disputes: either side flags, the other responds within 48 h, the admin decides a final price; trust history and the 3-cancellation alert", async () => {
+    const customer = await account("CLIENT", "DisputeClient"), professional = await account("PRO", "DisputePro");
+    const cj: Jar = new Map([["zgjoi_session", (await persistSession(customer.id, passwordHash)).token]]);
+    const pjar: Jar = new Map([["zgjoi_session", (await persistSession(professional.id, passwordHash)).token]]);
+    const profileId = professional.proProfile!.id;
+    async function hired(amount = "100") {
+      const opened = ok(await http("/api/requests", cj, { profileId, detail: "Riparim i panelit elektrik në bodrum.", city: "Prishtinë", clientKey: randomUUID() }));
+      const sent = ok(await http("/api/offers", pjar, { requestId: opened.id, clientKey: randomUUID(), expectedVersion: 0, amount, expiresInHours: 24 }));
+      ok(await http("/api/offers/accept", cj, { quoteId: sent.quoteId, expectedVersion: 1 }));
+      return opened.id as string;
+    }
+    const id = await hired();
+    const payment = await db.payment.findUniqueOrThrow({ where: { requestId: id } });
+    ok(await http("/api/disputes", pjar, { requestId: id, reason: "Klienti kërkon punë shtesë pa e paguar, para pagesës." }), 409);
+    ok(await http("/api/admin/payments", adminj, { action: "MARK_PAID_OFFLINE", id: payment.id, reason: "Para në dorë, konfirmuar me telefon nga klienti." }));
+    ok(await http(`/api/requests/${id}`, pjar, { action: "START" }));
+    assert((await db.serviceRequest.findUniqueOrThrow({ where: { id } })).startedAt, "start time is recorded for the trust history");
+    ok(await http(`/api/requests/${id}`, pjar, { action: "REQUEST_COMPLETION" }));
+    ok(await http(`/api/requests/${id}`, cj, { action: "CONFIRM_COMPLETION" }));
+    // The pro flags the finished job; admins get an on-site notice linking the dispute view.
+    const opened = ok(await http("/api/disputes", pjar, { requestId: id, reason: "Klienti nuk pranon të paguajë pjesën e dytë të punës së kryer." }));
+    const dispute = await db.dispute.findUniqueOrThrow({ where: { id: opened.id } });
+    assert.equal(dispute.openedByRole, "PRO");
+    assert.equal(dispute.priorState, "COMPLETED");
+    assert(Math.abs(dispute.respondBy!.getTime() - (Date.now() + 48 * 3600000)) < 120000);
+    assert(await db.notification.findFirst({ where: { userId: admin.id, kind: "DISPUTE", href: `/admin/kontestet/${dispute.id}` } }));
+    // The admin waits for the other side (or the 48 hours).
+    ok(await http("/api/admin/disputes", adminj, { action: "DECIDE", id: dispute.id, outcome: "NO_ACTION", resolution: "Asnjë veprim pas shqyrtimit." }), 409);
+    ok(await http("/api/disputes", pjar, { action: "RESPOND", requestId: id, statement: "Deklarata e dytë nuk mund të vijë nga e njëjta palë." }), 403);
+    ok(await http("/api/disputes", cj, { action: "RESPOND", requestId: id, statement: "Puna u krye vetëm përgjysmë dhe pa material të ri." }));
+    const view = await http(`/admin/kontestet/${dispute.id}`, adminj);
+    assert(view.text.includes("Klienti nuk pranon") && view.text.includes("Puna u krye vetëm përgjysmë") && view.text.includes("Ruaj vendimin"));
+    for (const jar of [cj, pjar]) ok(await http("/api/admin/disputes", jar, { action: "DECIDE", id: dispute.id, outcome: "NO_ACTION", resolution: "Nuk lejohet." }), 403);
+    ok(await http("/api/admin/disputes", adminj, { action: "DECIDE", id: dispute.id, outcome: "PARTIAL_REFUND", resolution: "Puna u krye pjesërisht; çmimi ulet." }), 400);
+    const decided = ok(await http("/api/admin/disputes", adminj, { action: "DECIDE", id: dispute.id, outcome: "PARTIAL_REFUND", finalPrice: "60", resolution: "Puna u krye pjesërisht; çmimi ulet në 60 €." }));
+    assert(decided.message.includes("Rimbursim i pjesshëm"));
+    const settled = await db.payment.findUniqueOrThrow({ where: { requestId: id }, include: { dispute: true, payouts: true } });
+    assert.deepEqual([settled.state, settled.amount, settled.commissionAmount, settled.proAmount], ["HELD", 6000, 900, 5100]);
+    assert.equal(settled.payouts[0]?.amount, 5100);
+    assert.deepEqual([settled.dispute?.todoKind, settled.dispute?.todoCents], ["REFUND", 4000]);
+    assert.equal((await db.serviceRequest.findUniqueOrThrow({ where: { id } })).state, "COMPLETED");
+    assert((await http(`/llogaria/kerkesat/${id}`, cj)).text.includes("Vendimi i administratës: Rimbursim i pjesshëm"));
+    assert(await db.notification.findFirst({ where: { userId: professional.id, kind: "DISPUTE_DECIDED" } }));
+    assert((await http("/admin/pagesat", adminj)).text.includes("Kontest · Rimburso klientin"));
+    ok(await http("/api/admin/disputes", adminj, { action: "TODO_DONE", id: dispute.id, reason: "Kthyer 40 € në dorë." }));
+    assert((await db.dispute.findUniqueOrThrow({ where: { id: dispute.id } })).todoDoneAt);
+    // Trust history on the public profile.
+    const profile = await http(`/profesionisti/${professional.proProfile!.slug}`);
+    assert(profile.text.includes("Historiku i punëve") && profile.text.includes("Në kohë"));
+    // Three pro cancellations in 90 days alert the admins once.
+    for (let i = 0; i < 3; i++) {
+      const job = await hired("30");
+      const version = (await db.serviceRequest.findUniqueOrThrow({ where: { id: job } })).version;
+      ok(await http(`/api/requests/${job}`, pjar, { action: "CANCEL", expectedVersion: version }));
+      assert.equal((await db.serviceRequest.findUniqueOrThrow({ where: { id: job } })).cancelledBy, "PRO");
+    }
+    assert.equal(await db.notification.count({ where: { userId: admin.id, kind: "PRO_REVIEW" } }), 1);
+    const { proTrust } = await import("../lib/server/trust");
+    assert.deepEqual(await proTrust(profileId), { booked: 4, onTime: 1, late: 0, notFinished: 3, disputes: 1, cancellations: 3 });
+  });
   async function unpaidBooking() {
     const customer = await account("CLIENT", "BookingClient"), professional = await account("PRO", "BookingPro");
     const customerJar: Jar = new Map([["zgjoi_session", (await persistSession(customer.id, passwordHash)).token]]);
