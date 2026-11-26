@@ -40,7 +40,7 @@ export const signupInput = z
     priceFrom: euroAmount.optional(),
     experience: cleanText(1, 80).optional(),
     terms: z.literal(true, {
-      errorMap: () => ({ message: "Pranoni kushtet për të vazhduar." }),
+      error: "Pranoni kushtet për të vazhduar.",
     }),
   })
   .superRefine((value, ctx) => {

@@ -50,7 +50,7 @@ export const proSignupSchema = z.object({
   priceFrom: z.coerce.number().int().positive("Shkruaj një çmim fillestar."),
   iban: z.string().min(10, "Shkruaj numrin e llogarisë bankare.").max(34),
   terms: z.literal(true, {
-    errorMap: () => ({ message: "Duhet t'i pranosh kushtet për të vazhduar." }),
+    error: "Duhet t'i pranosh kushtet për të vazhduar.",
   }),
 });
 
@@ -62,7 +62,7 @@ export const loginSchema = z.object({
 
 export const requestSchema = z.object({
   categorySlug: z.string().min(1, "Zgjidh një kategori shërbimi."),
-  answers: z.record(z.union([z.string(), z.array(z.string())])),
+  answers: z.record(z.string(), z.union([z.string(), z.array(z.string())])),
   city: z.string().min(1, "Zgjidh qytetin."),
   timing: z.string().min(1, "Zgjidh kur ju nevojitet shërbimi."),
   budgetBand: z.string().optional(),
