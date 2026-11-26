@@ -37,9 +37,9 @@ export default function AccountShell({
   return (
     <div className="bg-cream">
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 lg:py-12">
-        <div className="grid gap-8 lg:grid-cols-[248px_1fr]">
+        <div className="grid min-w-0 gap-8 lg:grid-cols-[248px_minmax(0,1fr)]">
           {/* Sidebar */}
-          <aside>
+          <aside className="min-w-0">
             <div className="flex items-center gap-3 rounded-2xl border border-line bg-white p-4 shadow-soft">
               <Avatar initials={user.initials} hue={user.hue} size={48} />
               <div className="min-w-0">
@@ -77,7 +77,7 @@ export default function AccountShell({
           </aside>
 
           {/* Content */}
-          <div>
+          <div className="min-w-0 break-words">
             <header className="mb-6">
               <h1 className="text-2xl font-extrabold tracking-tight text-ink sm:text-3xl">
                 {title}

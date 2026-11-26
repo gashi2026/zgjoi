@@ -40,14 +40,17 @@ enum QuoteState {
   ACCEPTED
   DECLINED
   WITHDRAWN
+  EXPIRED
 }
 
 enum EscrowStrategy {
+  PLATFORM_CHARGE     // captured after acceptance; transfer only after customer completion
   AUTH_HOLD           // short jobs: authorise now, capture on completion
   DESTINATION_CHARGE  // long jobs: charge now, hold in the pro's locked ledger
 }
 
 enum PaymentState {
+  REFUND_PENDING
   PENDING       // intent created, nothing charged yet
   AUTHORISED    // AUTH_HOLD: card authorised, funds frozen but not taken
   HELD          // funds are with us / locked in the connected account
@@ -58,6 +61,8 @@ enum PaymentState {
 }
 
 enum PayoutState {
+  TRANSFERRED
+  PROCESSING
   SCHEDULED
   PAID
   FAILED
@@ -102,6 +107,9 @@ model User {
   supportMessages SupportMessage[]
   sessions      Session[]
   auditLogs     AuditLog[]
+  authTokens    AuthToken[]
+  notifications Notification[]
+  favorites     Favorite[]
 
   @@index([role])
   @@index([email])
@@ -117,6 +125,7 @@ model Session {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([expiresAt])
 }
 
 // ------------------------------------------------------ professionals
@@ -144,10 +153,14 @@ model ProProfile {
   ratingCount    Int               @default(0)
   responseRate   Int               @default(0)
   // lead budget (monetisation)
-  weeklyBudget   Int               @default(4000) // cents
+  weeklyBudget   Int               @default(0) // legacy; paid leads are disabled
   weeklySpent    Int               @default(0)
-  autoBid        Boolean           @default(true)
+  autoBid        Boolean           @default(false)
   budgetResetAt  DateTime          @default(now())
+  /// Book now (hourly): the pro's own rate and minimum booking length.
+  /// Null until the pro opts in; only used in categories with Book now.
+  hourlyRateCents   Int?
+  bookingMinMinutes Int?
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
 
@@ -156,10 +169,14 @@ model ProProfile {
   documents ProDocument[]
   quotes    Quote[]
   jobs      ServiceRequest[] @relation("ProJobs")
+  inquiries ServiceRequest[] @relation("SelectedPro")
   reviews   Review[]
   payouts   Payout[]
   leadCharges LeadCharge[]
   availability Availability[]
+  favorites Favorite[]
+  bookings  Booking[]
+  estimates Estimate[]
 
   @@index([categorySlug])
   @@index([verification])
@@ -180,6 +197,10 @@ model ProDocument {
   profileId String
   kind      String   // "ID" | "CERTIFICATE" | "INSURANCE"
   url       String
+  storagePath String? @unique
+  filename  String?
+  mimeType  String?
+  sizeBytes Int?
   reviewed  Boolean  @default(false)
   createdAt DateTime @default(now())
   profile   ProProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
@@ -207,6 +228,11 @@ model Category {
   icon      String
   position  Int      @default(0)
   active    Boolean  @default(true)
+  /// Hiring-path overrides. Null = the code default in lib/book-now.ts
+  /// (Elektricist/Mjeshtër i Ujit: Book now + estimate; Dado/Pastrim: Book now).
+  bookNowEnabled     Boolean?
+  estimateEnabled    Boolean?
+  estimatePriceCents Int?
   questions Question[]
 }
 
@@ -240,21 +266,38 @@ model ServiceRequest {
   detail       String?      @db.Text
   state        RequestState @default(OPEN)
   acceptedProfileId String?
+  selectedProfileId String?
+  acceptedQuoteId String? @unique
+  creationKey String? @unique
+  version Int @default(0)
+  completionRequestedAt DateTime?
+  completedAt DateTime?
+  cancelledAt DateTime?
+  /// Who ended a hired job early: CLIENT | PRO | PRO_NO_SHOW | NOBODY_HOME | DISPUTE_REFUND.
+  /// Pro-side values count in the trust history and the 3-cancellation review alert.
+  cancelledBy String?
+  /// When the pro pressed “Fillo punën”; > 15 min after scheduledAt counts as late.
+  startedAt   DateTime?
   scheduledAt  DateTime?
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 
   client        User        @relation("ClientRequests", fields: [clientId], references: [id])
   acceptedPro   ProProfile? @relation("ProJobs", fields: [acceptedProfileId], references: [id])
-  quotes        Quote[]
+  selectedPro   ProProfile? @relation("SelectedPro", fields: [selectedProfileId], references: [id])
+  acceptedQuote Quote? @relation("AcceptedQuote", fields: [acceptedQuoteId], references: [id])
+  quotes        Quote[] @relation("RequestQuotes")
   payment       Payment?
   review        Review?
   conversation  Conversation?
   leadCharges   LeadCharge[]
+  booking       Booking?
 
   @@index([clientId])
   @@index([categorySlug, city, state])
   @@index([state])
+  @@index([selectedProfileId, state, updatedAt])
+  @@index([acceptedProfileId, state])
 }
 
 model Quote {
@@ -271,13 +314,20 @@ model Quote {
   /// strategy the payment uses when this quote is accepted.
   expectedDays Int      @default(1)
   state      QuoteState @default(SENT)
+  revision   Int @default(1)
+  expiresAt  DateTime?
+  scheduledAt DateTime?
+  acceptedAt DateTime?
+  creationKey String? @unique
   createdAt  DateTime   @default(now())
 
-  request ServiceRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  request ServiceRequest @relation("RequestQuotes", fields: [requestId], references: [id], onDelete: Cascade)
+  acceptedFor ServiceRequest? @relation("AcceptedQuote")
   profile ProProfile     @relation(fields: [profileId], references: [id], onDelete: Cascade)
 
-  @@unique([requestId, profileId])
+  @@unique([requestId, profileId, revision])
   @@index([profileId])
+  @@index([state, expiresAt])
 }
 
 // ------------------------------------------------------------ payments
@@ -298,6 +348,19 @@ model Payment {
   stripeChargeId        String?
   stripeTransferId      String?
   stripePayoutId        String?
+  provider              String @default("disabled")
+  providerCheckoutId    String? @unique
+  providerRefundId      String? @unique
+  connectedAccountId    String?
+  /// Phase-2 seam: how the customer pays. Beta = OFFLINE (admin marks paid);
+  /// CARD is reserved for the future card provider and is not integrated.
+  method                String @default("OFFLINE")
+  /// A paid €15 estimate with the same pro, credited to this job (any path).
+  estimateCreditCents   Int @default(0)
+  operation             String?
+  operationStartedAt    DateTime?
+  attempt               Int @default(0)
+  updatedAt             DateTime @default(now()) @updatedAt
 
   authorisedAt          DateTime?
   /// AUTH_HOLD only: the hold lapses at this moment (Stripe: 7 days).
@@ -313,6 +376,8 @@ model Payment {
 
   request ServiceRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
   dispute Dispute?
+  payouts Payout[]
+  events PaymentEvent[]
 
   @@index([state])
   @@index([state, authExpiresAt])
@@ -322,16 +387,18 @@ model Payment {
 model Payout {
   id         String      @id @default(cuid())
   profileId  String
-  paymentId  String?
+  paymentId  String? @unique
   amount     Int
   state      PayoutState @default(SCHEDULED)
   reference  String?
   stripePayoutId String?
+  providerOperationKey String? @unique
   scheduledFor DateTime
   paidAt     DateTime?
   createdAt  DateTime    @default(now())
 
   profile ProProfile @relation(fields: [profileId], references: [id])
+  payment Payment? @relation(fields: [paymentId], references: [id])
 
   @@index([profileId, state])
 }
@@ -355,11 +422,117 @@ model Dispute {
   paymentId  String    @unique
   openedById String
   reason     String    @db.Text
+  outcome    String?
   resolution String?   @db.Text
   resolvedAt DateTime?
   createdAt  DateTime  @default(now())
+  /// CLIENT | PRO — who flagged the job; the other side may respond.
+  openedByRole String?
+  /// Job state before the dispute; restored unless the decision ends the job.
+  priorState   String?
+  respondBy    DateTime?
+  response     String?   @db.Text
+  respondedById String?
+  respondedAt  DateTime?
+  decidedById  String?
+  /// Admin-set final job price; commission and the pro's share recalculate from it.
+  finalPriceCents Int?
+  refundCents  Int       @default(0)
+  customerCreditCents Int @default(0)
+  /// Admin to-do for the decision (REFUND | CREDIT); no money moves in the beta.
+  todoKind     String?
+  todoCents    Int?
+  todoDoneAt   DateTime?
+  todoDoneById String?
 
   payment Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  @@index([todoKind, todoDoneAt], map: "Dispute_todo_idx")
+}
+
+// ------------------------------------------------------- Book now (hourly)
+
+/// A Book now job: the customer picked hours from the pro's own rate and
+/// minimum. The ServiceRequest/Quote/Payment rows carry chat, status and the
+/// admin mark-as-paid flow; this row snapshots the hourly terms.
+model Booking {
+  id               String    @id @default(cuid())
+  requestId        String    @unique
+  profileId        String
+  clientId         String
+  startsAt         DateTime
+  hourlyRateCents  Int
+  minMinutes       Int
+  minutes          Int
+  totalCents       Int
+  commissionBps    Int
+  commissionCents  Int
+  proCents         Int
+  creditCents      Int       @default(0)
+  dueCents         Int
+  status           String    @default("CONFIRMED") // CONFIRMED | CANCELLED
+  cancelledAt      DateTime?
+  cancelledBy      String? // CLIENT | PRO
+  cancelReason     String? // CANCEL | NO_SHOW | NOBODY_HOME
+  feeCents         Int       @default(0)
+  feeProCents      Int       @default(0)
+  feePlatformCents Int       @default(0)
+  refundCents      Int       @default(0)
+  creationKey      String    @unique
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  request ServiceRequest  @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  profile ProProfile      @relation(fields: [profileId], references: [id])
+  changes BookingChange[]
+
+  @@index([profileId, startsAt])
+  @@index([clientId, createdAt])
+}
+
+/// History of a booking: hour-change proposals and cancellations. Admin
+/// to-dos (refunds, fees, differences) are tracked here; no money moves.
+model BookingChange {
+  id           String    @id @default(cuid())
+  bookingId    String
+  kind         String // HOURS | CANCELLATION
+  state        String // PROPOSED | CONFIRMED | DECLINED | SUPERSEDED | RECORDED
+  actorId      String?
+  minutes      Int?
+  totalCents   Int?
+  note         String?
+  todoKind     String? // REFUND | COLLECT
+  todoCents    Int?
+  todoDoneAt   DateTime?
+  todoDoneById String?
+  meta         Json?
+  decidedAt    DateTime?
+  creationKey  String?   @unique
+  createdAt    DateTime  @default(now())
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([bookingId, createdAt])
+  @@index([todoKind, todoDoneAt])
+}
+
+/// A paid €15 estimate visit (step 4 builds the flow). If the customer hires
+/// the same pro by any path, the full amount is credited to that job once.
+model Estimate {
+  id                String    @id @default(cuid())
+  clientId          String
+  profileId         String
+  requestId         String?
+  amountCents       Int       @default(1500)
+  state             String    @default("PENDING") // PENDING | PAID | CREDITED | REFUNDED
+  paidAt            DateTime?
+  creditedRequestId String?   @unique
+  creditedAt        DateTime?
+  createdAt         DateTime  @default(now())
+
+  profile ProProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@index([clientId, profileId, state])
 }
 
 // ------------------------------------------------------------- reviews
@@ -413,12 +586,14 @@ model Message {
   senderId       String
   body           String   @db.Text
   readAt         DateTime?
+  clientKey      String?
   createdAt      DateTime @default(now())
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   sender       User         @relation(fields: [senderId], references: [id])
 
   @@index([conversationId, createdAt])
+  @@unique([conversationId, senderId, clientKey])
 }
 
 // ------------------------------------------------------- support chat
@@ -428,6 +603,7 @@ model SupportTicket {
   userId    String?
   guestName String?
   guestEmail String?
+  guestTokenHash String?
   subject   String?
   state     SupportState @default(OPEN)
   // true when it arrived outside 09:00–17:00 Europe/Belgrade
@@ -439,6 +615,8 @@ model SupportTicket {
   messages SupportMessage[]
 
   @@index([state, createdAt])
+  @@index([userId, updatedAt])
+  @@index([guestTokenHash])
 }
 
 model SupportMessage {
@@ -447,6 +625,7 @@ model SupportMessage {
   senderId  String?  // null = guest
   fromAgent Boolean  @default(false)
   body      String   @db.Text
+  dedupeKey String? @unique
   createdAt DateTime @default(now())
 
   ticket SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
@@ -468,9 +647,80 @@ model AuditLog {
   actor User? @relation(fields: [actorId], references: [id])
 
   @@index([createdAt])
+  @@index([action, createdAt])
 }
 
 model Setting {
   key   String @id
   value Json
+}
+
+model AuthToken {
+  id String @id @default(cuid())
+  userId String
+  purpose String
+  tokenHash String @unique
+  expiresAt DateTime
+  usedAt DateTime?
+  createdAt DateTime @default(now())
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, purpose])
+  @@index([expiresAt])
+}
+
+model RateLimitBucket {
+  key String @id
+  hits Int
+  resetAt DateTime
+  @@index([resetAt])
+}
+
+model Notification {
+  id String @id @default(cuid())
+  userId String
+  kind String
+  title String
+  href String
+  readAt DateTime?
+  createdAt DateTime @default(now())
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, readAt, createdAt])
+}
+
+model Outbox {
+  id String @id @default(cuid())
+  key String @unique
+  kind String
+  payloadEnc String
+  state String @default("PENDING")
+  attempts Int @default(0)
+  availableAt DateTime @default(now())
+  lockedAt DateTime?
+  sentAt DateTime?
+  lastError String?
+  createdAt DateTime @default(now())
+  @@index([state, availableAt])
+}
+
+model Favorite {
+  id String @id @default(cuid())
+  userId String
+  profileId String
+  createdAt DateTime @default(now())
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  profile ProProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  @@unique([userId, profileId])
+}
+
+model PaymentEvent {
+  id String @id @default(cuid())
+  provider String
+  eventId String
+  paymentId String?
+  kind String
+  processedAt DateTime?
+  createdAt DateTime @default(now())
+  payment Payment? @relation(fields: [paymentId], references: [id])
+  @@unique([provider, eventId])
+  @@index([paymentId, createdAt])
 }

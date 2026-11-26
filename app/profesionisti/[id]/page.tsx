@@ -1,32 +1,175 @@
-import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getProfessional, getReviews, professionals } from "@/lib/data";
-import ProProfile from "@/components/ProProfile";
-
-export function generateStaticParams() {
-  return professionals.map((p) => ({ id: p.id }));
-}
-
-export function generateMetadata({
+import { publicProfile, activeCategories } from "@/lib/server/catalog";
+import { currentUser } from "@/lib/server/auth";
+import { db } from "@/lib/server/db";
+import { money, dateTime } from "@/lib/format";
+import ApiForm from "@/components/marketplace/ApiForm";
+import { categoryFlow, bookableTerms } from "@/lib/server/bookings";
+import { hoursLabel } from "@/lib/book-now";
+import { proTrust } from "@/lib/server/trust";
+import { TRUST_PUBLIC } from "@/lib/trust";
+import TrustDonut from "@/components/marketplace/TrustDonut";
+export const dynamic = "force-dynamic";
+export async function generateMetadata({
   params,
 }: {
-  params: { id: string };
-}): Metadata {
-  const pro = getProfessional(params.id);
-  if (!pro) return { title: "Profesionisti — Zgjoi" };
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
+  const pro = await publicProfile(id);
   return {
-    title: `${pro.name} — ${pro.profession} në ${pro.city} | Zgjoi`,
-    description: pro.about,
+    title: pro
+      ? `${pro.user.name} — ${pro.user.city} | Zgjoi`
+      : "Profili nuk u gjet | Zgjoi",
+    description: pro?.about.slice(0, 160),
+    alternates: { canonical: pro ? `/profesionisti/${pro.slug}` : "/kerko" },
   };
 }
-
-export default function ProfesionistiPage({
+export default async function Page({
   params,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }) {
-  const pro = getProfessional(params.id);
-  if (!pro) return notFound();
-
-  return <ProProfile pro={pro} reviews={getReviews(pro.id)} />;
+  const { id } = await params;
+  const pro = await publicProfile(id);
+  if (!pro) notFound();
+  const [actor, categories, flow] = await Promise.all([
+    currentUser(),
+    activeCategories(),
+    categoryFlow(db, pro.categorySlug),
+  ]);
+  const terms = bookableTerms(pro, flow);
+  const trust = TRUST_PUBLIC ? await proTrust(pro.id) : null;
+  const saved =
+    actor?.role === "CLIENT"
+      ? Boolean(
+          await db.favorite.findUnique({
+            where: {
+              userId_profileId: { userId: actor.id, profileId: pro.id },
+            },
+          }),
+        )
+      : false;
+  const weekdays = [
+    "E hënë",
+    "E martë",
+    "E mërkurë",
+    "E enjte",
+    "E premte",
+    "E shtunë",
+    "E diel",
+  ];
+  const clock = (minutes: number) =>
+    `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+  return (
+    <div className="mx-auto max-w-5xl space-y-6 px-4 py-10">
+      <Link href="/kerko" className="text-gold-dark">
+        ← Kthehu te kërkimi
+      </Link>
+      <section className="rounded-2xl border border-line bg-cream p-6">
+        <h1 className="text-3xl font-bold">{pro.user.name}</h1>
+        <p className="mt-2 text-muted">
+          {categories.find((c) => c.slug === pro.categorySlug)?.name} ·{" "}
+          {pro.user.city}
+        </p>
+        <p className="mt-4 whitespace-pre-wrap">{pro.about}</p>
+        <p className="mt-4 font-semibold">
+          Nga {money(pro.priceFrom)} ·{" "}
+          {pro.ratingCount
+            ? `★ ${pro.ratingAvg.toFixed(1)} (${pro.ratingCount} vlerësime)`
+            : "Pa vlerësime ende"}
+        </p>
+        {trust && <TrustDonut summary={trust} />}
+        <p className="mt-2 text-sm text-muted">
+          {terms
+            ? `Rezervoni direkt me tarifë për orë (${money(terms.rateCents)}/orë, së paku ${hoursLabel(terms.minMinutes)}), ose bisedoni privatisht dhe e punësoni me “Puneso”.`
+            : "Bisedoni privatisht për punën. Çmimi përfundimtar dhe koha vijnë si ofertë në bisedë, dhe ju e punësoni me “Puneso”."}
+        </p>
+        {terms && (
+          <div className="mt-4 inline-flex flex-wrap items-center gap-2 rounded-2xl border border-gold/50 bg-white px-4 py-3 text-sm">
+            <svg aria-hidden viewBox="0 0 24 24" className="h-4 w-4"><path d="M12 2 21 7v10l-9 5-9-5V7z" className="fill-gold" /></svg>
+            <span className="font-semibold">{money(terms.rateCents)} / orë</span>
+            <span className="text-muted">· minimumi {hoursLabel(terms.minMinutes)} · paguhet paraprakisht</span>
+          </div>
+        )}
+        <div className="mt-5 flex flex-wrap items-start gap-4">
+          {terms && (
+            <Link
+              className="rounded-full bg-gold px-5 py-3 font-semibold"
+              href={`/rezervo-tani?pro=${pro.id}`}
+            >
+              Rezervo tani
+            </Link>
+          )}
+          <Link
+            className={terms ? "rounded-full border-2 border-gold px-5 py-3 font-semibold" : "rounded-full bg-gold px-5 py-3 font-semibold"}
+            href={`/kerkesa-e-re?pro=${pro.id}`}
+          >
+            Fillo bisedën
+          </Link>
+          {actor?.role === "CLIENT" && (
+            <ApiForm
+              endpoint="/api/favorites"
+              values={{ profileId: pro.id, saved: !saved }}
+              label={
+                saved ? "Hiq nga të preferuarit" : "Ruaj te të preferuarit"
+              }
+            />
+          )}
+        </div>
+      </section>
+      <section className="rounded-2xl border border-line p-6">
+        <h2 className="text-xl font-bold">Shërbimet dhe zona</h2>
+        <p className="mt-2">{pro.serviceCities.join(", ") || pro.user.city}</p>
+        {pro.services.map((s) => (
+          <p key={s.id} className="mt-2">
+            {s.name} · nga {money(s.price)}
+          </p>
+        ))}
+        <h3 className="mt-5 font-bold">Orari i zakonshëm</h3>
+        <p className="text-sm text-muted">
+          Orari nuk garanton disponueshmëri; konfirmohet në ofertë. Ora e
+          Kosovës.
+        </p>
+        {pro.availability.length ? (
+          pro.availability
+            .sort((a, b) => a.weekday - b.weekday)
+            .map((a) => (
+              <p key={a.weekday}>
+                {weekdays[a.weekday]}: {clock(a.startMin)}–{clock(a.endMin)}
+              </p>
+            ))
+        ) : (
+          <p>Diskutoni orarin me profesionistin.</p>
+        )}
+      </section>
+      <section>
+        <h2 className="text-xl font-bold">
+          Vlerësimet nga punë të përfunduara
+        </h2>
+        {!pro.reviews.length && (
+          <p className="mt-3 text-muted">
+            Ky profesionist nuk ka vlerësime ende.
+          </p>
+        )}
+        {pro.reviews.map((r) => (
+          <article
+            key={r.id}
+            className="mt-4 rounded-2xl border border-line p-5"
+          >
+            <p className="font-semibold">
+              {r.author.name
+                .split(/\s+/)
+                .map((n) => n[0])
+                .join(".")}
+              . · {r.rating}/5
+            </p>
+            <p className="mt-2 whitespace-pre-wrap">{r.text}</p>
+            <time className="text-xs text-muted">{dateTime(r.createdAt)}</time>
+          </article>
+        ))}
+      </section>
+    </div>
+  );
 }

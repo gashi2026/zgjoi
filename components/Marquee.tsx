@@ -119,7 +119,7 @@ export default function Marquee({
 
   /* only pause on hover where hovering is a real thing — on a phone the
      "hover" can stick after a tap and freeze the belt for good */
-  const hoverPause = (v: boolean) => () => {
+  const hoverPause = (v: boolean) => {
     if (typeof window !== "undefined" && window.matchMedia("(hover: hover)").matches) {
       paused.current = v;
     }
@@ -128,10 +128,10 @@ export default function Marquee({
   return (
     <div
       className={`group/marquee relative overflow-hidden ${className}`}
-      onMouseEnter={hoverPause(true)}
-      onMouseLeave={hoverPause(false)}
-      onFocusCapture={hoverPause(true)}
-      onBlurCapture={hoverPause(false)}
+      onMouseEnter={() => hoverPause(true)}
+      onMouseLeave={() => hoverPause(false)}
+      onFocusCapture={() => hoverPause(true)}
+      onBlurCapture={() => hoverPause(false)}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={endDrag}

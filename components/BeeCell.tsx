@@ -45,12 +45,10 @@ function makeSwarm(seed: number): Flyer[] {
 
 export default function BeeCell({ size, height }: { size: number; height: number }) {
   const [swarm, setSwarm] = useState<Flyer[]>([]);
-  const [mounted, setMounted] = useState(false);
   const seed = useRef(0);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    setMounted(true);
     return () => { if (timer.current) clearTimeout(timer.current); };
   }, []);
 
@@ -107,7 +105,7 @@ export default function BeeCell({ size, height }: { size: number; height: number
         </span>
       </button>
 
-      {mounted && swarm.length > 0 && createPortal(
+      {swarm.length > 0 && createPortal(
         <div className="pointer-events-none fixed inset-0 z-[100] overflow-hidden" aria-hidden="true">
           <style>{`
             @keyframes bee-journey {

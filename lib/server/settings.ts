@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { KOMISIONI } from "@/lib/account";
+import { invariant } from "./errors";
 
 /* ------------------------------------------------ JSON key-value store */
 
@@ -22,25 +22,24 @@ export async function setSetting(key: string, value: unknown) {
 
 /* ------------------------------------------------------ money settings */
 
-/** Commission in basis points (1500 = 15%). Admin-overridable via Setting. */
-export async function commissionBps(): Promise<number> {
-  const v = await getSetting<number>("commissionBps");
-  return typeof v === "number" && v >= 0 && v <= 5000 ? v : Math.round(KOMISIONI * 100);
-}
-
 /** Split a client payment into commission + professional payout. */
 export function splitAmount(totalCents: number, bps: number) {
+  invariant(
+    Number.isSafeInteger(totalCents) &&
+      totalCents > 0 &&
+      totalCents <= 10_000_000 &&
+      Number.isInteger(bps) &&
+      bps >= 0 &&
+      bps <= 5000,
+    "MONEY",
+    400,
+    "Shuma nuk është e vlefshme.",
+  );
   const commissionAmount = Math.round((totalCents * bps) / 10000);
   return {
     commissionAmount,
     proAmount: totalCents - commissionAmount,
   };
-}
-
-/** Cost of opening one lead, in cents. Admin-overridable via Setting. */
-export async function leadCostCents(): Promise<number> {
-  const v = await getSetting<number>("leadCostCents");
-  return typeof v === "number" && v >= 0 && v <= 100000 ? v : 400;
 }
 
 /* ------------------------------------------------------- site settings */

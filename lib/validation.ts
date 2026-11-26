@@ -1,4 +1,5 @@
 import { z } from "zod";
+import "./zod-sq";
 
 /* Shared between client forms and server actions, so the rules can never
    drift apart. Messages are in Albanian — they are shown to users. */
@@ -9,13 +10,19 @@ export const personalNo = z
 
 export const email = z
   .string()
-  .email("Shkruani një adresë email të vlefshme.")
+  .trim()
   .toLowerCase()
-  .trim();
+  .max(254)
+  .email("Shkruani një adresë email të vlefshme.");
 
 export const password = z
   .string()
-  .min(8, "Fjalëkalimi duhet të ketë të paktën 8 karaktere.");
+  .min(12, "Fjalëkalimi duhet të ketë të paktën 12 karaktere.")
+  .max(72, "Fjalëkalimi është tepër i gjatë.")
+  .refine(
+    (v) => new TextEncoder().encode(v).length <= 72,
+    "Fjalëkalimi është tepër i gjatë.",
+  );
 
 export const phone = z
   .string()
@@ -43,18 +50,19 @@ export const proSignupSchema = z.object({
   priceFrom: z.coerce.number().int().positive("Shkruaj një çmim fillestar."),
   iban: z.string().min(10, "Shkruaj numrin e llogarisë bankare.").max(34),
   terms: z.literal(true, {
-    errorMap: () => ({ message: "Duhet t'i pranosh kushtet për të vazhduar." }),
+    error: "Duhet t'i pranosh kushtet për të vazhduar.",
   }),
 });
 
 export const loginSchema = z.object({
   email,
-  password: z.string().min(1, "Shkruani fjalëkalimin."),
+  password: z.string().min(1, "Shkruani fjalëkalimin.").max(256),
+  secondFactor: z.string().max(50).optional(),
 });
 
 export const requestSchema = z.object({
   categorySlug: z.string().min(1, "Zgjidh një kategori shërbimi."),
-  answers: z.record(z.union([z.string(), z.array(z.string())])),
+  answers: z.record(z.string(), z.union([z.string(), z.array(z.string())])),
   city: z.string().min(1, "Zgjidh qytetin."),
   timing: z.string().min(1, "Zgjidh kur ju nevojitet shërbimi."),
   budgetBand: z.string().optional(),
@@ -70,7 +78,7 @@ export const quoteSchema = z.object({
         label: z.string().min(1),
         qty: z.coerce.number().int().positive(),
         price: z.coerce.number().int().nonnegative(),
-      })
+      }),
     )
     .min(1, "Shto të paktën një zë me çmim."),
   message: z.string().min(20, "Shkruaj një mesazh më të plotë për klientin."),

@@ -1,30 +1,26 @@
-import { NextResponse } from "next/server";
-
+import { z } from "zod";
+import { api, json, readJson, requestIp } from "@/lib/server/http";
+import { equalSecret, previewCookie } from "@/lib/server/tokens";
+import { AppError } from "@/lib/server/errors";
+import { enforceLimit } from "@/lib/server/rate-limit";
 export async function POST(req: Request) {
-  let fjalekalimi = "";
-  try {
-    const body = await req.json();
-    fjalekalimi = typeof body?.fjalekalimi === "string" ? body.fjalekalimi : "";
-  } catch {
-    // invalid body → falls through to 401
-  }
-
-  const password = process.env.ZGJOI_PASSWORD;
-
-  if (!password || fjalekalimi !== password) {
-    return NextResponse.json(
-      { ok: false, mesazhi: "Fjalëkalimi nuk është i saktë." },
-      { status: 401 }
-    );
-  }
-
-  const res = NextResponse.json({ ok: true });
-  res.cookies.set("zgjoi_preview", password, {
-    httpOnly: true,
-    secure: true,
-    sameSite: "lax",
-    maxAge: 60 * 60 * 24 * 30, // 30 days
-    path: "/",
+  return api(req, async () => {
+    const { fjalekalimi } = z
+      .object({ fjalekalimi: z.string().max(256) })
+      .parse(await readJson(req));
+    const password = process.env.ZGJOI_PASSWORD;
+    // Database-backed limiting applies to both correct and incorrect guesses.
+    await enforceLimit(`site-lock:${requestIp(req.headers)}`, 20, 900000);
+    if (!password || !equalSecret(fjalekalimi, password))
+      throw new AppError("PASSWORD", 401, "Fjalëkalimi nuk është i saktë.");
+    const response = json({ ok: true });
+    response.cookies.set("zgjoi_preview", previewCookie(password), {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 86400,
+      path: "/",
+    });
+    return response;
   });
-  return res;
 }

@@ -3,7 +3,13 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Headset, LayoutGrid, MessageSquare, UserRound, Users } from "lucide-react";
+import {
+  Headset,
+  LayoutGrid,
+  MessageSquare,
+  UserRound,
+  Users,
+} from "lucide-react";
 
 type Me = { name: string; role: "CLIENT" | "PRO" | "ADMIN" | "SUPPORT" } | null;
 
@@ -12,54 +18,71 @@ type Me = { name: string; role: "CLIENT" | "PRO" | "ADMIN" | "SUPPORT" } | null;
 const ACCOUNT_PREFIXES = ["/llogaria", "/pro", "/admin"];
 
 export default function MobileBottomNav() {
-  const [me, setMe] = useState<Me>(null);
   const pathname = usePathname();
 
   const onAccountPage = ACCOUNT_PREFIXES.some(
-    (p) => pathname === p || pathname.startsWith(`${p}/`)
+    (p) => pathname === p || pathname.startsWith(`${p}/`),
   );
 
+  if (!onAccountPage) return null;
+  return <AccountBottomNav key={pathname} pathname={pathname} />;
+}
+
+function AccountBottomNav({ pathname }: { pathname: string }) {
+  const [me, setMe] = useState<Me>(null);
+
   useEffect(() => {
-    // don't even ask who's logged in on public pages
-    if (!onAccountPage) {
-      setMe(null);
-      return;
-    }
     let alive = true;
     fetch("/api/auth/me", { cache: "no-store" })
       .then((r) => r.json())
-      .then((d) => { if (alive) setMe(d.user ?? null); })
-      .catch(() => { if (alive) setMe(null); });
-    return () => { alive = false; };
-  }, [pathname, onAccountPage]);
+      .then((d) => {
+        if (alive) setMe(d.user ?? null);
+      })
+      .catch(() => {
+        if (alive) setMe(null);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [pathname]);
 
-  if (!onAccountPage || !me) return null;
+  if (!me) return null;
 
   const items =
-    me.role === "ADMIN" || me.role === "SUPPORT"
-      ? [
-          { href: "/admin", label: "Paneli", icon: LayoutGrid },
-          { href: "/admin/mbeshtetja", label: "Mbështetja", icon: Headset },
-          { href: "/admin/perdoruesit", label: "Përdoruesit", icon: Users },
-        ]
-      : me.role === "PRO"
+    me.role === "SUPPORT"
+      ? [{ href: "/admin/mbeshtetja", label: "Mbështetja", icon: Headset }]
+      : me.role === "ADMIN"
         ? [
-            { href: "/pro/mesazhet", label: "Mesazhet", icon: MessageSquare },
-            { href: "/pro/paneli", label: "Punët e mia", icon: LayoutGrid },
-            { href: "/pro/profili", label: "Profili", icon: UserRound },
+            { href: "/admin", label: "Paneli", icon: LayoutGrid },
+            { href: "/admin/mbeshtetja", label: "Mbështetja", icon: Headset },
+            { href: "/admin/perdoruesit", label: "Përdoruesit", icon: Users },
           ]
-        : [
-            { href: "/llogaria/mesazhet", label: "Mesazhet", icon: MessageSquare },
-            { href: "/llogaria", label: "Punët e mia", icon: LayoutGrid },
-            { href: "/llogaria/cilesimet", label: "Profili", icon: UserRound },
-          ];
+        : me.role === "PRO"
+          ? [
+              { href: "/pro/kerkesat", label: "Bisedat", icon: MessageSquare },
+              { href: "/pro/paneli", label: "Punët e mia", icon: LayoutGrid },
+              { href: "/pro/profili", label: "Profili", icon: UserRound },
+            ]
+          : [
+              {
+                href: "/llogaria/kerkesat",
+                label: "Bisedat",
+                icon: MessageSquare,
+              },
+              { href: "/llogaria", label: "Punët e mia", icon: LayoutGrid },
+              {
+                href: "/llogaria/cilesimet",
+                label: "Profili",
+                icon: UserRound,
+              },
+            ];
 
   return (
     <nav
       className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-white pb-[env(safe-area-inset-bottom)] lg:hidden"
       aria-label="Navigimi i llogarisë"
     >
-      <div className="grid grid-cols-3">
+      <div className="grid" style={{ gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))` }}>
         {items.map(({ href, label, icon: Icon }) => {
           const exact = href === "/llogaria" || href === "/admin";
           const active = exact ? pathname === href : pathname.startsWith(href);
@@ -67,7 +90,8 @@ export default function MobileBottomNav() {
             <Link
               key={href}
               href={href}
-              className={`flex flex-col items-center gap-1 py-2.5 text-[11px] font-semibold transition-colors ${
+              aria-current={active ? "page" : undefined}
+              className={`flex min-h-14 flex-col items-center gap-1 px-1 py-2.5 text-xs font-semibold transition-colors ${
                 active ? "text-gold-dark" : "text-muted hover:text-ink"
               }`}
             >

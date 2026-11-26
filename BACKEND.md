@@ -1,214 +1,78 @@
-# Backend — udhëzues i plotë
+# Backend: current implementation and boundaries
 
-Ky dokument shpjegon çfarë u ndërtua, si ta ngresh dhe çfarë mbetet.
+This candidate is a Next.js application running both the website and its API on
+Vercel. React renders the screens; Tailwind supplies the existing gold/cream design.
+Prisma translates server code into PostgreSQL queries against Supabase. The browser
+never receives the database password or storage service key.
 
----
+The website uses its own bcrypt passwords and hashed database sessions. It does
+not use Supabase Auth. Enabling a Supabase Auth setting will not change website
+registration, recovery or roles. Private pages and mutations check the current,
+active user, role and record ownership; the site password is only a testing gate.
 
-## 1. Çfarë ka brenda
+## Data flow
 
-| Shtresa | Skedarët | Çfarë bën |
-|---|---|---|
-| Baza e të dhënave | `prisma/schema.prisma` | 22 tabela: përdorues, profile, kërkesa, oferta, pagesa, vlerësime, biseda, mbështetje, audit |
-| Lidhja | `lib/server/db.ts` | Klienti Prisma (një instancë e vetme) |
-| Enkriptimi | `lib/server/crypto.ts` | AES-256-GCM për numrin personal dhe IBAN |
-| Autentikimi | `lib/server/auth.ts` | Fjalëkalime me bcrypt, sesione me cookie httpOnly |
-| Mbrojtja e faqeve | `middleware.ts`, `lib/server/guard.ts` | `/llogaria`, `/pro`, `/admin` kërkojnë hyrje |
-| Validimi | `lib/validation.ts` | Zod — të njëjtat rregulla në klient dhe server |
-| Veprimet | `app/actions/*.ts` | Regjistrim, hyrje, kërkesa, oferta, vlerësime |
-| Pagesat | `lib/server/stripe.ts`, `app/api/stripe/webhook` | Escrow me capture manual |
-| Mbështetja live | `components/SupportChat.tsx`, `app/actions/support.ts` | 09:00–17:00 kohë Kosove |
-| Paneli i agjentit | `/admin/mbeshtetja` | Radha e bisedave, përgjigje direkte |
-| Kufizimi | `lib/server/rate-limit.ts` | Mbron hyrjen dhe chat-in nga abuzimi |
+1. Search reads approved, active professionals in active service categories.
+2. An authenticated customer selects one professional. Creating the inquiry also
+   creates that pair's private conversation; there is no public lead feed.
+3. Only the selected pro can issue a versioned offer. The customer can accept only
+   the current unexpired version. A serializable transaction records the accepted
+   quote and one pending payment amount/commission snapshot.
+4. The test payment adapter creates hosted checkout only after acceptance. A
+   signed, settled provider event changes PENDING to HELD. The return URL alone
+   never marks a payment successful.
+5. The pro starts work and requests completion. The customer confirms completion;
+   one payout obligation is created. The optional review is a separate action.
+6. A restricted admin operation can prepare a test transfer after completion. The
+   provider charge is checked again for refunds/disputes. TRANSFERRED means a
+   provider-account transfer; it never means that a bank payout has succeeded.
 
----
+## Source map
 
-## 2. Ngritja — hap pas hapi
+| Location                                   | Responsibility                                                                         |
+| ------------------------------------------ | -------------------------------------------------------------------------------------- |
+| `app/`, `components/marketplace/`          | Public catalog, signup and real customer/pro/admin pages and forms                     |
+| `app/api/`                                 | HTTP boundaries: current user, role/ownership, input and origin checks                 |
+| `app/actions/admin.ts`                     | Audited category/site/honeycomb management from the retained admin UI                  |
+| `lib/server/auth.ts`, `accounts.ts`        | Hashed sessions, passwords, recovery, verification and own-profile changes             |
+| `lib/server/marketplace.ts`, `catalog.ts`  | Private inquiries/chat, offers, acceptance, completion, reviews, search and favorites  |
+| `lib/server/support.ts`, `admin.ts`        | Private support, guest capabilities and audited administrative commands                |
+| `lib/server/payments.ts`                   | Test-only checkout, settlement validation, transfer/refund preparation                 |
+| `lib/server/notifications.ts`              | In-app notifications and encrypted account-email outbox                                |
+| `lib/server/storage.ts`                    | Server-side private document upload and short-lived download links                     |
+| `lib/`                                     | Shared validation, formatting, static service taxonomy/cities and design configuration |
+| `prisma/schema.prisma`                     | 28 application models, relationships and state enums                                   |
+| `supabase/staging/`                        | Applied staging bootstrap/upgrade, RLS/grants/constraint verification                  |
+| `tests/`, `scripts/`, `.github/workflows/` | Disposable Postgres migration/HTTP journey, unit checks, build and smoke checks        |
 
-### 2.1 Baza e të dhënave (Supabase, falas)
+## Important boundaries
 
-1. Shko te **supabase.com** → **New project**.
-2. Vendos një emër dhe një fjalëkalim të fortë. Ruaje fjalëkalimin.
-3. Prit ~2 minuta derisa projekti të ngrihet.
-4. **Project Settings → Database → Connection string → URI**.
-5. Kopjo dy adresa:
-   - **Transaction pooler** (porta 6543) → `DATABASE_URL`
-   - **Direct connection** (porta 5432) → `DIRECT_URL`
+- Production still has the original application schema and source. The expanded
+  28-table schema has been applied only to the separate staging project. Do not
+  run its bootstrap or guarded upgrade against production.
+- All 28 staging tables have RLS and no anonymous/authenticated browser-role CRUD
+  grants. No permissive RLS policies are intentional: trusted Prisma server access
+  performs application authorization. Supabase's informational no-policy notices
+  do not call for opening the tables to browsers.
+- Support retries are bound to the authenticated user or prepared private guest
+  capability. Client keys alone do not authorize another person's ticket.
+- Documents are disabled until a private bucket and server key are configured.
+  Type/signature checks are present; malware scanning, retention/deletion and
+  external storage verification remain open.
+- In-app job notifications persist. Account emails have a bounded, encrypted,
+  retryable outbox and are disabled by default. Used/expired account links are
+  discarded before delivery. Job email/SMS/push delivery is not implemented.
+- `PAYMENTS_MODE=disabled` is the default. `stripe_test` additionally requires a
+  test secret and the matching webhook secret. Live keys are rejected. The actual
+  company/provider/Kosovo payout arrangement is unresolved.
+- Unexpected provider-side refunds/chargebacks, transfer reversals, bank payout
+  events, partial refunds, processor fees and full financial reconciliation need
+  implementation and testing before live money. A transfer precheck is not a
+  substitute for those event handlers or an accounting ledger.
+- The maintenance job expires offers and cleans expired authentication/rate-limit
+  records, processes enabled mail and records a heartbeat. It never releases money
+  because a time limit expired. Monitoring of that heartbeat still needs an owner.
 
-### 2.2 Çelësi i enkriptimit
-
-Numri personal dhe IBAN-i ruhen të enkriptuar. Gjenero një çelës:
-
-```bash
-openssl rand -hex 32
-```
-
-Nëse nuk ke terminal, përdor https://generate.plus/en/hex (64 karaktere).
-
-### 2.3 Variablat në Vercel
-
-**Project → Settings → Environment Variables**, shto:
-
-| Emri | Vlera |
-|---|---|
-| `DATABASE_URL` | nga Supabase (pooler) |
-| `DIRECT_URL` | nga Supabase (direct) |
-| `ENCRYPTION_KEY` | 64 karaktere hex |
-| `NEXT_PUBLIC_APP_URL` | `https://zgjoi.vercel.app` |
-| `SEED_ADMIN_EMAIL` | email-i yt |
-| `SEED_ADMIN_PASSWORD` | një fjalëkalim i fortë |
-
-Stripe lëre bosh për momentin — aplikacioni punon në modalitet demo.
-
-### 2.4 Krijimi i tabelave
-
-Në kompjuterin tënd, me `.env` të plotësuar:
-
-```bash
-npm install
-npx prisma db push      # krijon tabelat
-npx prisma db seed      # kategoritë, pyetësorët, llogaria admin
-```
-
-Kontrolloji me `npx prisma studio` (hapet në shfletues).
-
----
-
-## 3. Pagesat me escrow — dy strategji
-
-Nuk ka një mënyrë të vetme që funksionon për çdo punë. Kufizimi vendimtar
-është teknik: **një rezervim karte skadon pas 7 ditësh**. Prandaj strategjia
-zgjidhet automatikisht sipas kohëzgjatjes që deklaron profesionisti në ofertë
-(`Quote.expectedDays`).
-
-| | Punë e shkurtër (≤ 5 ditë) | Punë e gjatë (> 5 ditë) |
-|---|---|---|
-| Strategjia | `AUTH_HOLD` | `DESTINATION_CHARGE` |
-| Në Stripe | `capture_method: "manual"` | pagesë e menjëhershme + `transfer_data.destination` |
-| Ku janë paratë | te klienti, të ngrira | në ledger-in e profesionistit, të bllokuara |
-| Çka i tërheq | `paymentIntents.capture()` | `payouts.create()` në llogarinë e lidhur |
-| Afati i fortë | 7 ditë — pastaj rezerva bie | ~90 ditë — duhet liruar ose rimbursuar |
-
-### 3.1 AUTH_HOLD — rezervim
-
-1. Klienti pranon ofertën → `PaymentIntent` me `capture_method: "manual"`.
-2. Klienti fut kartën → shuma **ngrihet**, nuk tërhiqet. `state = AUTHORISED`.
-3. Klienti konfirmon punën → `capture()` → paratë lëvizin. `state = RELEASED`.
-4. Nëse puna nuk kryhet brenda 7 ditësh, rezerva bie vetvetiu.
-
-Përparësia: klienti nuk e ndien pagesën derisa puna të kryhet.
-Kufizimi: 7 ditë, pa përjashtim.
-
-### 3.2 DESTINATION_CHARGE — tërhiqet dhe mbyllet
-
-1. Klienti pranon ofertën → pagesa procesohet **menjëherë**.
-2. Paratë shkojnë në llogarinë Connect të profesionistit, minus komisioni
-   (`application_fee_amount`).
-3. Llogaria e profesionistit konfigurohet me **payouts manuale**
-   (`settings.payouts.schedule.interval = "manual"`). Kjo është e gjithë
-   mbyllja: profesionisti i sheh paratë, por nuk mund t'i tërheqë.
-4. Klienti konfirmon → `payouts.create()` në llogarinë e lidhur → paratë
-   kalojnë në bankë.
-
-Kërkesë: çdo profesionist duhet të kalojë onboarding-un e Stripe Connect
-Express përpara se të pranojë punë të gjata. Nëse nuk e ka, `beginEscrow()`
-e refuzon dhe e shpjegon.
-
-### 3.3 Rojtari i afateve (kritik)
-
-`app/api/cron/escrow/route.ts` ekzekutohet çdo orë (`vercel.json`). Pa të,
-paratë humbasin në heshtje — dhe ky është dështimi më i keq i mundshëm:
-klienti mendon se ka paguar, profesionisti nuk merr asgjë.
-
-Çka bën:
-
-1. **36 orë para skadimit të rezervës** — njofton të dy palët.
-2. **Pas skadimit** — anulon rezervën te Stripe dhe vendos `state = EXPIRED`,
-   që gjendja te ne të mos gënjejë.
-3. **Pas 75 ditësh në ledger** — njofton se puna duhet mbyllur.
-4. **7 ditë para afatit 90-ditor** — i numëron për ndërhyrje administrative.
-
-Shto `CRON_SECRET` në Vercel që endpoint-i të mos thirret nga jashtë.
-
-### 3.4 Konfigurimi i Stripe
-
-1. Llogari te **stripe.com** → aktivizo **Connect**.
-2. Çelësat: `STRIPE_SECRET_KEY`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`.
-3. **Developers → Webhooks → Add endpoint**:
-   `https://<domeni>/api/stripe/webhook`
-   Ngjarjet: `payment_intent.amount_capturable_updated`,
-   `payment_intent.succeeded`, `payment_intent.canceled`,
-   `charge.refunded`, `account.updated`.
-4. Kopjo `STRIPE_WEBHOOK_SECRET`.
-
-> **Kujdes ligjor.** Mbajtja e parave të palëve të treta është veprimtari e
-> rregulluar. Modeli me Connect ndihmon sepse profesionisti bëhet palë e
-> regjistruar te Stripe, por kjo nuk të liron nga detyrimet vendore.
-> Konsulto një jurist para pagesës së parë reale. Verifiko gjithashtu te
-> Stripe nëse Kosova mbulohet nga Connect për rastin tënd.
-
-## 4. Mbështetja live 09:00–17:00
-
-Logjika: `lib/support-hours.ts`. Përdor `Europe/Belgrade`, pra ora e verës
-llogaritet vetë.
-
-- **Brenda orarit** — pika jeshile, "Mbështetja është online".
-- **Jashtë orarit** — pika gri, mesazhi ruhet, shënohet `offline`, dhe
-  klienti merr menjëherë përgjigje automatike me kohën e kthimit.
-- Agjenti përgjigjet te `/admin/mbeshtetja`; bisedat offline dalin të parat.
-
-Ndryshimi i orarit: `OPEN_HOUR`, `CLOSE_HOUR`, `OPEN_DAYS`.
-
-Chat-i punon me *polling* çdo 5 sekonda, jo websocket — kështu nuk ka
-server shtesë për të mbajtur. Për trafik të madh kalo te Pusher ose
-Supabase Realtime.
-
----
-
-## 5. Siguria — çfarë u bë
-
-- Fjalëkalimet: bcrypt me 12 raunde, kurrë në tekst të thjeshtë.
-- Sesionet: cookie `httpOnly`, `secure`, `sameSite=lax`, 30 ditë.
-- Numri personal dhe IBAN: AES-256-GCM, në bazë ruhen vetëm 4 shifrat e fundit
-  të dukshme.
-- Hyrja: maksimum 8 përpjekje / 15 minuta për IP.
-- Mesazhi i gabimit në hyrje është i njëjtë për email të pasaktë dhe
-  fjalëkalim të pasaktë — që të mos zbulohet cili email ekziston.
-- Çdo veprim i rëndësishëm shkon në `AuditLog`.
-- Faqet private mbrohen dy herë: `middleware.ts` (cookie) dhe `pageGuard()`
-  (roli, në server).
-
-### Çfarë mbetet për prodhim
-- Verifikim i email-it dhe rikthim i fjalëkalimit (dërgo me Resend).
-- 2FA për administratorët.
-- Rate limit me Redis (Upstash) nëse ke më shumë se një instancë.
-- Politikë privatësie që shpjegon pse mblidhet numri personal (kërkesë ligjore).
-
----
-
-## 6. Kalimi nga demo në të dhëna reale
-
-Faqet ende lexojnë nga `lib/data.ts`, `lib/account.ts`, `lib/admin.ts`.
-Zëvendësimi bëhet një faqe në kohë:
-
-```ts
-// para
-import { professionals } from "@/lib/data";
-
-// pas
-import { db } from "@/lib/server/db";
-const professionals = await db.proProfile.findMany({
-  where: { verification: "APPROVED" },
-  include: { user: { select: { name: true, city: true } } },
-});
-```
-
-Rendi i rekomanduar:
-1. `/hyr` dhe të dy faqet e regjistrimit → `app/actions/auth.ts`
-2. `/kerkesa-e-re` → `createRequest`
-3. `/pro/kerkesat` dhe `/pro/oferta` → `openLead`, `sendQuote`
-4. `/llogaria/ofertat` → `acceptQuote`
-5. `/llogaria/vleresim` → `submitReview`
-6. Panelet dhe admin-i në fund
-
-Formularët ekzistues janë ndërtuar me `useState` — lidhja bëhet duke
-zëvendësuar `onClick` me `useActionState` dhe veprimin përkatës.
+See [the implementation evidence](docs/PRIVATE-MARKETPLACE-BETA.md),
+[the roadmap](docs/LAUNCH-ROADMAP.md) and [owner setup](docs/OWNER-SETUP.md).
+Builds do not mutate databases; the seed is catalog-only and refuses production.

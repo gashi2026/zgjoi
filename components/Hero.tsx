@@ -2,7 +2,7 @@ import SearchBar from "./SearchBar";
 import { Bee, FlightPath } from "./Brand";
 import Honeycomb from "./Honeycomb";
 import MobileHexBelt from "./MobileHexBelt";
-import { db } from "@/lib/server/db";
+import { activeCategories } from "@/lib/server/catalog";
 import { getHoneycombMap, getSiteSettings } from "@/lib/server/settings";
 import { categories as baseCategories } from "@/lib/data";
 
@@ -10,7 +10,7 @@ export default async function Hero() {
   let title = "Gjej profesionist për\nçdo shërbim.";
   let accent = "Lehtë.";
   let subtitle =
-    "Zgjoi është platforma më e besuar në Kosovë për të gjetur dhe punësuar profesionistë lokalë.";
+    "Gjej profesionistë lokalë të shqyrtuar në Kosovë dhe kërko një ofertë private. Tani në beta.";
   let services: Record<string, string> | undefined;
   let catalog: { slug: string; name: string; icon: string }[] | undefined;
 
@@ -18,7 +18,7 @@ export default async function Hero() {
     const [site, comb, cats] = await Promise.all([
       getSiteSettings(),
       getHoneycombMap(),
-      db.category.findMany({ where: { active: true }, orderBy: { position: "asc" } }),
+      activeCategories(),
     ]);
     if (site?.heroTitle) title = site.heroTitle;
     if (site?.heroAccent) accent = site.heroAccent;

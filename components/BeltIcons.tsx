@@ -1,4 +1,4 @@
-import CategoryIcon from "./CategoryIcon";
+import BaseCategoryIcon from "./BaseCategoryIcon";
 
 /* Hand-drawn category icons, all on the same 24×24 grid with a 1.8
    outline so they sit alongside the shared icon set. */
@@ -181,14 +181,12 @@ export const Dancer = ({ size = 21 }: { size?: number }) => (
   </Svg>
 );
 
-/* pointe shoes with a ribbon */
+/* Two pointe shoes and crossed ribbons, with room between the outlines. */
 export const Pointe = ({ size = 21 }: { size?: number }) => (
   <Svg size={size}>
-    <path d="M12 4.6c-1 -1.4-3.4-1.4-3.4.4 0 1.2 1.8 1.6 3.4 1.6" />
-    <path d="M12 4.6c1-1.4 3.4-1.4 3.4.4 0 1.2-1.8 1.6-3.4 1.6" />
-    <path d="M10.6 6.6 9 14.6c-.3 1.5.2 3 1.2 4 .8.8 2 .4 2.2-.7l1.4-7.6" />
-    <path d="M13.4 6.6l1.6 8c.3 1.5-.2 3-1.2 4" />
-    <path d="M9.2 16.6c1.4.9 3 .9 4.4 0" />
+    <path d="m7 3 3 5M12 3 3 9M14 3l4 5M19 3l-6 6" />
+    <path d="m5 8 5 2-3 10a2 2 0 0 1-3.8-1.2L5 8ZM14 9l5-1 1 11a2 2 0 0 1-4 .6L14 9Z" />
+    <path d="m4 17 4 1M16 17l4-.4" />
   </Svg>
 );
 
@@ -230,34 +228,21 @@ export const CUSTOM_ICON_KEYS = Object.keys(CUSTOM);
    - a name from the shared set ("wrench", "leaf", …)
    - a link to an image you uploaded (https://…svg | .png)
    - raw SVG code pasted straight in ("<svg …>…</svg>") */
-export default function BeltIcon({ name, size = 21 }: { name: string; size?: number }) {
+export default function BeltIcon({ name, size = 21, strokeWidth = 1.8 }: { name: string; size?: number; strokeWidth?: number }) {
   const value = (name ?? "").trim();
 
-  if (value.startsWith("<svg")) {
+  const imageSource = value.startsWith("<svg")
+    ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(value)}`
+    : /^(https?:\/\/|data:image\/)/i.test(value) ? value : null;
+  if (imageSource) {
     return (
-      <span
-        className="inline-flex items-center justify-center [&>svg]:h-full [&>svg]:w-full"
-        style={{ width: size, height: size }}
-        dangerouslySetInnerHTML={{ __html: value }}
-      />
+      // SVG artwork is an inert image, never markup in the page.
+      // eslint-disable-next-line @next/next/no-img-element
+      <img src={imageSource} alt="" width={size} height={size} className="object-contain" />
     );
   }
 
-  if (/^(https?:\/\/|data:image\/)/i.test(value)) {
-    return (
-      /* eslint-disable-next-line @next/next/no-img-element */
-      <img
-        src={value}
-        alt=""
-        width={size}
-        height={size}
-        className="object-contain"
-        style={{ width: size, height: size }}
-      />
-    );
-  }
-
-  const Custom = CUSTOM[value];
+  const Custom = CUSTOM[value === "drama" ? "pointe" : value];
   if (Custom) return <Custom size={size} />;
-  return <CategoryIcon name={value} size={size} strokeWidth={1.8} className="text-gold-dark" />;
+  return <BaseCategoryIcon name={value} size={size} strokeWidth={strokeWidth} className="text-gold-dark" />;
 }
