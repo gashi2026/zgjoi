@@ -21,6 +21,8 @@ import { money, clockTime } from "../format";
 import { checkCancellationAlert } from "./trust";
 import { createDispute } from "./disputes";
 import { nobodyHomeGate, noShowGate, NO_SHOW_AFTER_MINUTES } from "../arrival";
+import { SERIES_CADENCES, seriesLabel } from "../recurring-series";
+import { createSeriesRow, proposeSeriesFromBooking } from "./recurring-series";
 
 type FlowDB = Pick<Prisma.TransactionClient, "category">;
 /** Per-category hiring paths: code default, overridden by the Category row. */
@@ -85,6 +87,7 @@ export const bookNowInput = z.object({
   detail: cleanText(10, 4000),
   city: cleanText(1, 60),
   address: z.string().trim().max(300).optional(),
+  repeat: z.enum(["NONE", ...SERIES_CADENCES]).optional(),
 });
 
 async function creditEstimate(tx: Prisma.TransactionClient, clientId: string, profileId: string, requestId: string) {
@@ -103,6 +106,56 @@ export async function applyEstimateCreditToPayment(tx: Prisma.TransactionClient,
   return credit;
 }
 
+export type BookNowInsert = {
+  actorId: string; clientId: string; profile: { id: string; userId: string };
+  categorySlug: string; rateCents: number; minMinutes: number; minutes: number; startsAt: Date;
+  detail: string; city: string; address: string | null; creationKey: string; now: Date;
+  series?: { id: string; occurrenceAt: Date; label: string };
+};
+/** Creates one Book now job: ServiceRequest (BOOKED) + accepted Quote + Payment
+ * (PENDING, OFFLINE) + Booking. Shared by Book now and recurring occurrences. */
+export async function insertBookNow(tx: Prisma.TransactionClient, b: BookNowInsert) {
+  const totalCents = bookingTotal(b.rateCents, b.minutes);
+  const label = `${hoursLabel(b.minutes)} × ${money(b.rateCents)}/orë`;
+  const request = await tx.serviceRequest.create({ data: {
+    clientId: b.clientId, selectedProfileId: b.profile.id, acceptedProfileId: b.profile.id, categorySlug: b.categorySlug,
+    title: `${b.series ? "Rezervim i përsëritur" : "Rezervim"} · ${hoursLabel(b.minutes)}`, detail: b.detail, city: b.city, address: b.address,
+    timing: b.series ? `Rezervo tani · ${b.series.label}` : "Rezervo tani",
+    answers: { bookNow: { version: 1, minutes: b.minutes, rateCents: b.rateCents, ...(b.series ? { seriesId: b.series.id } : {}) } },
+    state: "BOOKED", scheduledAt: b.startsAt, creationKey: hashToken(`booking-request:${b.creationKey}`), conversation: { create: {} },
+  } });
+  await assertAppointmentAvailable(tx, b.profile.id, b.startsAt, `${b.minutes} min`, request.id);
+  const commission = await bookingCommission(tx, request, b.startsAt, true, b.now, b.series ? { seriesId: b.series.id } : {});
+  const credit = await creditEstimate(tx, b.clientId, b.profile.id, request.id);
+  const price = priceJob(totalCents, commission.bps, credit.creditCents);
+  const quote = await tx.quote.create({ data: {
+    requestId: request.id, profileId: b.profile.id, amount: totalCents,
+    lines: [{ label, qty: b.minutes / 60, priceCents: b.rateCents }],
+    message: `Rezervo tani · ${label}${b.series ? ` · ${b.series.label}` : ""}`, availableAt: "Rezervo tani", duration: `${b.minutes} min`,
+    scheduledAt: b.startsAt, state: "ACCEPTED", acceptedAt: b.now, revision: 1,
+  } });
+  await tx.serviceRequest.update({ where: { id: request.id }, data: { acceptedQuoteId: quote.id, version: 1 } });
+  await tx.payment.create({ data: {
+    requestId: request.id, amount: totalCents, commissionBps: price.commissionBps, commissionAmount: price.commissionCents,
+    proAmount: price.proCents, currency: "EUR", strategy: "PLATFORM_CHARGE", provider: "disabled", state: "PENDING",
+    method: "OFFLINE", estimateCreditCents: price.creditCents,
+  } });
+  await tx.booking.create({ data: {
+    requestId: request.id, profileId: b.profile.id, clientId: b.clientId, startsAt: b.startsAt,
+    hourlyRateCents: b.rateCents, minMinutes: Math.min(b.minMinutes, b.minutes), minutes: b.minutes,
+    totalCents, commissionBps: price.commissionBps, commissionCents: price.commissionCents, proCents: price.proCents,
+    creditCents: price.creditCents, dueCents: price.dueCents, creationKey: b.creationKey,
+    ...(b.series ? { seriesId: b.series.id, occurrenceAt: b.series.occurrenceAt } : {}),
+  } });
+  await notify(tx, b.profile.userId, "BOOKED", b.series
+    ? "U krijua vizita e radhës e rezervimit të përsëritur; pagesa është në pritje"
+    : "Keni një rezervim të ri me “Rezervo tani”; pagesa është në pritje", `/pro/kerkesat/${request.id}`);
+  await tx.auditLog.create({ data: { actorId: b.actorId, action: b.series ? "RECURRING_OCCURRENCE_CREATED" : "BOOK_NOW_CREATED", target: request.id,
+    meta: { minutes: b.minutes, rateCents: b.rateCents, totalCents, commission, creditCents: price.creditCents, estimateId: credit.estimateId,
+      ...(b.series ? { seriesId: b.series.id, occurrenceAt: b.series.occurrenceAt.toISOString() } : {}) } } });
+  return { requestId: request.id, totalCents, commissionBps: price.commissionBps };
+}
+
 export async function createBooking(actor: Actor, input: unknown) {
   invariant(actor.role === "CLIENT", "FORBIDDEN", 403, "Nuk keni qasje në këtë veprim.");
   const data = bookNowInput.parse(input);
@@ -114,7 +167,7 @@ export async function createBooking(actor: Actor, input: unknown) {
   const creationKey = hashToken(`booking:${actor.id}:${data.clientKey}`);
   return serializable(async (tx) => {
     const previous = await tx.booking.findUnique({ where: { creationKey } });
-    if (previous) return { ok: true, id: previous.requestId, redirect: `/llogaria/kerkesat/${previous.requestId}` };
+    if (previous) return { ok: true, id: previous.requestId, seriesId: previous.seriesId, redirect: `/llogaria/kerkesat/${previous.requestId}` };
     const profile = await tx.proProfile.findFirst({ where: { id: data.profileId, verification: "APPROVED", user: { suspendedAt: null, role: "PRO" } },
       include: { user: { select: { id: true } } } });
     invariant(profile && profile.userId !== actor.id, "PRO_UNAVAILABLE", 409, "Ky profesionist nuk pranon rezervime për momentin.");
@@ -123,40 +176,20 @@ export async function createBooking(actor: Actor, input: unknown) {
     invariant(terms, "BOOK_NOW_UNAVAILABLE", 409, "Ky profesionist nuk pranon “Rezervo tani”. Filloni një bisedë me të.");
     const hours = checkHours(data.minutes, terms.minMinutes);
     invariant(hours.ok, "HOURS", 400, hours.ok ? "" : hours.message);
-    const totalCents = bookingTotal(terms.rateCents, data.minutes);
-    const label = `${hoursLabel(data.minutes)} × ${money(terms.rateCents)}/orë`;
-    const request = await tx.serviceRequest.create({ data: {
-      clientId: actor.id, selectedProfileId: profile.id, acceptedProfileId: profile.id, categorySlug: category.slug,
-      title: `Rezervim · ${hoursLabel(data.minutes)}`, detail: data.detail, city: data.city, address: data.address || null,
-      timing: "Rezervo tani", answers: { bookNow: { version: 1, minutes: data.minutes, rateCents: terms.rateCents } },
-      state: "BOOKED", scheduledAt: startsAt, creationKey: hashToken(`booking-request:${creationKey}`), conversation: { create: {} },
-    } });
-    await assertAppointmentAvailable(tx, profile.id, startsAt, `${data.minutes} min`, request.id);
-    const commission = await bookingCommission(tx, request, startsAt, true);
-    const credit = await creditEstimate(tx, actor.id, profile.id, request.id);
-    const price = priceJob(totalCents, commission.bps, credit.creditCents);
-    const quote = await tx.quote.create({ data: {
-      requestId: request.id, profileId: profile.id, amount: totalCents,
-      lines: [{ label, qty: data.minutes / 60, priceCents: terms.rateCents }],
-      message: `Rezervo tani · ${label}`, availableAt: "Rezervo tani", duration: `${data.minutes} min`,
-      scheduledAt: startsAt, state: "ACCEPTED", acceptedAt: now, revision: 1,
-    } });
-    await tx.serviceRequest.update({ where: { id: request.id }, data: { acceptedQuoteId: quote.id, version: 1 } });
-    await tx.payment.create({ data: {
-      requestId: request.id, amount: totalCents, commissionBps: price.commissionBps, commissionAmount: price.commissionCents,
-      proAmount: price.proCents, currency: "EUR", strategy: "PLATFORM_CHARGE", provider: "disabled", state: "PENDING",
-      method: "OFFLINE", estimateCreditCents: price.creditCents,
-    } });
-    await tx.booking.create({ data: {
-      requestId: request.id, profileId: profile.id, clientId: actor.id, startsAt,
-      hourlyRateCents: terms.rateCents, minMinutes: terms.minMinutes, minutes: data.minutes,
-      totalCents, commissionBps: price.commissionBps, commissionCents: price.commissionCents, proCents: price.proCents,
-      creditCents: price.creditCents, dueCents: price.dueCents, creationKey,
-    } });
-    await notify(tx, profile.userId, "BOOKED", "Keni një rezervim të ri me “Rezervo tani”; pagesa është në pritje", `/pro/kerkesat/${request.id}`);
-    await tx.auditLog.create({ data: { actorId: actor.id, action: "BOOK_NOW_CREATED", target: request.id,
-      meta: { minutes: data.minutes, rateCents: terms.rateCents, totalCents, commission, creditCents: price.creditCents, estimateId: credit.estimateId } } });
-    return { ok: true, id: request.id, redirect: `/llogaria/kerkesat/${request.id}` };
+    // Recurring schedule chosen on the Book now form: the customer agrees to the
+    // pro's public terms, so the series is active at once (like Book now itself).
+    const series = data.repeat && data.repeat !== "NONE"
+      ? await createSeriesRow(tx, { clientId: actor.id, profileId: profile.id, categorySlug: category.slug, cadence: data.repeat,
+          firstStartsAt: startsAt, minutes: data.minutes, rateCents: terms.rateCents, detail: data.detail, city: data.city,
+          address: data.address || null, proposedBy: "CLIENT", status: "ACTIVE", creationKey: hashToken(`series:${creationKey}`), now })
+      : null;
+    const created = await insertBookNow(tx, { actorId: actor.id, clientId: actor.id, profile, categorySlug: category.slug,
+      rateCents: terms.rateCents, minMinutes: terms.minMinutes, minutes: data.minutes, startsAt, detail: data.detail, city: data.city,
+      address: data.address || null, creationKey, now,
+      ...(series ? { series: { id: series.id, occurrenceAt: startsAt, label: seriesLabel(series) } } : {}) });
+    if (series) await tx.auditLog.create({ data: { actorId: actor.id, action: "RECURRING_SERIES_CREATED", target: series.id,
+      meta: { cadence: series.cadence, weekday: series.weekday, startMinute: series.startMinute, minutes: series.minutes, rateCents: series.hourlyRateCents, firstRequestId: created.requestId } } });
+    return { ok: true, id: created.requestId, seriesId: series?.id ?? null, redirect: `/llogaria/kerkesat/${created.requestId}` };
   });
 }
 
@@ -165,6 +198,7 @@ export async function createBooking(actor: Actor, input: unknown) {
 export const bookingActionInput = z.discriminatedUnion("action", [
   z.object({ action: z.literal("PROPOSE_HOURS"), clientKey, minutes: z.coerce.number().int(), note: z.string().trim().max(500).optional() }),
   z.object({ action: z.enum(["CONFIRM_HOURS", "DECLINE_HOURS"]), changeId: entityId }),
+  z.object({ action: z.literal("PROPOSE_SERIES"), clientKey, cadence: z.enum(SERIES_CADENCES) }),
   z.object({ action: z.enum(["CANCEL", "NO_SHOW", "NOBODY_HOME"]), expectedVersion: z.number().int().nonnegative(), statement: z.string().max(4000).optional() }),
 ]);
 
@@ -182,13 +216,14 @@ const paidSoFar = (b: { dueCents: number; request: { payment: { state: string } 
 
 export async function bookingAction(actor: Actor, requestId: string, input: unknown) {
   const data = bookingActionInput.parse(input);
-  if (data.action === "PROPOSE_HOURS") await enforceLimit(`booking-change:${actor.id}`, 20, 60 * 60_000);
+  if (data.action === "PROPOSE_HOURS" || data.action === "PROPOSE_SERIES") await enforceLimit(`booking-change:${actor.id}`, 20, 60 * 60_000);
   return serializable(async (tx) => {
     const booking = await loadBooking(tx, actor, requestId);
     const request = booking.request;
     const other = actor.role === "PRO" ? request.clientId : request.selectedPro?.userId;
     const otherHref = `${actor.role === "PRO" ? "/llogaria" : "/pro"}/kerkesat/${request.id}`;
     const now = new Date();
+    if (data.action === "PROPOSE_SERIES") return proposeSeriesFromBooking(tx, actor, booking, data.cadence, data.clientKey);
     if (data.action === "PROPOSE_HOURS") {
       invariant(actor.role === "PRO", "FORBIDDEN", 403, "Vetëm profesionisti propozon ndryshimin e orëve.");
       const key = hashToken(`booking-change:${actor.id}:${data.clientKey}`);

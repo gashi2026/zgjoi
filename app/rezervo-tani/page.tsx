@@ -9,6 +9,7 @@ import { serviceCategory } from "@/lib/service-categories";
 import { bookingTotal, hourOptions, hoursLabel, estimateCredit, LATE_FEE_CENTS, FREE_CANCEL_HOURS } from "@/lib/book-now";
 import Frame, { Panel } from "@/components/marketplace/Frame";
 import ApiForm from "@/components/marketplace/ApiForm";
+import { SERIES_CADENCES, cadenceLabels, GENERATION_HORIZON_DAYS } from "@/lib/recurring-series";
 export const dynamic = "force-dynamic";
 const weekdays = ["E hënë", "E martë", "E mërkurë", "E enjte", "E premte", "E shtunë", "E diel"];
 const clock = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
@@ -46,6 +47,9 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ p
               hint: "Së paku një orë nga tani. Orari duhet të jetë brenda orarit javor të profesionistit." },
             { name: "minutes", label: "Sa orë?", type: "select", as: "number", required: true, value: String(terms.minMinutes),
               options: hourOptions(terms.minMinutes).map(m => ({ value: String(m), label: `${hoursLabel(m)} · ${money(bookingTotal(terms.rateCents, m))}` })) },
+            { name: "repeat", label: "Përsëritja", type: "select", value: "NONE",
+              options: [{ value: "NONE", label: "Vetëm një herë" }, ...SERIES_CADENCES.map(c => ({ value: c, label: `${cadenceLabels[c]}, e njëjta ditë dhe orë` }))],
+              hint: `Rezervim i përsëritur: çdo vizitë krijohet si rezervim më vete, ${GENERATION_HORIZON_DAYS} ditë përpara, me të njëjtat rregulla anulimi. Mund ta pauzoni ose anuloni kur të doni te “Rezervimet e përsëritura”.` },
             { name: "detail", label: "Çfarë duhet bërë?", type: "textarea", required: true, minLength: 10, maxLength: 4000,
               hint: "Pa numra telefoni, email ose lidhje: mesazhi bllokohet i tëri." },
             { name: "city", label: "Qyteti", value: actor.city ?? "", required: true, maxLength: 60 },

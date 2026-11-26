@@ -5,6 +5,11 @@ import ArrivalPanel, { WaitCountdown } from "./ArrivalPanel";
 import { checkInWindow, contactLabels, customerArrivalLine, nobodyHomeGate, noShowGate, NO_SHOW_AFTER_MINUTES, type ContactResult } from "@/lib/arrival";
 import { clockTime } from "@/lib/format";
 import type { ThreadEvent } from "./Thread";
+import Link from "next/link";
+import { SERIES_CADENCES, cadenceLabels, seriesLabel, seriesStatusLabels, seriesCommissionBps } from "@/lib/recurring-series";
+
+export type SeriesLite = { id: string; cadence: string; weekday: number; startMinute: number; status: string; minutes: number;
+  hourlyRateCents: number; firstStartsAt: Date; categorySlug: string; proposedBy: string };
 
 export type BookingView = {
   id: string; startsAt: Date; hourlyRateCents: number; minMinutes: number; minutes: number; totalCents: number;
@@ -75,8 +80,9 @@ export function bookingEvents(b: BookingView, opts: { pro: boolean; requestId: s
 }
 
 /** Terms in force, history, the pro's hour-change form and the cancellation buttons. */
-export function BookingPanel({ b, pro, requestId, requestState, version, paidCents, whatsapp = null }: {
+export function BookingPanel({ b, pro, requestId, requestState, version, paidCents, whatsapp = null, series = null, proposal = null, categorySlug }: {
   b: BookingView; pro: boolean; requestId: string; requestState: string; version: number; paidCents: number; whatsapp?: string | null;
+  series?: SeriesLite | null; proposal?: SeriesLite | null; categorySlug: string;
 }) {
   const now = new Date();
   // The booking row already holds the confirmed terms; proposals never count until confirmed.
@@ -103,6 +109,7 @@ export function BookingPanel({ b, pro, requestId, requestState, version, paidCen
         {hoursLabel(terms.minutes)} × {money(b.hourlyRateCents)}/orë = <strong>{money(terms.totalCents)}</strong> · fillimi {dateTime(b.startsAt)}
       </p>
       {b.creditCents > 0 && <p className="text-sm">Kredi nga vlerësimi {money(b.creditCents)} · për t’u paguar {money(b.dueCents)}</p>}
+      <RecurringBlock b={b} pro={pro} requestId={requestId} requestState={requestState} series={series} proposal={proposal} categorySlug={categorySlug} />
       {pro && <p className="text-sm text-muted">Komisioni ({b.commissionBps / 100}%): {money(b.commissionCents)} · për ju {money(b.proCents + Math.max(0, b.creditCents - b.totalCents))}. Gjatë beta-s komisioni regjistrohet, nuk mblidhet.</p>}
       {b.status === "CANCELLED" && (
         <p className="mt-2 rounded-xl bg-cream p-3 text-sm" role="status">
@@ -180,4 +187,46 @@ export function BookingPanel({ b, pro, requestId, requestState, version, paidCen
       )}
     </div>
   );
+}
+
+const seriesHref = (pro: boolean) => (pro ? "/pro/perseritjet" : "/llogaria/perseritjet");
+/** Recurring schedules inside the booking card: the series this booking belongs
+ * to, a pro's open proposal (customer confirms here), or the pro's propose form. */
+function RecurringBlock({ b, pro, requestId, requestState, series, proposal, categorySlug }: {
+  b: BookingView; pro: boolean; requestId: string; requestState: string; series: SeriesLite | null; proposal: SeriesLite | null; categorySlug: string;
+}) {
+  if (series) return (
+    <p className="mt-2 inline-flex flex-wrap items-center gap-2 rounded-xl bg-honey/60 px-3 py-2 text-sm">
+      <svg aria-hidden viewBox="0 0 24 24" className="h-4 w-4"><path d="M12 2 21 7v10l-9 5-9-5V7z" className="fill-gold" /></svg>
+      <span>Rezervim i përsëritur: <strong>{seriesLabel(series)}</strong> · {seriesStatusLabels[series.status] ?? series.status}</span>
+      <Link className="font-semibold text-gold-dark underline" href={seriesHref(pro)}>Menaxho</Link>
+    </p>
+  );
+  if (proposal) return (
+    <div aria-label="Propozim për rezervim të përsëritur" className="mt-3 rounded-2xl border-2 border-gold bg-white p-3 text-sm">
+      <p className="text-xs font-semibold uppercase tracking-wide text-gold-dark">Propozim · rezervim i përsëritur</p>
+      <p className="mt-1"><strong>{seriesLabel(proposal)}</strong> · {hoursLabel(proposal.minutes)} × {money(proposal.hourlyRateCents)}/orë = {money(bookingTotal(proposal.hourlyRateCents, proposal.minutes))} për vizitë</p>
+      <p className="text-xs text-muted">Vizita e parë: {dateTime(proposal.firstStartsAt)}. Çdo vizitë krijohet si rezervim më vete me të njëjtat rregulla anulimi; mund ta pauzoni ose anuloni kur të doni.</p>
+      {pro
+        ? <div className="mt-2 flex flex-wrap items-center gap-3"><span className="text-xs font-semibold">Në pritje të konfirmimit nga klienti</span>
+            <ApiForm endpoint={`/api/recurring/${proposal.id}`} values={{ action: "CANCEL" }} label="Tërhiq propozimin" /></div>
+        : <div className="mt-2 flex flex-wrap gap-3">
+            <ApiForm endpoint={`/api/recurring/${proposal.id}`} values={{ action: "CONFIRM" }} label="Konfirmo përsëritjen"
+              confirmation={`Konfirmoni ${seriesLabel(proposal)}? Çdo vizitë paguhet paraprakisht si rezervim.`} />
+            <ApiForm endpoint={`/api/recurring/${proposal.id}`} values={{ action: "DECLINE" }} label="Jo, faleminderit" />
+          </div>}
+    </div>
+  );
+  if (pro && b.status === "CONFIRMED" && requestState !== "CANCELLED") return (
+    <details className="mt-3">
+      <summary className="cursor-pointer font-semibold">Propozo rezervim të përsëritur</summary>
+      <p className="my-2 text-sm text-muted">
+        E njëjta ditë dhe orë, me tarifën tuaj aktuale për orë. Klienti e konfirmon në bisedë. Komisioni për rezervimet e përsëritura është {seriesCommissionBps(categorySlug) / 100}%.
+      </p>
+      <ApiForm endpoint={`/api/bookings/${requestId}`} idempotent values={{ action: "PROPOSE_SERIES" }} label="Dërgo propozimin"
+        fields={[{ name: "cadence", label: "Sa shpesh?", type: "select", required: true, value: "WEEKLY",
+          options: SERIES_CADENCES.map(c => ({ value: c, label: cadenceLabels[c] })) }]} />
+    </details>
+  );
+  return null;
 }

@@ -13,6 +13,7 @@ import Frame, { Panel } from "./Frame";
 import ApiForm from "./ApiForm";
 import Thread, { type ThreadEvent } from "./Thread";
 import { BookingPanel, bookingEvents } from "./BookingPanel";
+import { estimateStateLabels } from "@/lib/estimate-labels";
 import { canOpenDispute, outcomeLabels, DISPUTE_OPEN_DAYS, DISPUTE_RESPONSE_HOURS, type DisputeOutcome } from "@/lib/dispute-rules";
 import { serviceCategory } from "@/lib/service-categories";
 import { DEFAULT_CHAT_TIMING } from "@/lib/marketplace-validation";
@@ -53,6 +54,14 @@ export default async function JobDetail({
   const whatsapp = pro && arrival
     ? helplineLink({ request: { client: await db.user.findUniqueOrThrow({ where: { id: request.clientId }, select: { name: true, phone: true } }) } }, arrival, request.id)
     : null;
+  // Recurring schedules: the series this booking belongs to, or an open pro proposal made from it.
+  const seriesSelect = { id: true, cadence: true, weekday: true, startMinute: true, status: true, minutes: true,
+    hourlyRateCents: true, firstStartsAt: true, categorySlug: true, proposedBy: true } as const;
+  const [series, proposal] = request.booking ? await Promise.all([
+    request.booking.seriesId ? db.recurringSeries.findUnique({ where: { id: request.booking.seriesId }, select: seriesSelect }) : null,
+    db.recurringSeries.findFirst({ where: { sourceRequestId: id, status: "PROPOSED" }, orderBy: { createdAt: "desc" }, select: seriesSelect }),
+  ]) : [null, null];
+  const estimate = request.estimate;
   const counterpart = pro ? request.client.name : (request.selectedPro?.user.name ?? "Profesionisti");
   const category = serviceCategory(request.categorySlug)?.name ?? request.categorySlug;
   const status = jobStatus(request.state);
@@ -181,6 +190,36 @@ export default async function JobDetail({
         </div>
       ),
     },
+    // Paid estimate visit (step 4): its card, payment status and the credit rule.
+    ...(estimate ? [{
+      id: `estimate-${estimate.id}`, createdAt: estimate.createdAt.toISOString(),
+      node: (
+        <article aria-label="Vizita e vlerësimit" className={`max-w-[92%] rounded-2xl border-2 border-gold bg-white p-4 shadow-soft sm:max-w-md ${pro ? "mr-auto" : "ml-auto"}`}>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-gold-dark">Vizitë vlerësimi</p>
+            <span className="rounded-full bg-honey px-3 py-1 text-xs font-semibold">{estimateStateLabels[estimate.state] ?? estimate.state}</span>
+          </div>
+          <p className="mt-2 text-2xl font-bold">{money(estimate.amountCents)}</p>
+          {estimate.visitAt && <p className="mt-1 text-sm">Vizita e kërkuar: {dateTime(estimate.visitAt)} (ora e Kosovës)</p>}
+          <p className="mt-1 text-sm">
+            {estimate.state === "PENDING" && (pro
+              ? "Pagesa është në pritje. Zgjoi ju njofton kur klienti ta paguajë; atëherë shfaqet adresa."
+              : "Paguhet paraprakisht. Gjatë beta-s pagesa nuk bëhet online: ekipi i Zgjoi e konfirmon.")}
+            {estimate.state === "PAID" && (pro
+              ? `E paguar. Nëse klienti ju punëson (me “Rezervo tani” ose me ofertë në bisedë), ${money(estimate.amountCents)} i zbriten klientit nga totali; komisioni llogaritet mbi çmimin e plotë.`
+              : `E paguar. Nëse e punësoni këtë profesionist, ${money(estimate.amountCents)} zbriten plotësisht nga puna.`)}
+            {estimate.state === "CREDITED" && `${money(estimate.amountCents)} u zbritën nga puna me këtë profesionist.`}
+            {estimate.state === "CANCELLED" && "Kërkesa për vlerësim u anulua."}
+            {estimate.state === "REFUNDED" && "Vlerësimi u rimbursua."}
+          </p>
+          {!pro && estimate.state === "PENDING" && (
+            <div className="mt-3"><ApiForm endpoint={`/api/estimates/${estimate.id}`} values={{ action: "CANCEL" }} label="Anulo kërkesën"
+              confirmation="Anuloni kërkesën për vlerësim? Biseda mbetet e hapur." /></div>
+          )}
+          <time className="mt-2 block text-xs text-muted">{dateTime(estimate.createdAt)}</time>
+        </article>
+      ),
+    }] : []),
     // A Book now job shows its booking card instead of a quote card.
     ...(request.booking
       ? bookingEvents(request.booking, { pro, requestId: id, active: ["BOOKED", "IN_PROGRESS"].includes(request.state) })
@@ -256,7 +295,8 @@ export default async function JobDetail({
         {request.booking && (
           <div className="mt-4">
             <BookingPanel b={request.booking} pro={pro} requestId={id} requestState={request.state} version={request.version}
-              paidCents={request.payment?.state === "HELD" ? request.booking.dueCents : 0} whatsapp={whatsapp} />
+              paidCents={request.payment?.state === "HELD" ? request.booking.dueCents : 0} whatsapp={whatsapp}
+              series={series} proposal={proposal} categorySlug={request.categorySlug} />
           </div>
         )}
         {request.conversation && (

@@ -169,6 +169,7 @@ await withServer(randomBytes(16).toString("hex"), async (request) => {
     "worker and webhook retain their own authentication through the site lock",
     async () => {
       assert.equal((await request("/api/cron/escrow")).status, 403);
+      assert.equal((await request("/api/cron/recurring")).status, 403);
       assert.equal(
         (await request("/api/stripe/webhook", { method: "POST", body: "{}" }))
           .status,

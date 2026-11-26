@@ -6,6 +6,7 @@ import { paymentsReady } from "@/lib/server/payments";
 import Frame, { Panel } from "@/components/marketplace/Frame";
 import ApiForm from "@/components/marketplace/ApiForm";
 import { hoursLabel } from "@/lib/book-now";
+import { estimateStateLabels } from "@/lib/estimate-labels";
 export default async function Page({
   searchParams,
 }: {
@@ -53,6 +54,12 @@ export default async function Page({
     take: 50,
     include: { payment: { select: { request: { select: { title: true, client: { select: { name: true } } } } } } },
   });
+  // Paid estimate visits (step 4): mark paid in the beta, refund or cancel.
+  const estimates = await db.estimate.findMany({
+    where: { state: { in: ["PENDING", "PAID"] } }, orderBy: { createdAt: "asc" }, take: 50,
+    include: { profile: { select: { user: { select: { name: true } } } } },
+  });
+  const estimateClients = new Map((await db.user.findMany({ where: { id: { in: estimates.map(e => e.clientId) } }, select: { id: true, name: true } })).map(u => [u.id, u.name]));
   const due = (p: (typeof payments)[number]) => Math.max(0, p.amount - p.estimateCreditCents);
   return (
     <Frame
@@ -66,6 +73,32 @@ export default async function Page({
             ? "Mjedis prove Stripe. Asnjë pagesë reale nuk mund të përpunohet nga ky version."
             : "Pagesat online janë të çaktivizuara. Gjatë beta-s, pasi të konfirmoni pagesën e klientit jashtë platformës, përdorni “Shëno si të paguar” te rezervimi përkatës."}
         </p>
+      </Panel>
+      <Panel>
+        <h2 className="text-lg font-bold">Vizitat e vlerësimit</h2>
+        <p className="mt-1 text-sm text-muted">Kur klienti paguan vlerësimin jashtë platformës, shënojeni këtu. Një vlerësim i paguar zbritet plotësisht nga puna e parë me të njëjtin profesionist (çdo rrugë punësimi); komisioni mbetet mbi çmimin e plotë.</p>
+        {!estimates.length && <p className="mt-3 text-sm">Nuk ka vlerësime në pritje ose të papërdorura.</p>}
+        {estimates.map((e) => (
+          <div key={e.id} className="mt-4 rounded-xl bg-cream p-3">
+            <p className="font-semibold">
+              Vlerësim {money(e.amountCents)} · {estimateClients.get(e.clientId) ?? "Klienti"} → {e.profile.user.name} · {estimateStateLabels[e.state] ?? e.state}
+            </p>
+            <p className="text-xs text-muted">Kërkuar {dateTime(e.createdAt)}{e.visitAt ? ` · vizita ${dateTime(e.visitAt)}` : ""}{e.paidAt ? ` · paguar ${dateTime(e.paidAt)}` : ""}</p>
+            {e.state === "PENDING" ? (
+              <div className="mt-2 space-y-2">
+                <ApiForm endpoint="/api/admin/estimates" values={{ id: e.id, action: "MARK_PAID" }} label="Shëno si të paguar"
+                  fields={[{ name: "reason", label: "Si u pagua? (p.sh. para në dorë, transfer me referencë)", required: true, minLength: 10, maxLength: 500 }]} />
+                <details><summary className="cursor-pointer text-sm">Anulo kërkesën</summary>
+                  <ApiForm endpoint="/api/admin/estimates" values={{ id: e.id, action: "CANCEL" }} label="Anulo"
+                    fields={[{ name: "reason", label: "Arsyeja", required: true, minLength: 10, maxLength: 500 }]} /></details>
+              </div>
+            ) : (
+              <details className="mt-2"><summary className="cursor-pointer text-sm">Rimburso (vizita nuk u bë)</summary>
+                <ApiForm endpoint="/api/admin/estimates" values={{ id: e.id, action: "REFUND" }} label="Shëno si të rimbursuar"
+                  fields={[{ name: "reason", label: "Si u rimbursua dhe pse?", required: true, minLength: 10, maxLength: 500 }]} /></details>
+            )}
+          </div>
+        ))}
       </Panel>
       <Panel>
         <h2 className="text-lg font-bold">Detyra: rimbursime, tarifa dhe kredi</h2>

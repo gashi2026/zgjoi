@@ -26,11 +26,11 @@ enum VerificationState {
 }
 
 enum RequestState {
-  OPEN        // published, collecting quotes
-  QUOTED      // has at least one quote
-  BOOKED      // a quote was accepted
+  OPEN // published, collecting quotes
+  QUOTED // has at least one quote
+  BOOKED // a quote was accepted
   IN_PROGRESS
-  COMPLETED   // client confirmed
+  COMPLETED // client confirmed
   CANCELLED
   DISPUTED
 }
@@ -44,20 +44,20 @@ enum QuoteState {
 }
 
 enum EscrowStrategy {
-  PLATFORM_CHARGE     // captured after acceptance; transfer only after customer completion
-  AUTH_HOLD           // short jobs: authorise now, capture on completion
-  DESTINATION_CHARGE  // long jobs: charge now, hold in the pro's locked ledger
+  PLATFORM_CHARGE // captured after acceptance; transfer only after customer completion
+  AUTH_HOLD // short jobs: authorise now, capture on completion
+  DESTINATION_CHARGE // long jobs: charge now, hold in the pro's locked ledger
 }
 
 enum PaymentState {
   REFUND_PENDING
-  PENDING       // intent created, nothing charged yet
-  AUTHORISED    // AUTH_HOLD: card authorised, funds frozen but not taken
-  HELD          // funds are with us / locked in the connected account
-  RELEASED      // paid out to the professional
+  PENDING // intent created, nothing charged yet
+  AUTHORISED // AUTH_HOLD: card authorised, funds frozen but not taken
+  HELD // funds are with us / locked in the connected account
+  RELEASED // paid out to the professional
   REFUNDED
   DISPUTED
-  EXPIRED       // authorisation lapsed before the job finished
+  EXPIRED // authorisation lapsed before the job finished
 }
 
 enum PayoutState {
@@ -76,40 +76,40 @@ enum ReviewState {
 
 enum SupportState {
   OPEN
-  WAITING       // waiting on the customer
+  WAITING // waiting on the customer
   RESOLVED
 }
 
 // ---------------------------------------------------------------- users
 
 model User {
-  id            String    @id @default(cuid())
-  email         String    @unique
-  passwordHash  String
-  name          String
-  phone         String?
+  id              String    @id @default(cuid())
+  email           String    @unique
+  passwordHash    String
+  name            String
+  phone           String?
   // National ID (Numri personal). Stored encrypted — see lib/server/crypto.ts.
   // Never selected into client components.
-  personalNoEnc String?
+  personalNoEnc   String?
   personalNoLast4 String?
-  role          Role      @default(CLIENT)
-  city          String?
-  emailVerified DateTime?
-  suspendedAt   DateTime?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  role            Role      @default(CLIENT)
+  city            String?
+  emailVerified   DateTime?
+  suspendedAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
-  proProfile    ProProfile?
-  requests      ServiceRequest[] @relation("ClientRequests")
-  reviewsWritten Review[]        @relation("ReviewAuthor")
-  messages      Message[]
-  supportTickets SupportTicket[]
+  proProfile      ProProfile?
+  requests        ServiceRequest[] @relation("ClientRequests")
+  reviewsWritten  Review[]         @relation("ReviewAuthor")
+  messages        Message[]
+  supportTickets  SupportTicket[]
   supportMessages SupportMessage[]
-  sessions      Session[]
-  auditLogs     AuditLog[]
-  authTokens    AuthToken[]
-  notifications Notification[]
-  favorites     Favorite[]
+  sessions        Session[]
+  auditLogs       AuditLog[]
+  authTokens      AuthToken[]
+  notifications   Notification[]
+  favorites       Favorite[]
 
   @@index([role])
   @@index([email])
@@ -131,88 +131,89 @@ model Session {
 // ------------------------------------------------------ professionals
 
 model ProProfile {
-  id             String            @id @default(cuid())
-  userId         String            @unique
-  slug           String            @unique
-  categorySlug   String
-  about          String            @db.Text
-  priceFrom      Int               // in cents
-  experience     String?
-  serviceCities  String[]
-  radiusKm       Int               @default(25)
-  verification   VerificationState @default(PENDING)
-  verifiedAt     DateTime?
-  ibanEnc        String?           // encrypted at rest
-  ibanLast4      String?
+  id                  String            @id @default(cuid())
+  userId              String            @unique
+  slug                String            @unique
+  categorySlug        String
+  about               String            @db.Text
+  priceFrom           Int // in cents
+  experience          String?
+  serviceCities       String[]
+  radiusKm            Int               @default(25)
+  verification        VerificationState @default(PENDING)
+  verifiedAt          DateTime?
+  ibanEnc             String? // encrypted at rest
+  ibanLast4           String?
   /// Stripe Connect (Express) account. Payouts are set to manual so funds
   /// stay locked in the ledger until we release them.
-  stripeAccountId    String?       @unique
-  stripeOnboarded    Boolean       @default(false)
-  stripePayoutsManual Boolean      @default(false)
-  ratingAvg      Float             @default(0)
-  ratingCount    Int               @default(0)
-  responseRate   Int               @default(0)
+  stripeAccountId     String?           @unique
+  stripeOnboarded     Boolean           @default(false)
+  stripePayoutsManual Boolean           @default(false)
+  ratingAvg           Float             @default(0)
+  ratingCount         Int               @default(0)
+  responseRate        Int               @default(0)
   // lead budget (monetisation)
-  weeklyBudget   Int               @default(0) // legacy; paid leads are disabled
-  weeklySpent    Int               @default(0)
-  autoBid        Boolean           @default(false)
-  budgetResetAt  DateTime          @default(now())
+  weeklyBudget        Int               @default(0) // legacy; paid leads are disabled
+  weeklySpent         Int               @default(0)
+  autoBid             Boolean           @default(false)
+  budgetResetAt       DateTime          @default(now())
   /// Book now (hourly): the pro's own rate and minimum booking length.
   /// Null until the pro opts in; only used in categories with Book now.
-  hourlyRateCents   Int?
-  bookingMinMinutes Int?
-  createdAt      DateTime          @default(now())
-  updatedAt      DateTime          @updatedAt
+  hourlyRateCents     Int?
+  bookingMinMinutes   Int?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
 
-  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  services  ProService[]
-  documents ProDocument[]
-  quotes    Quote[]
-  jobs      ServiceRequest[] @relation("ProJobs")
-  inquiries ServiceRequest[] @relation("SelectedPro")
-  reviews   Review[]
-  payouts   Payout[]
-  leadCharges LeadCharge[]
+  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  services     ProService[]
+  documents    ProDocument[]
+  quotes       Quote[]
+  jobs         ServiceRequest[]  @relation("ProJobs")
+  inquiries    ServiceRequest[]  @relation("SelectedPro")
+  reviews      Review[]
+  payouts      Payout[]
+  leadCharges  LeadCharge[]
   availability Availability[]
-  favorites Favorite[]
-  bookings  Booking[]
-  estimates Estimate[]
+  favorites    Favorite[]
+  bookings     Booking[]
+  estimates    Estimate[]
+  series       RecurringSeries[]
 
   @@index([categorySlug])
   @@index([verification])
 }
 
 model ProService {
-  id        String @id @default(cuid())
+  id        String     @id @default(cuid())
   profileId String
   name      String
-  price     Int    // cents
+  price     Int // cents
   profile   ProProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
 
   @@index([profileId])
 }
 
 model ProDocument {
-  id        String   @id @default(cuid())
-  profileId String
-  kind      String   // "ID" | "CERTIFICATE" | "INSURANCE"
-  url       String
-  storagePath String? @unique
-  filename  String?
-  mimeType  String?
-  sizeBytes Int?
-  reviewed  Boolean  @default(false)
-  createdAt DateTime @default(now())
-  profile   ProProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  id          String     @id @default(cuid())
+  profileId   String
+  kind        String // "ID" | "CERTIFICATE" | "INSURANCE"
+  url         String
+  storagePath String?    @unique
+  filename    String?
+  mimeType    String?
+  sizeBytes   Int?
+  reviewed    Boolean    @default(false)
+  createdAt   DateTime   @default(now())
+  profile     ProProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
 
   @@index([profileId])
 }
 
 model Availability {
-  id        String @id @default(cuid())
+  id        String     @id @default(cuid())
   profileId String
-  weekday   Int    // 0 = Monday
-  startMin  Int    // minutes from midnight
+  weekday   Int // 0 = Monday
+  startMin  Int // minutes from midnight
   endMin    Int
   profile   ProProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
 
@@ -222,29 +223,29 @@ model Availability {
 // --------------------------------------------------------- categories
 
 model Category {
-  id        String   @id @default(cuid())
-  slug      String   @unique
-  name      String
-  icon      String
-  position  Int      @default(0)
-  active    Boolean  @default(true)
+  id                 String     @id @default(cuid())
+  slug               String     @unique
+  name               String
+  icon               String
+  position           Int        @default(0)
+  active             Boolean    @default(true)
   /// Hiring-path overrides. Null = the code default in lib/book-now.ts
   /// (Elektricist/Mjeshtër i Ujit: Book now + estimate; Dado/Pastrim: Book now).
   bookNowEnabled     Boolean?
   estimateEnabled    Boolean?
   estimatePriceCents Int?
-  questions Question[]
+  questions          Question[]
 }
 
 model Question {
-  id         String  @id @default(cuid())
+  id         String   @id @default(cuid())
   categoryId String
   key        String
   label      String
-  type       String  // "single" | "multi" | "number" | "text"
+  type       String // "single" | "multi" | "number" | "text"
   options    String[]
-  required   Boolean @default(true)
-  position   Int     @default(0)
+  required   Boolean  @default(true)
+  position   Int      @default(0)
   category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
 
   @@unique([categoryId, key])
@@ -253,40 +254,40 @@ model Question {
 // ------------------------------------------------------------ requests
 
 model ServiceRequest {
-  id           String       @id @default(cuid())
-  clientId     String
-  categorySlug String
-  title        String
-  answers      Json         // wizard answers, keyed by question.key
-  city         String
-  address      String?
-  accessNote   String?
-  timing       String
-  budgetBand   String?
-  detail       String?      @db.Text
-  state        RequestState @default(OPEN)
-  acceptedProfileId String?
-  selectedProfileId String?
-  acceptedQuoteId String? @unique
-  creationKey String? @unique
-  version Int @default(0)
+  id                    String       @id @default(cuid())
+  clientId              String
+  categorySlug          String
+  title                 String
+  answers               Json // wizard answers, keyed by question.key
+  city                  String
+  address               String?
+  accessNote            String?
+  timing                String
+  budgetBand            String?
+  detail                String?      @db.Text
+  state                 RequestState @default(OPEN)
+  acceptedProfileId     String?
+  selectedProfileId     String?
+  acceptedQuoteId       String?      @unique
+  creationKey           String?      @unique
+  version               Int          @default(0)
   completionRequestedAt DateTime?
-  completedAt DateTime?
-  cancelledAt DateTime?
+  completedAt           DateTime?
+  cancelledAt           DateTime?
   /// Who ended a hired job early: CLIENT | PRO | PRO_NO_SHOW | NOBODY_HOME | DISPUTE_REFUND.
   /// Pro-side values count in the trust history and the 3-cancellation review alert.
-  cancelledBy String?
+  cancelledBy           String?
   /// When the pro pressed “Fillo punën”; > 15 min after scheduledAt counts as late.
-  startedAt   DateTime?
-  scheduledAt  DateTime?
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
+  startedAt             DateTime?
+  scheduledAt           DateTime?
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
 
-  client        User        @relation("ClientRequests", fields: [clientId], references: [id])
-  acceptedPro   ProProfile? @relation("ProJobs", fields: [acceptedProfileId], references: [id])
-  selectedPro   ProProfile? @relation("SelectedPro", fields: [selectedProfileId], references: [id])
-  acceptedQuote Quote? @relation("AcceptedQuote", fields: [acceptedQuoteId], references: [id])
-  quotes        Quote[] @relation("RequestQuotes")
+  client        User          @relation("ClientRequests", fields: [clientId], references: [id])
+  acceptedPro   ProProfile?   @relation("ProJobs", fields: [acceptedProfileId], references: [id])
+  selectedPro   ProProfile?   @relation("SelectedPro", fields: [selectedProfileId], references: [id])
+  acceptedQuote Quote?        @relation("AcceptedQuote", fields: [acceptedQuoteId], references: [id])
+  quotes        Quote[]       @relation("RequestQuotes")
   payment       Payment?
   review        Review?
   conversation  Conversation?
@@ -301,29 +302,29 @@ model ServiceRequest {
 }
 
 model Quote {
-  id         String     @id @default(cuid())
-  requestId  String
-  profileId  String
-  amount     Int        // cents, total
-  lines      Json       // [{label, qty, price}]
-  message    String     @db.Text
-  availableAt String?
-  duration   String?
-  warranty   String?
+  id           String     @id @default(cuid())
+  requestId    String
+  profileId    String
+  amount       Int // cents, total
+  lines        Json // [{label, qty, price}]
+  message      String     @db.Text
+  availableAt  String?
+  duration     String?
+  warranty     String?
   /// Working days the professional expects to need. Decides which escrow
   /// strategy the payment uses when this quote is accepted.
-  expectedDays Int      @default(1)
-  state      QuoteState @default(SENT)
-  revision   Int @default(1)
-  expiresAt  DateTime?
-  scheduledAt DateTime?
-  acceptedAt DateTime?
-  creationKey String? @unique
-  createdAt  DateTime   @default(now())
+  expectedDays Int        @default(1)
+  state        QuoteState @default(SENT)
+  revision     Int        @default(1)
+  expiresAt    DateTime?
+  scheduledAt  DateTime?
+  acceptedAt   DateTime?
+  creationKey  String?    @unique
+  createdAt    DateTime   @default(now())
 
-  request ServiceRequest @relation("RequestQuotes", fields: [requestId], references: [id], onDelete: Cascade)
+  request     ServiceRequest  @relation("RequestQuotes", fields: [requestId], references: [id], onDelete: Cascade)
   acceptedFor ServiceRequest? @relation("AcceptedQuote")
-  profile ProProfile     @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  profile     ProProfile      @relation(fields: [profileId], references: [id], onDelete: Cascade)
 
   @@unique([requestId, profileId, revision])
   @@index([profileId])
@@ -333,51 +334,51 @@ model Quote {
 // ------------------------------------------------------------ payments
 
 model Payment {
-  id                    String         @id @default(cuid())
-  requestId             String         @unique
-  amount                Int            // cents, what the client pays
-  commissionBps         Int            // snapshotted when the money moves
-  commissionAmount      Int
-  proAmount             Int
-  currency              String         @default("EUR")
+  id               String @id @default(cuid())
+  requestId        String @unique
+  amount           Int // cents, what the client pays
+  commissionBps    Int // snapshotted when the money moves
+  commissionAmount Int
+  proAmount        Int
+  currency         String @default("EUR")
 
-  strategy              EscrowStrategy
-  state                 PaymentState   @default(PENDING)
+  strategy EscrowStrategy
+  state    PaymentState   @default(PENDING)
 
-  stripePaymentIntentId String?        @unique
+  stripePaymentIntentId String?   @unique
   stripeChargeId        String?
   stripeTransferId      String?
   stripePayoutId        String?
-  provider              String @default("disabled")
-  providerCheckoutId    String? @unique
-  providerRefundId      String? @unique
+  provider              String    @default("disabled")
+  providerCheckoutId    String?   @unique
+  providerRefundId      String?   @unique
   connectedAccountId    String?
   /// Phase-2 seam: how the customer pays. Beta = OFFLINE (admin marks paid);
   /// CARD is reserved for the future card provider and is not integrated.
-  method                String @default("OFFLINE")
+  method                String    @default("OFFLINE")
   /// A paid €15 estimate with the same pro, credited to this job (any path).
-  estimateCreditCents   Int @default(0)
+  estimateCreditCents   Int       @default(0)
   operation             String?
   operationStartedAt    DateTime?
-  attempt               Int @default(0)
-  updatedAt             DateTime @default(now()) @updatedAt
+  attempt               Int       @default(0)
+  updatedAt             DateTime  @default(now()) @updatedAt
 
-  authorisedAt          DateTime?
+  authorisedAt    DateTime?
   /// AUTH_HOLD only: the hold lapses at this moment (Stripe: 7 days).
-  authExpiresAt         DateTime?
-  heldAt                DateTime?
+  authExpiresAt   DateTime?
+  heldAt          DateTime?
   /// DESTINATION_CHARGE only: Stripe requires release or refund by this date.
-  releaseDeadline       DateTime?
-  releasedAt            DateTime?
-  refundedAt            DateTime?
+  releaseDeadline DateTime?
+  releasedAt      DateTime?
+  refundedAt      DateTime?
   /// Set when we have warned about an approaching deadline, so we warn once.
-  expiryWarnedAt        DateTime?
-  createdAt             DateTime       @default(now())
+  expiryWarnedAt  DateTime?
+  createdAt       DateTime  @default(now())
 
   request ServiceRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
   dispute Dispute?
   payouts Payout[]
-  events PaymentEvent[]
+  events  PaymentEvent[]
 
   @@index([state])
   @@index([state, authExpiresAt])
@@ -385,20 +386,20 @@ model Payment {
 }
 
 model Payout {
-  id         String      @id @default(cuid())
-  profileId  String
-  paymentId  String? @unique
-  amount     Int
-  state      PayoutState @default(SCHEDULED)
-  reference  String?
-  stripePayoutId String?
-  providerOperationKey String? @unique
-  scheduledFor DateTime
-  paidAt     DateTime?
-  createdAt  DateTime    @default(now())
+  id                   String      @id @default(cuid())
+  profileId            String
+  paymentId            String?     @unique
+  amount               Int
+  state                PayoutState @default(SCHEDULED)
+  reference            String?
+  stripePayoutId       String?
+  providerOperationKey String?     @unique
+  scheduledFor         DateTime
+  paidAt               DateTime?
+  createdAt            DateTime    @default(now())
 
   profile ProProfile @relation(fields: [profileId], references: [id])
-  payment Payment? @relation(fields: [paymentId], references: [id])
+  payment Payment?   @relation(fields: [paymentId], references: [id])
 
   @@index([profileId, state])
 }
@@ -407,7 +408,7 @@ model LeadCharge {
   id        String   @id @default(cuid())
   profileId String
   requestId String
-  amount    Int      // cents
+  amount    Int // cents
   refunded  Boolean  @default(false)
   createdAt DateTime @default(now())
 
@@ -418,32 +419,32 @@ model LeadCharge {
 }
 
 model Dispute {
-  id         String    @id @default(cuid())
-  paymentId  String    @unique
-  openedById String
-  reason     String    @db.Text
-  outcome    String?
-  resolution String?   @db.Text
-  resolvedAt DateTime?
-  createdAt  DateTime  @default(now())
+  id                  String    @id @default(cuid())
+  paymentId           String    @unique
+  openedById          String
+  reason              String    @db.Text
+  outcome             String?
+  resolution          String?   @db.Text
+  resolvedAt          DateTime?
+  createdAt           DateTime  @default(now())
   /// CLIENT | PRO — who flagged the job; the other side may respond.
-  openedByRole String?
+  openedByRole        String?
   /// Job state before the dispute; restored unless the decision ends the job.
-  priorState   String?
-  respondBy    DateTime?
-  response     String?   @db.Text
-  respondedById String?
-  respondedAt  DateTime?
-  decidedById  String?
+  priorState          String?
+  respondBy           DateTime?
+  response            String?   @db.Text
+  respondedById       String?
+  respondedAt         DateTime?
+  decidedById         String?
   /// Admin-set final job price; commission and the pro's share recalculate from it.
-  finalPriceCents Int?
-  refundCents  Int       @default(0)
-  customerCreditCents Int @default(0)
+  finalPriceCents     Int?
+  refundCents         Int       @default(0)
+  customerCreditCents Int       @default(0)
   /// Admin to-do for the decision (REFUND | CREDIT); no money moves in the beta.
-  todoKind     String?
-  todoCents    Int?
-  todoDoneAt   DateTime?
-  todoDoneById String?
+  todoKind            String?
+  todoCents           Int?
+  todoDoneAt          DateTime?
+  todoDoneById        String?
 
   payment Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
 
@@ -483,18 +484,66 @@ model Booking {
   updatedAt        DateTime  @updatedAt
 
   // Arrita: the booking address on the map (Nominatim, cached). OK | NOT_FOUND | UNAVAILABLE
-  siteLat          Float?
-  siteLng          Float?
-  siteGeocode      String?
-  siteGeocodedAt   DateTime?
+  siteLat        Float?
+  siteLng        Float?
+  siteGeocode    String?
+  siteGeocodedAt DateTime?
 
-  request ServiceRequest  @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  profile ProProfile      @relation(fields: [profileId], references: [id])
+  // Recurring schedules: the series this booking is one occurrence of.
+  // SQL adds a partial unique index: one CONFIRMED booking per (seriesId, occurrenceAt).
+  seriesId     String?
+  occurrenceAt DateTime?
+
+  request ServiceRequest   @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  profile ProProfile       @relation(fields: [profileId], references: [id])
+  series  RecurringSeries? @relation(fields: [seriesId], references: [id], onDelete: SetNull)
   changes BookingChange[]
   arrival BookingArrival?
 
   @@index([profileId, startsAt])
   @@index([clientId, createdAt])
+  @@index([seriesId, occurrenceAt])
+}
+
+/// A recurring Book now schedule: same weekday and Kosovo time, every week or
+/// every two weeks, on the pro's hourly terms at the time the series was set.
+/// Each occurrence becomes a normal Booking (same cancellation rules) with the
+/// 5% recurring commission. A cron route generates upcoming occurrences.
+model RecurringSeries {
+  id              String    @id @default(cuid())
+  clientId        String
+  profileId       String
+  categorySlug    String
+  cadence         String // WEEKLY | BIWEEKLY
+  weekday         Int // 0 = Monday, Kosovo time
+  startMinute     Int // minutes from midnight, Kosovo time
+  minutes         Int
+  hourlyRateCents Int
+  detail          String    @db.Text
+  city            String
+  address         String?
+  firstStartsAt   DateTime
+  status          String    @default("ACTIVE") // PROPOSED | ACTIVE | PAUSED | CANCELLED | DECLINED
+  proposedBy      String // CLIENT | PRO
+  sourceRequestId String? // the booking a pro proposal came from
+  confirmedAt     DateTime?
+  pausedAt        DateTime?
+  pausedBy        String? // CLIENT | PRO | SYSTEM
+  cancelledAt     DateTime?
+  cancelledBy     String? // CLIENT | PRO
+  statusNote      String?
+  /// Generation cursor: occurrences up to this start have been handled.
+  generatedUntil  DateTime?
+  creationKey     String    @unique
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  profile  ProProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  bookings Booking[]
+
+  @@index([status, generatedUntil])
+  @@index([clientId, createdAt])
+  @@index([profileId, createdAt])
 }
 
 /// Arrita: the pro's proof of presence at the booking address. Only valid
@@ -562,38 +611,50 @@ model BookingChange {
   @@index([todoKind, todoDoneAt])
 }
 
-/// A paid €15 estimate visit (step 4 builds the flow). If the customer hires
-/// the same pro by any path, the full amount is credited to that job once.
+/// A paid €15 estimate visit (Elektricist, Mjeshtër i Ujit). The customer
+/// requests it in a chat (requestId); in the beta an admin marks it paid. If
+/// the customer hires the same pro by any path, the full amount is credited
+/// to that job once (customer pays total − €15; commission on the full price).
 model Estimate {
   id                String    @id @default(cuid())
   clientId          String
   profileId         String
   requestId         String?
   amountCents       Int       @default(1500)
-  state             String    @default("PENDING") // PENDING | PAID | CREDITED | REFUNDED
+  state             String    @default("PENDING") // PENDING | PAID | CREDITED | REFUNDED | CANCELLED
   paidAt            DateTime?
   creditedRequestId String?   @unique
   creditedAt        DateTime?
   createdAt         DateTime  @default(now())
+  /// Step 4: the requested visit time (Kosovo) and the beta mark-as-paid trail.
+  visitAt           DateTime?
+  paidById          String?
+  paidNote          String?
+  cancelledAt       DateTime?
+  cancelledBy       String? // CLIENT | ADMIN
+  refundedAt        DateTime?
+  creationKey       String?   @unique
 
   profile ProProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
 
   @@index([clientId, profileId, state])
+  @@index([requestId])
+  @@index([state, createdAt])
 }
 
 // ------------------------------------------------------------- reviews
 
 model Review {
-  id        String      @id @default(cuid())
-  requestId String      @unique
-  authorId  String
-  profileId String
-  rating    Int
-  text      String      @db.Text
-  tags      String[]
-  state     ReviewState @default(PUBLISHED)
+  id         String      @id @default(cuid())
+  requestId  String      @unique
+  authorId   String
+  profileId  String
+  rating     Int
+  text       String      @db.Text
+  tags       String[]
+  state      ReviewState @default(PUBLISHED)
   flagReason String?
-  createdAt DateTime    @default(now())
+  createdAt  DateTime    @default(now())
 
   request ServiceRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
   author  User           @relation("ReviewAuthor", fields: [authorId], references: [id])
@@ -627,35 +688,35 @@ model Conversation {
 }
 
 model Message {
-  id             String   @id @default(cuid())
+  id             String    @id @default(cuid())
   conversationId String
   senderId       String
-  body           String   @db.Text
+  body           String    @db.Text
   readAt         DateTime?
   clientKey      String?
-  createdAt      DateTime @default(now())
+  createdAt      DateTime  @default(now())
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   sender       User         @relation(fields: [senderId], references: [id])
 
-  @@index([conversationId, createdAt])
   @@unique([conversationId, senderId, clientKey])
+  @@index([conversationId, createdAt])
 }
 
 // ------------------------------------------------------- support chat
 
 model SupportTicket {
-  id        String       @id @default(cuid())
-  userId    String?
-  guestName String?
-  guestEmail String?
+  id             String       @id @default(cuid())
+  userId         String?
+  guestName      String?
+  guestEmail     String?
   guestTokenHash String?
-  subject   String?
-  state     SupportState @default(OPEN)
+  subject        String?
+  state          SupportState @default(OPEN)
   // true when it arrived outside 09:00–17:00 Europe/Belgrade
-  offline   Boolean      @default(false)
-  createdAt DateTime     @default(now())
-  updatedAt DateTime     @updatedAt
+  offline        Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 
   user     User?            @relation(fields: [userId], references: [id])
   messages SupportMessage[]
@@ -668,10 +729,10 @@ model SupportTicket {
 model SupportMessage {
   id        String   @id @default(cuid())
   ticketId  String
-  senderId  String?  // null = guest
+  senderId  String? // null = guest
   fromAgent Boolean  @default(false)
   body      String   @db.Text
-  dedupeKey String? @unique
+  dedupeKey String?  @unique
   createdAt DateTime @default(now())
 
   ticket SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
@@ -702,71 +763,77 @@ model Setting {
 }
 
 model AuthToken {
-  id String @id @default(cuid())
-  userId String
-  purpose String
-  tokenHash String @unique
+  id        String    @id @default(cuid())
+  userId    String
+  purpose   String
+  tokenHash String    @unique
   expiresAt DateTime
-  usedAt DateTime?
-  createdAt DateTime @default(now())
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@index([userId, purpose])
   @@index([expiresAt])
 }
 
 model RateLimitBucket {
-  key String @id
-  hits Int
+  key     String   @id
+  hits    Int
   resetAt DateTime
+
   @@index([resetAt])
 }
 
 model Notification {
-  id String @id @default(cuid())
-  userId String
-  kind String
-  title String
-  href String
-  readAt DateTime?
-  createdAt DateTime @default(now())
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id        String    @id @default(cuid())
+  userId    String
+  kind      String
+  title     String
+  href      String
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@index([userId, readAt, createdAt])
 }
 
 model Outbox {
-  id String @id @default(cuid())
-  key String @unique
-  kind String
-  payloadEnc String
-  state String @default("PENDING")
-  attempts Int @default(0)
-  availableAt DateTime @default(now())
-  lockedAt DateTime?
-  sentAt DateTime?
-  lastError String?
-  createdAt DateTime @default(now())
+  id          String    @id @default(cuid())
+  key         String    @unique
+  kind        String
+  payloadEnc  String
+  state       String    @default("PENDING")
+  attempts    Int       @default(0)
+  availableAt DateTime  @default(now())
+  lockedAt    DateTime?
+  sentAt      DateTime?
+  lastError   String?
+  createdAt   DateTime  @default(now())
+
   @@index([state, availableAt])
 }
 
 model Favorite {
-  id String @id @default(cuid())
-  userId String
+  id        String     @id @default(cuid())
+  userId    String
   profileId String
-  createdAt DateTime @default(now())
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  profile ProProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  createdAt DateTime   @default(now())
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  profile   ProProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
   @@unique([userId, profileId])
 }
 
 model PaymentEvent {
-  id String @id @default(cuid())
-  provider String
-  eventId String
-  paymentId String?
-  kind String
+  id          String    @id @default(cuid())
+  provider    String
+  eventId     String
+  paymentId   String?
+  kind        String
   processedAt DateTime?
-  createdAt DateTime @default(now())
-  payment Payment? @relation(fields: [paymentId], references: [id])
+  createdAt   DateTime  @default(now())
+  payment     Payment?  @relation(fields: [paymentId], references: [id])
+
   @@unique([provider, eventId])
   @@index([paymentId, createdAt])
 }
