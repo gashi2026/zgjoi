@@ -7,7 +7,7 @@
  * also matches subdomains). Empty or missing = nothing is sent outside
  * production. Production (VERCEL_ENV === "production") is not affected.
  */
-export type EmailEnv = { VERCEL_ENV?: string; EMAIL_ALLOWLIST?: string };
+export type EmailEnv = { readonly [key: string]: string | undefined };
 
 export function isProductionEmailEnv(env: EmailEnv) {
   return env.VERCEL_ENV === "production";
