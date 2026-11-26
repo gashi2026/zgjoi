@@ -14,7 +14,7 @@ import { containsContactDetails } from "../contact-filter";
 import { serviceCategory, categorySlugs } from "../service-categories";
 import {
   hiringFlow, checkHours, bookingTotal, priceJob, estimateCredit, cancellationOutcome, adjustmentTodo,
-  hoursLabel, MINUTE_STEP, MAX_BOOKING_MINUTES, MIN_RATE_CENTS, MAX_RATE_CENTS, type CancelReason,
+  hoursLabel, returnsEstimateCredit, MINUTE_STEP, MAX_BOOKING_MINUTES, MIN_RATE_CENTS, MAX_RATE_CENTS, type CancelReason,
 } from "../book-now";
 import { clientKey, cleanText, entityId, euroAmount } from "../marketplace-validation";
 import { money } from "../format";
@@ -257,8 +257,9 @@ export async function bookingAction(actor: Actor, requestId: string, input: unkn
     await tx.booking.update({ where: { id: booking.id }, data: { status: "CANCELLED", cancelledAt: now, cancelledBy: by, cancelReason: reason,
       feeCents: outcome.feeCents, feeProCents: outcome.feeProCents, feePlatformCents: outcome.feePlatformCents, refundCents: outcome.refundCents } });
     if (request.payment.state === "PENDING") await tx.payment.update({ where: { id: request.payment.id }, data: { state: "EXPIRED" } });
-    // A credited estimate returns to the customer for their next hire with this pro.
-    await tx.estimate.updateMany({ where: { creditedRequestId: request.id, state: "CREDITED" }, data: { state: "PAID", creditedRequestId: null, creditedAt: null } });
+    // A credited estimate returns to the customer for their next hire with this pro
+    // (customer-fault cases follow RETURN_CREDIT_ON_CUSTOMER_FAULT).
+    if (returnsEstimateCredit(outcome.rule)) await tx.estimate.updateMany({ where: { creditedRequestId: request.id, state: "CREDITED" }, data: { state: "PAID", creditedRequestId: null, creditedAt: null } });
     await tx.serviceRequest.update({ where: { id: request.id }, data: { state: "CANCELLED", cancelledAt: now, version: { increment: 1 } } });
     await tx.quote.updateMany({ where: { requestId: request.id, state: { in: ["SENT", "ACCEPTED"] } }, data: { state: "WITHDRAWN" } });
     if (other) await notify(tx, other, "BOOKING_CANCELLED", reason === "CANCEL" ? "Rezervimi u anulua" : "U raportua mosparaqitje; rezervimi u mbyll", otherHref);

@@ -43,7 +43,9 @@ Refunds and unpaid fees are admin to-dos on `/admin/pagesat`; no money moves in 
 ## Estimate credit and commission
 
 - A PAID `Estimate` with the same pro is credited in full (€15) once, on any hiring path
-  (Book now and chat/Puneso). Cancelling a credited booking returns the credit.
+  (Book now and chat/Puneso). Cancelling a credited booking returns the credit. For the
+  customer-fault cases (late customer cancel, nobody home) this follows the single switch
+  `RETURN_CREDIT_ON_CUSTOMER_FAULT` in `lib/book-now.ts` (default `true`).
 - Commission is 15% (10% elite, 5% recurring) of the full price and is stored on the
   Payment/Booking; collection is deferred during the beta.
 - No minimum price: under €15 the customer owes nothing more; the excess goes to the pro.

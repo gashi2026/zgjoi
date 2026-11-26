@@ -144,10 +144,21 @@ export function cancellationOutcome(input: { by: CancelBy; reason: CancelReason;
   return { rule: "CLIENT_LATE", ...fee, label: "Anulim brenda 24 orëve: tarifë fikse 15 € (10 € profesionisti, 5 € Zgjoi); pjesa tjetër rimbursohet." };
 }
 
+/** When a booking that used the €15 estimate credit is cancelled, the credit
+ * goes back to the customer for their next hire with the same pro. This
+ * switch covers the customer-fault cases (late customer cancel, nobody home).
+ * Default true (current behaviour); set false to keep the credit used up. */
+export const RETURN_CREDIT_ON_CUSTOMER_FAULT = true;
+/** Whether a cancelled booking's estimate credit is returned to the customer. */
+export function returnsEstimateCredit(rule: CancelOutcome["rule"], returnOnCustomerFault = RETURN_CREDIT_ON_CUSTOMER_FAULT) {
+  const customerFault = rule === "CLIENT_LATE" || rule === "NOBODY_HOME";
+  return customerFault ? returnOnCustomerFault : true;
+}
+
 /* ------------------------------------------------- hour-change proposals */
 
-/** Owner has not confirmed this yet: until the customer confirms a change,
- * the original total stands. Flip to "ADMIN_DECIDES" if that changes. */
+/** Owner decision (26 Nov 2026): a change takes effect only when the customer
+ * explicitly confirms it; until then the original total stands. */
 export const UNCONFIRMED_CHANGE_POLICY: "ORIGINAL_STANDS" | "ADMIN_DECIDES" = "ORIGINAL_STANDS";
 
 export type HourChange = { id: string; state: string; minutes: number | null; totalCents: number | null; createdAt: string | Date };

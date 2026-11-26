@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   hiringFlow, checkHours, bookingTotal, priceJob, estimateCredit, cancellationOutcome, effectiveTerms,
-  adjustmentTodo, hourOptions, UNCONFIRMED_CHANGE_POLICY, ESTIMATE_PRICE_CENTS,
+  adjustmentTodo, hourOptions, UNCONFIRMED_CHANGE_POLICY, ESTIMATE_PRICE_CENTS, RETURN_CREDIT_ON_CUSTOMER_FAULT, returnsEstimateCredit,
 } from "../lib/book-now";
 
 test("hiring paths per category: Book now + estimate, Book now only, or chat only", () => {
@@ -102,4 +102,16 @@ test("an hour change only counts once the customer confirms it; until then the o
   assert.deepEqual(adjustmentTodo(3000, 2250), { todoKind: "REFUND", todoCents: 750 });
   assert.equal(adjustmentTodo(0, 4500), null, "unpaid bookings just update the amount due");
   assert.equal(adjustmentTodo(3000, 3000), null);
+});
+
+test("cancelling a credited booking returns the estimate credit; customer-fault cases follow one switch", () => {
+  assert.equal(RETURN_CREDIT_ON_CUSTOMER_FAULT, true);
+  for (const rule of ["FREE", "PRO_LATE", "PRO_NO_SHOW"] as const) {
+    assert.equal(returnsEstimateCredit(rule), true);
+    assert.equal(returnsEstimateCredit(rule, false), true);
+  }
+  for (const rule of ["CLIENT_LATE", "NOBODY_HOME"] as const) {
+    assert.equal(returnsEstimateCredit(rule), true);
+    assert.equal(returnsEstimateCredit(rule, false), false);
+  }
 });
