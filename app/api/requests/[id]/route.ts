@@ -1,6 +1,6 @@
 import { api, readJson } from "@/lib/server/http";
 import { requireUser } from "@/lib/server/auth";
-import { getRequest, changeJob } from "@/lib/server/marketplace";
+import { getRequest, changeJob, publicRequestView } from "@/lib/server/marketplace";
 import { entityId } from "@/lib/marketplace-validation";
 import { z } from "zod";
 export const dynamic = "force-dynamic";
@@ -9,7 +9,7 @@ export async function GET(
   ctx: { params: Promise<{ id: string }> },
 ) {
   return api(req, async () =>
-    getRequest(await requireUser(), (await ctx.params).id),
+    publicRequestView(await getRequest(await requireUser(), (await ctx.params).id)),
   );
 }
 export async function POST(

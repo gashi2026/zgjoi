@@ -69,7 +69,7 @@ export async function createRecurringRequest(actor: Actor, id: string, input: un
     const next = await tx.serviceRequest.create({ data: {
       clientId: actor.id, selectedProfileId: parent.acceptedProfileId, categorySlug: category.slug,
       title: parent.title, detail: parent.detail, city: parent.city, address: parent.address,
-      timing: `${recurrenceLabels[cadence]} · ${scheduledAt.toLocaleString("sq-AL", { timeZone: "Europe/Belgrade" })}`,
+      timing: `${recurrenceLabels[cadence]} · ${scheduledAt.toLocaleString("sq-AL", { timeZone: "Europe/Belgrade", hourCycle: "h23" })}`,
       state: "OPEN", creationKey: repeatKey(id), conversation: { create: {} },
       answers: { recurrence: { version: 1, parentRequestId: parent.id, cadence, scheduledAt: scheduledAt.toISOString() } },
     } });

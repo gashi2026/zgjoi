@@ -1,11 +1,21 @@
 import "server-only";
+import type { Prisma } from "@prisma/client";
+import { db } from "./db";
 import { serializable } from "./transaction";
 import { notify } from "./notifications";
-export async function expireOffers(now = new Date()) {
+
+/**
+ * Expires SENT offers whose acceptance deadline has passed. Called by the
+ * maintenance cron for everything, and lazily (scoped) whenever a request or a
+ * dashboard is read, so Preview/beta does not depend on cron running.
+ */
+export async function expireOffers(now = new Date(), scope?: Prisma.ServiceRequestWhereInput) {
   return serializable(async tx => {
-    const quotes = await tx.quote.findMany({ where: { state: "SENT", expiresAt: { lte: now }, request: { OR: [
+    const eligible: Prisma.ServiceRequestWhereInput = { OR: [
       { state: "QUOTED", acceptedQuoteId: null }, { state: "BOOKED", acceptedQuoteId: { not: null } },
-    ] } },
+    ] };
+    const quotes = await tx.quote.findMany({ where: { state: "SENT", expiresAt: { lte: now },
+      request: scope ? { AND: [scope, eligible] } : eligible },
       orderBy: [{ expiresAt: "asc" }, { id: "asc" }], take: 100,
       include: { request: { select: { clientId: true, state: true, acceptedQuoteId: true } }, profile: { select: { userId: true } } } });
     let expired = 0;
@@ -24,4 +34,18 @@ export async function expireOffers(now = new Date()) {
     }
     return expired;
   });
+}
+
+/**
+ * Read-path expiry: a cheap check first, the serializable write only when an
+ * offer is actually overdue. Never fails the page; the cron remains a backstop.
+ */
+export async function expireDueOffersFor(scope: Prisma.ServiceRequestWhereInput, now = new Date()) {
+  try {
+    const due = await db.quote.count({ where: { state: "SENT", expiresAt: { lte: now }, request: scope } });
+    return due ? await expireOffers(now, scope) : 0;
+  } catch (error) {
+    console.error(JSON.stringify({ event: "lazy_offer_expiry_failed", type: error instanceof Error ? error.name : "Unknown" }));
+    return 0;
+  }
 }

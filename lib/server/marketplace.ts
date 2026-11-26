@@ -23,6 +23,9 @@ import {
   availabilityInput,
 } from "../marketplace-validation";
 
+import { containsContactDetails } from "../contact-filter";
+import { clockTime } from "../format";
+import { expireDueOffersFor } from "./offer-expiry";
 import { serializable } from "./transaction";
 export { serializable } from "./transaction";
 
@@ -44,12 +47,10 @@ export function isParticipant(
 
 export function assertNoContact(text: string) {
   invariant(
-    !/(?:\+?\d[\s().-]*){7,}|[\w.+-]+@[\w.-]+\.[a-z]{2,}|https?:\/\//i.test(
-      text,
-    ),
+    !containsContactDetails(text),
     "CONTACT_DETAILS",
     400,
-    "Para rezervimit, mbajeni komunikimin në Zgjoi pa numra telefoni, email ose lidhje të jashtme.",
+    "Mesazhi nuk u dërgua: para pagesës, mbajeni komunikimin në Zgjoi pa numra telefoni, email, lidhje të jashtme ose rrjete sociale. Datat, oraret dhe çmimet lejohen.",
   );
 }
 
@@ -363,6 +364,7 @@ export async function acceptOffer(actor: Actor, input: unknown) {
 
 export async function getRequest(actor: Actor, id: string) {
   entityId.parse(id);
+  await expireDueOffersFor({ id });
   const request = await db.serviceRequest.findUnique({
     where: { id },
     include: {
@@ -429,6 +431,35 @@ export async function getRequest(actor: Actor, id: string) {
   };
 }
 
+/** API response for GET /api/requests/:id: drops internal keys and ids the
+ * browser never needs (creation hashes, the client's user id, the pro's user id). */
+export function publicRequestView(request: Awaited<ReturnType<typeof getRequest>>) {
+  const {
+    creationKey: _creationKey,
+    clientId: _clientId,
+    client,
+    selectedPro,
+    quotes,
+    acceptedQuote,
+    ...rest
+  } = request;
+  void _creationKey;
+  void _clientId;
+  const quoteView = <Q extends { creationKey: string | null }>({ creationKey, ...quote }: Q) => {
+    void creationKey;
+    return quote;
+  };
+  return {
+    ...rest,
+    client: { name: client.name, city: client.city },
+    selectedPro: selectedPro
+      ? { id: selectedPro.id, verification: selectedPro.verification, user: selectedPro.user }
+      : null,
+    quotes: quotes.map(quoteView),
+    acceptedQuote: acceptedQuote ? quoteView(acceptedQuote) : null,
+  };
+}
+
 export async function sendJobMessage(actor: Actor, input: unknown) {
   const data = chatInput.parse(input);
   await enforceLimit(`message:${actor.id}`, 30, 60_000);
@@ -484,14 +515,20 @@ export async function sendJobMessage(actor: Actor, input: unknown) {
       actor.role === "PRO"
         ? conversation.request.clientId
         : conversation.request.selectedPro?.userId;
-    if (recipient)
-      await notify(
-        tx,
-        recipient,
-        "MESSAGE",
-        "Keni një mesazh të ri",
-        `${actor.role === "PRO" ? "/llogaria" : "/pro"}/kerkesat/${conversation.requestId}`,
-      );
+    if (recipient) {
+      // Coalesce chat notices: one unread "new messages" notice per job.
+      const href = `${actor.role === "PRO" ? "/llogaria" : "/pro"}/kerkesat/${conversation.requestId}`;
+      const pending = await tx.notification.findFirst({
+        where: { userId: recipient, kind: "MESSAGE", href, readAt: null },
+        select: { id: true },
+      });
+      if (pending)
+        await tx.notification.update({
+          where: { id: pending.id },
+          data: { title: "Keni mesazhe të reja", createdAt: new Date() },
+        });
+      else await notify(tx, recipient, "MESSAGE", "Keni një mesazh të ri", href);
+    }
     return { ok: true, id: message.id };
   });
 }
@@ -533,6 +570,17 @@ export async function readJobMessages(
     take: 101,
     select: { id: true, body: true, senderId: true, createdAt: true },
   });
+  if (isParticipant(conversation.request, actor) && !before)
+    // Opening the thread clears the coalesced chat notice for this job.
+    await db.notification.updateMany({
+      where: {
+        userId: actor.id,
+        kind: "MESSAGE",
+        readAt: null,
+        href: `${actor.role === "PRO" ? "/pro" : "/llogaria"}/kerkesat/${conversation.requestId}`,
+      },
+      data: { readAt: new Date() },
+    });
   if (isParticipant(conversation.request, actor))
     await db.message.updateMany({
       where: {
@@ -553,11 +601,7 @@ export async function readJobMessages(
         body: m.body,
         mine: m.senderId === actor.id,
         createdAt: m.createdAt,
-        time: new Intl.DateTimeFormat("sq", {
-          hour: "2-digit",
-          minute: "2-digit",
-          timeZone: "Europe/Belgrade",
-        }).format(m.createdAt),
+        time: clockTime(m.createdAt),
       })),
   };
 }

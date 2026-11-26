@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import CategoryIcon from "./CategoryIcon";
 import { stats } from "@/lib/homepage-reference-data";
 
-/* Splits "10K+" into 10 and "K+", "4.9★" into 4.9 and "★". */
+/* Splits "14" into 14 and ""; non-numeric values such as "Beta" stay static. */
 function parseValue(raw: string) {
   const m = raw.match(/^([\d.,]+)(.*)$/);
   if (!m) return { target: null as number | null, suffix: raw, decimals: 0 };

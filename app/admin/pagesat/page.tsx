@@ -37,13 +37,13 @@ export default async function Page({
     <Frame
       actor={actor}
       title="Pagesat dhe kontestet"
-      subtitle="Gjendja e pagesave ndryshon vetëm nga ngjarje të verifikuara dhe veprime të regjistruara te ofruesi."
+      subtitle="Gjendja e pagesave ndryshon vetëm nga ngjarje të verifikuara te ofruesi ose nga një konfirmim i regjistruar i administratës gjatë beta-s."
     >
       <Panel>
         <p>
           {paymentsReady()
             ? "Mjedis prove Stripe. Asnjë pagesë reale nuk mund të përpunohet nga ky version."
-            : "Pagesat online janë të çaktivizuara. Duhet përfunduar konfigurimi dhe miratimi i ofruesit."}
+            : "Pagesat online janë të çaktivizuara. Gjatë beta-s, pasi të konfirmoni pagesën e klientit jashtë platformës, përdorni “Shëno si të paguar” te rezervimi përkatës."}
         </p>
       </Panel>
       {!payments.length && <Panel>Nuk ka pagesa të regjistruara.</Panel>}
@@ -78,7 +78,43 @@ export default async function Page({
               {stateLabel(out.state)}: {money(out.amount)}
             </p>
           ))}
+          {p.provider === "offline" && (
+            <p className="mt-2 text-sm font-semibold">
+              Shënuar si e paguar jashtë platformës (beta) më{" "}
+              {p.heldAt ? dateTime(p.heldAt) : "—"}. Transferimi te
+              profesionisti bëhet manualisht.
+            </p>
+          )}
+          {p.state === "PENDING" &&
+            p.provider === "disabled" &&
+            !p.providerCheckoutId &&
+            !p.operation &&
+            !p.dispute &&
+            p.request.state === "BOOKED" && (
+              <details className="mt-4">
+                <summary className="cursor-pointer font-semibold">
+                  Shëno si të paguar (beta, pa pagesë online)
+                </summary>
+                <ApiForm
+                  endpoint="/api/admin/payments"
+                  values={{ id: p.id, action: "MARK_PAID_OFFLINE" }}
+                  label="Shëno si të paguar"
+                  confirmation={`Konfirmoni që klienti ka paguar ${money(p.amount)} jashtë platformës? Profesionisti do të njoftohet se mund të fillojë punën. Ky veprim regjistrohet në auditim.`}
+                  fields={[
+                    {
+                      name: "reason",
+                      label: "Si u pagua? (p.sh. para në dorë, transfer bankar, referenca)",
+                      type: "textarea",
+                      minLength: 10,
+                      maxLength: 500,
+                      required: true,
+                    },
+                  ]}
+                />
+              </details>
+            )}
           {paymentsReady() &&
+            p.provider === "stripe_test" &&
             p.state === "HELD" &&
             p.request.state === "COMPLETED" &&
             p.request.completedAt &&
@@ -93,6 +129,7 @@ export default async function Page({
               </div>
             )}
           {paymentsReady() &&
+            p.provider === "stripe_test" &&
             ["HELD", "DISPUTED", "REFUND_PENDING"].includes(p.state) &&
             !p.stripeTransferId && (
               <details className="mt-4">

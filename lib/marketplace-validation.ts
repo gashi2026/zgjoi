@@ -1,4 +1,5 @@
 import { z } from "zod";
+import "./zod-sq";
 import { email, password } from "./validation";
 import { appointmentMinutes } from "./appointments";
 
@@ -39,7 +40,7 @@ export const signupInput = z
     priceFrom: euroAmount.optional(),
     experience: cleanText(1, 80).optional(),
     terms: z.literal(true, {
-      errorMap: () => ({ message: "Pranoni kushtet për të vazhduar." }),
+      error: "Pranoni kushtet për të vazhduar.",
     }),
   })
   .superRefine((value, ctx) => {

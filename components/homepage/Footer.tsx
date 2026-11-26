@@ -67,8 +67,8 @@ export default function Footer() {
           <div className="lg:col-span-3">
             <Logo />
             <p className="mt-4 max-w-xs text-sm leading-relaxed text-muted">
-              Zgjoi është platforma më e besuar në Kosovë për të gjetur dhe
-              punësuar profesionistë lokalë të verifikuar.
+              Zgjoi të lidh me profesionistë lokalë të shqyrtuar në Kosovë.
+              Tani në beta.
             </p>
             <div className="mt-5 flex gap-3">
               {[

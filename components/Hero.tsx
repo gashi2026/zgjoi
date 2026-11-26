@@ -10,7 +10,7 @@ export default async function Hero() {
   let title = "Gjej profesionist për\nçdo shërbim.";
   let accent = "Lehtë.";
   let subtitle =
-    "Zgjoi është platforma më e besuar në Kosovë për të gjetur dhe punësuar profesionistë lokalë.";
+    "Gjej profesionistë lokalë të shqyrtuar në Kosovë dhe kërko një ofertë private. Tani në beta.";
   let services: Record<string, string> | undefined;
   let catalog: { slug: string; name: string; icon: string }[] | undefined;
 

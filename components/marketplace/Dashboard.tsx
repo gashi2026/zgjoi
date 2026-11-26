@@ -2,7 +2,8 @@ import Link from "next/link";
 import type { Prisma } from "@prisma/client";
 import { pageGuard } from "@/lib/server/guard";
 import { db } from "@/lib/server/db";
-import { money, stateLabel, dateTime } from "@/lib/format";
+import { expireDueOffersFor } from "@/lib/server/offer-expiry";
+import { money, stateLabel, dateTime, unreadMessagesLabel, unreadNotificationsLabel } from "@/lib/format";
 import Frame, { Panel } from "./Frame";
 import ApiForm from "./ApiForm";
 export default async function Dashboard({
@@ -124,6 +125,9 @@ export default async function Dashboard({
   const scope: Prisma.ServiceRequestWhereInput = pro
     ? { selectedProfileId: actor.proProfile?.id ?? "missing" }
     : { clientId: actor.id };
+  // Offers past their deadline must not keep showing as "Dërguar" when the
+  // maintenance cron has not run (e.g. Preview).
+  await expireDueOffersFor(scope);
   const where: Prisma.ServiceRequestWhereInput = {
     ...scope,
     ...(view === "offers"
@@ -181,7 +185,7 @@ export default async function Dashboard({
             <p>
               {count} kërkesa ·{" "}
               <Link className="text-gold-dark" href={`${base}/njoftimet`}>
-                {unread} njoftime të palexuara
+                {unreadNotificationsLabel(unread)}
               </Link>
             </p>
             {!pro && (
@@ -249,7 +253,7 @@ export default async function Dashboard({
             )}
             {Boolean(r.conversation?._count.messages) && (
               <p className="mt-1 text-sm font-semibold">
-                {r.conversation?._count.messages} mesazhe të palexuara
+                {unreadMessagesLabel(r.conversation?._count.messages ?? 0)}
               </p>
             )}
             <Link
