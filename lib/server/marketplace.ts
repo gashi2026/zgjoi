@@ -23,6 +23,7 @@ import {
   availabilityInput,
 } from "../marketplace-validation";
 
+import { containsContactDetails } from "../contact-filter";
 import { serializable } from "./transaction";
 export { serializable } from "./transaction";
 
@@ -44,12 +45,10 @@ export function isParticipant(
 
 export function assertNoContact(text: string) {
   invariant(
-    !/(?:\+?\d[\s().-]*){7,}|[\w.+-]+@[\w.-]+\.[a-z]{2,}|https?:\/\//i.test(
-      text,
-    ),
+    !containsContactDetails(text),
     "CONTACT_DETAILS",
     400,
-    "Para rezervimit, mbajeni komunikimin në Zgjoi pa numra telefoni, email ose lidhje të jashtme.",
+    "Mesazhi nuk u dërgua: para pagesës, mbajeni komunikimin në Zgjoi pa numra telefoni, email, lidhje të jashtme ose rrjete sociale. Datat, oraret dhe çmimet lejohen.",
   );
 }
 
