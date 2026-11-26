@@ -1,13 +1,6 @@
-import Dashboard from "@/components/marketplace/Dashboard";
-export default async function Page({
-  searchParams,
-}: {
-  searchParams: Promise<{ page?: string }>;
-}) {
-  const params = await searchParams;
-  const page = Math.min(
-    1000,
-    Math.max(1, Number.parseInt(params.page ?? "1", 10) || 1),
-  );
-  return <Dashboard pro={false} view="messages" page={page} />;
+import { redirect } from "next/navigation";
+// Chat-then-hire: every conversation lives with its job, so the old messages
+// list now points to the single conversations list.
+export default function Page() {
+  redirect("/llogaria/kerkesat");
 }

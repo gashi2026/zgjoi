@@ -19,6 +19,18 @@ The journey is customer → select one professional → private inquiry and chat
 - In-app notifications, opt-in transactional email worker, authenticated maintenance, error/loading/empty states, keyboard labels and focus, mobile form sizes, reduced motion, metadata, private/preview indexing rules, sitemap and basic security headers.
 - Public copy now describes the actual private-offer flow. Fake testimonials, fake totals, newsletter confirmation, payment-after-completion and automatic seven-day release promises are removed. Draft test-use/privacy notices remain an owner/legal launch dependency.
 
+## Chat-then-hire (step 1)
+
+Stacked on this branch as `codex/chat-then-hire`. No Prisma schema change and no migration.
+
+- **Start a chat:** "Fillo bisedën" on a pro's profile opens `/kerkesa-e-re?pro=<id>`. The customer writes only the job description (plus city, and optional timing and address). The title is derived from the description, and the timing defaults to "Sipas marrëveshjes në bisedë". Existing open chats with the same pro are listed so the customer can continue one instead.
+- **One chat per job:** `/llogaria/kerkesat/<id>` and `/pro/kerkesat/<id>` are now a single chat. The job description is the first bubble, and the quote cards and status lines appear in time order between the messages. The status track at the top shows Pranuar → Në progres → Përfunduar, or Anuluar.
+- **Quote card:** price, optional note, optional start date (with duration, so the calendar slot is still reserved and checked), and an expiry of 24 h, 3 days or 7 days. The customer sees "Puneso" and "Refuzo ofertën"; the pro sees "Tërhiq ofertën". A new quote replaces the previous one, as before. A quote without a date is hired now, and the date is agreed in the chat. The old full offer payload (`expiresAt`, `timing`, required date) is still accepted.
+- **Status in chat:** derived from existing columns (`acceptedAt`, `heldAt`, `completionRequestedAt`, `completedAt`, `cancelledAt`, dispute `createdAt`) plus the existing `START` audit row. Nothing new is stored.
+- **Wording:** customer and pro navigation say "Bisedat"; the separate "Mesazhet" pages redirect to the conversation list. Public copy says "bisedë private" instead of "kërkesë private". Notifications say "bisedë" and "ju punësoi".
+- **Unchanged:** the contact-info filter still rejects the whole message, quote note or first description; lazy offer expiry, optimistic versions, serializable acceptance, coalesced chat notifications and the admin mark-as-paid beta flow are untouched.
+- **Tests:** a new unit file (`tests/chat-then-hire.test.ts`) and one new integration scenario (open a chat from the description only, contact filter on the quote note, dateless quote card, "Puneso", status lines for both sides, cancellation).
+
 ## Staging database evidence
 
 Project: `jxddfakvakropstpfrvx`, separate from production `pfckeaicvexyaybptgfn`.

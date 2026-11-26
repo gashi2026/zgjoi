@@ -42,7 +42,7 @@ export default function RrethNeshPage() {
             </h1>
             <p className="mx-auto mt-5 max-w-2xl text-lg leading-relaxed text-muted">
               Zgjoi lidh njerëzit e Kosovës me profesionistë lokalë të
-              shqyrtuar — me kërkesa private, oferta të qarta dhe bisedë brenda
+              shqyrtuar — me biseda private, oferta të qarta dhe punësim brenda
               platformës. Tani jemi në beta dhe po hapemi gradualisht.
             </p>
           </div>
@@ -107,7 +107,7 @@ export default function RrethNeshPage() {
               {[
                 { v: String(serviceCategories.length), l: "Kategori shërbimesh" },
                 { v: "Beta", l: "Po hapemi gradualisht në Kosovë" },
-                { v: "1 te 1", l: "Kërkesë private te profesionisti që zgjidhni" },
+                { v: "1 te 1", l: "Bisedë private me profesionistin që zgjidhni" },
                 { v: "Shqyrtim", l: "Profilet miratohen para publikimit" },
               ].map((s) => (
                 <div

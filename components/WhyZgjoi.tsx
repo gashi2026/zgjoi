@@ -20,7 +20,7 @@ const features = [
   {
     icon: Headphones,
     title: "Siguri dhe mbështetje",
-    text: "Përdorni bisedën e mbështetjes për pyetje dhe probleme me kërkesën tuaj.",
+    text: "Përdorni bisedën e mbështetjes për pyetje dhe probleme me bisedën ose punën tuaj.",
   },
 ];
 

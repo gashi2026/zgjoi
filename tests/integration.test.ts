@@ -920,6 +920,39 @@ test("database-backed private marketplace and authorization journey", async (t) 
     await expireOffers();
     assert.equal(await db.notification.count({ where: { kind: "EXPIRED", href: { endsWith: `/kerkesat/${pending.id}` } } }), 2);
   });
+  await t.test("chat-then-hire: a chat opened from the profile gets a quote card the customer hires with Puneso, and the status shows in the chat", async () => {
+    const detail = "Dy priza në sallon nuk punojnë dhe duhen kontrolluar sa më shpejt.";
+    const opened = ok(await http("/api/requests", aj, { profileId: pro.proProfile!.id, detail, city: "Prishtinë", clientKey: randomUUID() }));
+    const chat = await db.serviceRequest.findUniqueOrThrow({ where: { id: opened.id }, include: { conversation: true } });
+    assert.equal(chat.title, detail);
+    assert.equal(chat.timing, "Sipas marrëveshjes në bisedë");
+    assert(chat.conversation);
+    const card = (extra: Record<string, unknown>) => ({ requestId: chat.id, clientKey: randomUUID(), expectedVersion: 0, amount: "40", ...extra });
+    // The contact filter still blocks the whole quote note, and the card needs an expiry.
+    ok(await http("/api/offers", pj, card({ description: "Më shkruani te test@example.com", expiresInHours: 72 })), 400);
+    ok(await http("/api/offers", pj, card({})), 400);
+    ok(await http("/api/offers", pj, card({ expiresInHours: 5 })), 400);
+    ok(await http("/api/offers", pj, card({ expiresInHours: 72, scheduledAt: new Date(Date.now() + 4 * 86400000).toISOString() })), 400);
+    const sent = ok(await http("/api/offers", pj, card({ expiresInHours: 24 })));
+    const quote = await db.quote.findUniqueOrThrow({ where: { id: sent.quoteId } });
+    assert.equal(quote.scheduledAt, null);
+    assert.equal(quote.duration, null);
+    assert(Math.abs(quote.expiresAt!.getTime() - (Date.now() + 24 * 3600000)) < 120000);
+    const customerView = await http(`/llogaria/kerkesat/${chat.id}`, aj);
+    assert.equal(customerView.status, 200);
+    assert(customerView.text.includes("Biseda me"));
+    assert(customerView.text.includes("Puneso"));
+    assert(customerView.text.includes("Data e punës caktohet në bisedë."));
+    ok(await http("/api/offers/accept", aj, { quoteId: sent.quoteId, expectedVersion: 1 }));
+    const hired = await db.serviceRequest.findUniqueOrThrow({ where: { id: chat.id }, include: { payment: true } });
+    assert.equal(hired.state, "BOOKED");
+    assert.equal(hired.payment?.amount, 4000);
+    assert.equal(hired.payment?.state, "PENDING");
+    assert((await http(`/llogaria/kerkesat/${chat.id}`, aj)).text.includes("Ju e punësuat profesionistin"));
+    assert((await http(`/pro/kerkesat/${chat.id}`, pj)).text.includes("Klienti ju punësoi"));
+    ok(await http(`/api/requests/${chat.id}`, aj, { action: "CANCEL", expectedVersion: hired.version }));
+    assert((await http(`/llogaria/kerkesat/${chat.id}`, aj)).text.includes("Statusi: Anuluar"));
+  });
   async function unpaidBooking() {
     const customer = await account("CLIENT", "BookingClient"), professional = await account("PRO", "BookingPro");
     const customerJar: Jar = new Map([["zgjoi_session", (await persistSession(customer.id, passwordHash)).token]]);

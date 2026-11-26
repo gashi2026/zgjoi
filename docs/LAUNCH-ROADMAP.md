@@ -12,6 +12,18 @@ an official offer with price, scope, timing and expiration. The customer accepts
 before payment. Customer-confirmed completion precedes release less commission.
 Review is optional. There is no public bidding, broadcast lead feed or paid unlock.
 
+### Chat-then-hire (step 1 of the free-beta plan, 26 November 2026)
+
+Branch `codex/chat-then-hire` (draft PR into `codex/private-marketplace-beta`)
+turns the same contract into a Thumbtack-style flow for all 14 categories: the
+customer opens a private chat from a pro's profile and describes the job there;
+the pro sends a quote card in the chat (price, optional note and start date,
+expiry of 24 hours, 3 days or 7 days); the customer hires with "Puneso"; and the
+job status (Pranuar, Në progres, Përfunduar, Anuluar) appears in the same chat.
+It reuses the existing request, offer, acceptance, expiry, contact-filter,
+notification and admin mark-as-paid code. No schema change or migration. See
+[implementation evidence](PRIVATE-MARKETPLACE-BETA.md#chat-then-hire-step-1).
+
 ## Current evidence
 
 - Source: [draft PR #2](https://github.com/gashi2026/zgjoi/pull/2), branch

@@ -55,28 +55,64 @@ export const signupInput = z
       }
   });
 
-export const inquiryInput = z.object({
-  profileId: entityId,
-  title: cleanText(5, 120),
-  detail: cleanText(20, 4000),
-  city: cleanText(1, 60),
-  timing: cleanText(2, 120),
-  address: z.string().trim().max(200).optional(),
-  clientKey,
-});
-export const offerInput = z.object({
-  requestId: entityId,
-  clientKey,
-  expectedVersion: z.number().int().nonnegative(),
-  amount: euroAmount,
-  description: cleanText(20, 4000),
-  timing: cleanText(3, 120),
-  scheduledAt: z.string().datetime(),
-  expiresAt: z.string().datetime(),
-  duration: cleanText(1, 60)
-    .refine(value => appointmentMinutes(value) !== null, "Shkruani kohëzgjatjen në minuta, nga 1 deri 43200.")
-    .transform(value => `${appointmentMinutes(value)} min`),
-});
+/** Chat-then-hire: the customer's first chat message is the job description.
+ * A short title is derived from it when the form does not send one. */
+export const DEFAULT_CHAT_TIMING = "Sipas marrëveshjes në bisedë";
+export function chatTitle(detail: string) {
+  const line = detail.replace(/\s+/g, " ").trim();
+  if (line.length <= 80) return line;
+  const cut = line.slice(0, 80);
+  const space = cut.lastIndexOf(" ");
+  return `${(space >= 40 ? cut.slice(0, space) : cut).trimEnd()}…`;
+}
+export const inquiryInput = z
+  .object({
+    profileId: entityId,
+    title: cleanText(5, 120).optional(),
+    detail: cleanText(20, 4000),
+    city: cleanText(1, 60),
+    timing: z.string().trim().max(120).optional(),
+    address: z.string().trim().max(200).optional(),
+    clientKey,
+  })
+  .transform((value) => ({
+    ...value,
+    title: value.title ?? chatTitle(value.detail),
+    timing: value.timing || DEFAULT_CHAT_TIMING,
+  }));
+/** Quote expiry choices shown on the in-chat quote card (hours). */
+export const offerExpiryHours = [24, 72, 168] as const;
+export const offerInput = z
+  .object({
+    requestId: entityId,
+    clientKey,
+    expectedVersion: z.number().int().nonnegative(),
+    amount: euroAmount,
+    /** Optional note on the quote card. */
+    description: z.string().trim().max(4000).optional().default(""),
+    timing: z.string().trim().max(120).optional().default(""),
+    /** Optional start date; when given, the duration is required so the slot can be reserved. */
+    scheduledAt: z.string().datetime().optional(),
+    expiresAt: z.string().datetime().optional(),
+    expiresInHours: z.coerce
+      .number()
+      .refine((value) => (offerExpiryHours as readonly number[]).includes(value), "Zgjidhni një nga afatet e lejuara.")
+      .optional(),
+    duration: z
+      .string()
+      .trim()
+      .max(60)
+      .optional()
+      .transform((value) => value || undefined)
+      .refine(value => value === undefined || appointmentMinutes(value) !== null, "Shkruani kohëzgjatjen në minuta, nga 1 deri 43200.")
+      .transform(value => (value === undefined ? undefined : `${appointmentMinutes(value)} min`)),
+  })
+  .superRefine((value, ctx) => {
+    if (!value.expiresAt && value.expiresInHours === undefined)
+      ctx.addIssue({ code: "custom", path: ["expiresInHours"], message: "Zgjidhni sa kohë vlen oferta." });
+    if (value.scheduledAt && !value.duration)
+      ctx.addIssue({ code: "custom", path: ["duration"], message: "Shkruani kohëzgjatjen në minuta kur caktoni datën e punës." });
+  });
 export const acceptanceInput = z.object({
   quoteId: entityId,
   expectedVersion: z.number().int().nonnegative(),

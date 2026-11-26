@@ -73,14 +73,14 @@ export default async function Page({
             : "Pa vlerësime ende"}
         </p>
         <p className="mt-2 text-sm text-muted">
-          Çmimi përfundimtar dhe koha përcaktohen në ofertën zyrtare.
+          Bisedoni privatisht për punën. Çmimi përfundimtar dhe koha vijnë si ofertë në bisedë, dhe ju e punësoni me “Puneso”.
         </p>
         <div className="mt-5 flex flex-wrap items-start gap-4">
           <Link
             className="rounded-full bg-gold px-5 py-3 font-semibold"
             href={`/kerkesa-e-re?pro=${pro.id}`}
           >
-            Kontakto profesionistin
+            Fillo bisedën
           </Link>
           {actor?.role === "CLIENT" && (
             <ApiForm

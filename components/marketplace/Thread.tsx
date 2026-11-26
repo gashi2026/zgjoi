@@ -5,9 +5,13 @@ import {
   useRef,
   useState,
   type FormEvent,
+  type ReactNode,
 } from "react";
 import { buttonClass, inputClass } from "./ApiForm";
 import { mergeThreadPage } from "@/lib/thread-pages";
+import { mergeTimeline } from "@/lib/chat-timeline";
+/** Server-rendered items shown in the chat between messages (quote cards, job status). */
+export type ThreadEvent = { id: string; createdAt: string; node: ReactNode };
 type Message = {
   id: string;
   body: string;
@@ -21,11 +25,15 @@ export default function Thread({
   support = false,
   staff = false,
   closed = false,
+  events = [],
+  placeholder,
 }: {
   id?: string;
   support?: boolean;
   staff?: boolean;
   closed?: boolean;
+  events?: ThreadEvent[];
+  placeholder?: string;
 }) {
   const [id, setId] = useState(initialId);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -40,6 +48,8 @@ export default function Thread({
   const identity = useRef<string | null>(null);
   const messageSnapshot = useRef<Message[]>([]);
   const loading = useRef(false);
+  const log = useRef<HTMLDivElement>(null);
+  const nearBottom = useRef(true);
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -145,6 +155,13 @@ export default function Thread({
       document.removeEventListener("visibilitychange", resume);
     };
   }, [load]);
+  const timeline = mergeTimeline(messages, events);
+  const lastKey = timeline.length ? timeline[timeline.length - 1].item.id : "";
+  useEffect(() => {
+    // Keep the newest item in view unless the reader scrolled up to older ones.
+    if (log.current && nearBottom.current)
+      log.current.scrollTop = log.current.scrollHeight;
+  }, [lastKey, timeline.length]);
   async function send(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (sendLock.current || !body.trim()) return;
@@ -200,28 +217,37 @@ export default function Thread({
         </button>
       )}
       <div
+        ref={log}
         role="log"
         aria-label="Mesazhet"
         aria-live="polite"
-        className="max-h-96 space-y-3 overflow-y-auto rounded-xl bg-cream p-3"
+        onScroll={(event) => {
+          const el = event.currentTarget;
+          nearBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+        }}
+        className={`${events.length ? "max-h-[36rem]" : "max-h-96"} space-y-3 overflow-y-auto rounded-xl bg-cream p-3`}
       >
-        {!messages.length && (
+        {!timeline.length && (
           <p className="text-sm text-muted">
             {ready ? "Nuk ka mesazhe ende." : "Duke hapur bisedën…"}
           </p>
         )}
-        {messages.map((m) => (
-          <div
-            key={m.id}
-            className={`max-w-[92%] rounded-xl p-3 ${support ? (m.fromAgent ? "bg-white" : "ml-auto bg-honey") : m.mine ? "ml-auto bg-honey" : "bg-white"}`}
-          >
-            <p className="whitespace-pre-wrap break-words text-sm">{m.body}</p>
-            <time className="mt-1 block text-xs text-muted">
-              {support ? (m.fromAgent ? "Mbështetja · " : "") : ""}
-              {m.time}
-            </time>
-          </div>
-        ))}
+        {timeline.map((row) =>
+          row.kind === "event" ? (
+            <div key={`event-${row.item.id}`}>{row.item.node}</div>
+          ) : (
+            <div
+              key={row.item.id}
+              className={`max-w-[92%] rounded-xl p-3 ${support ? (row.item.fromAgent ? "bg-white" : "ml-auto bg-honey") : row.item.mine ? "ml-auto bg-honey" : "bg-white"}`}
+            >
+              <p className="whitespace-pre-wrap break-words text-sm">{row.item.body}</p>
+              <time className="mt-1 block text-xs text-muted">
+                {support ? (row.item.fromAgent ? "Mbështetja · " : "") : ""}
+                {row.item.time}
+              </time>
+            </div>
+          ),
+        )}
       </div>
       {error && (
         <p role="alert" className="text-sm text-red-700">
@@ -245,6 +271,7 @@ export default function Thread({
               maxLength={2000}
               required
               rows={3}
+              placeholder={placeholder}
               className={`${inputClass} mt-1`}
               disabled={pending || !ready}
             />

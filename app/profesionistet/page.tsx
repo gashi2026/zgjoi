@@ -9,8 +9,8 @@ export default function Page() {
           Ndërtoni profilin tuaj profesional
         </h1>
         <p className="mt-5 text-lg text-muted">
-          Klientët ju gjejnë në kërkim, shohin profilin dhe ju dërgojnë një
-          kërkesë private. Ju diskutoni punën dhe dërgoni ofertën zyrtare.
+          Klientët ju gjejnë në kërkim, shohin profilin dhe hapin një bisedë
+          private me ju. Ju diskutoni punën dhe dërgoni ofertën në bisedë.
         </p>
         <ul className="my-6 list-disc space-y-3 pl-5">
           <li>Plotësoni profilin, shërbimet, qytetet dhe orarin.</li>

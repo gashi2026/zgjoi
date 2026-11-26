@@ -25,10 +25,10 @@ export const unreadNotificationsLabel = (count: number) =>
   count === 1 ? "1 njoftim i palexuar" : `${count} njoftime të palexuara`;
 export const stateLabel = (state: string) =>
   ({
-    OPEN: "Në pritje të ofertës",
-    QUOTED: "Oferta u dërgua",
-    BOOKED: "Oferta u pranua",
-    IN_PROGRESS: "Në punë",
+    OPEN: "Bisedë e hapur",
+    QUOTED: "Oferta në pritje",
+    BOOKED: "Pranuar",
+    IN_PROGRESS: "Në progres",
     COMPLETED: "Përfunduar",
     CANCELLED: "Anuluar",
     DISPUTED: "Në shqyrtim",

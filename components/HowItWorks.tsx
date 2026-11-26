@@ -10,8 +10,8 @@ const steps = [
   {
     n: 2,
     icon: Users,
-    title: "Kontakto dhe merr ofertën",
-    text: "Shiko profilet dhe vlerësimet. Kontakto një profesionist privatisht; ai dërgon ofertën zyrtare.",
+    title: "Bisedo dhe puneso",
+    text: "Shiko profilet dhe vlerësimet. Hap një bisedë private me profesionistin; ai dërgon ofertën në bisedë dhe ju e punësoni me “Puneso”.",
   },
   {
     n: 3,
