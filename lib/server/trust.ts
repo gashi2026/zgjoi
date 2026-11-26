@@ -2,6 +2,7 @@ import "server-only";
 import type { Prisma } from "@prisma/client";
 import { db } from "./db";
 import { notify } from "./notifications";
+import { arrivalTime } from "../arrival";
 import { summarizeTrust, shouldAlert, CANCELLATION_WINDOW_DAYS, CANCELLATION_ALERT_THRESHOLD, PRO_SIDE_CANCELLATIONS } from "../trust";
 
 type TrustDB = Pick<Prisma.TransactionClient, "serviceRequest">;
@@ -9,10 +10,12 @@ type TrustDB = Pick<Prisma.TransactionClient, "serviceRequest">;
 export async function proTrust(profileId: string, tx: TrustDB = db, now = new Date()) {
   const jobs = await tx.serviceRequest.findMany({
     where: { acceptedProfileId: profileId, acceptedQuoteId: { not: null } },
-    select: { state: true, scheduledAt: true, startedAt: true, cancelledAt: true, cancelledBy: true, payment: { select: { dispute: { select: { id: true } } } } },
+    select: { state: true, scheduledAt: true, startedAt: true, cancelledAt: true, cancelledBy: true, payment: { select: { dispute: { select: { id: true } } } },
+      booking: { select: { startsAt: true, arrival: { select: { checkedInAt: true } } } } },
     take: 5000,
   });
-  return summarizeTrust(jobs.map(j => ({ ...j, hasDispute: !!j.payment?.dispute })), now);
+  // A Book now booking keeps its own start time (moved by reschedules); prefer it.
+  return summarizeTrust(jobs.map(j => ({ ...j, scheduledAt: j.booking?.startsAt ?? j.scheduledAt, arrivedAt: arrivalTime(j.booking?.arrival, j.startedAt), hasDispute: !!j.payment?.dispute })), now);
 }
 
 /** Call after a pro-side cancellation. Alerts admins once per 90-day window. */

@@ -435,6 +435,9 @@ export async function getRequest(actor: Actor, id: string) {
             select: { id: true, kind: true, state: true, minutes: true, totalCents: true, note: true,
               todoKind: true, todoCents: true, todoDoneAt: true, decidedAt: true, createdAt: true },
           },
+          // Arrita: never the coordinates or the photo bytes here.
+          siteGeocode: true,
+          arrival: { select: { checkedInAt: true, distanceM: true, method: true, helplineAt: true, waitEndsAt: true, contactResult: true } },
         },
       },
     },
