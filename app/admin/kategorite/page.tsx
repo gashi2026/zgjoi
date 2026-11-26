@@ -13,8 +13,10 @@ import { currentUser } from "@/lib/server/auth";
 import { getHoneycombMap, getSiteSettings } from "@/lib/server/settings";
 import { categories as baseCategories } from "@/lib/data";
 import {
-  deleteCategory, saveHoneycomb, saveSiteSettings, seedCategories, toggleCategory,
+  deleteCategory, saveHoneycomb, saveSiteSettings, seedCategories, toggleCategory, setHiringFlow,
 } from "@/app/actions/admin";
+import { hiringFlow } from "@/lib/book-now";
+import { money } from "@/lib/format";
 import { DEFAULT_SERVICES, CELL_LABELS } from "@/lib/honeycomb-slots";
 
 export const dynamic = "force-dynamic";
@@ -71,6 +73,37 @@ export default async function AdminCategoriesPage({
             <Download size={15} /> Sinkronizo kategoritë e miratuara
           </button>
         </form>
+      </Card>
+
+      <Card className="mt-6">
+        <SectionTitle>Mënyrat e punësimit sipas kategorisë</SectionTitle>
+        <p className="text-sm text-muted">Biseda vlen kudo. “Rezervo tani” (me orë) dhe vlerësimi me pagesë aktivizohen për secilën kategori.</p>
+        <ul className="mt-3 divide-y divide-line">
+          {serviceCategories.map((category) => {
+            const row = cats.find((c) => c.slug === category.slug);
+            const flow = hiringFlow(category.slug, row ?? {});
+            const toggle = (field: "bookNowEnabled" | "estimateEnabled", on: boolean, label: string) => (
+              <form action={setHiringFlow}>
+                <input type="hidden" name="slug" value={category.slug} />
+                <input type="hidden" name="field" value={field} />
+                <input type="hidden" name="value" value={String(!on)} />
+                <button className={`rounded-full border px-3 py-1 text-xs font-semibold ${on ? "border-gold bg-honey text-gold-dark" : "border-line text-muted"}`}>
+                  {label}: {on ? "Po" : "Jo"}
+                </button>
+              </form>
+            );
+            return (
+              <li key={category.slug} className="flex flex-wrap items-center justify-between gap-2 py-2">
+                <span className="text-sm font-semibold">{category.name}</span>
+                <span className="flex flex-wrap items-center gap-2">
+                  <span className="rounded-full bg-cream px-3 py-1 text-xs">Biseda</span>
+                  {toggle("bookNowEnabled", flow.bookNow, "Rezervo tani")}
+                  {toggle("estimateEnabled", flow.estimate, `Vlerësim${flow.estimatePriceCents ? ` ${money(flow.estimatePriceCents)}` : ""}`)}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
       </Card>
 
       {/* the list */}

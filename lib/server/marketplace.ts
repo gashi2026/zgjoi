@@ -27,6 +27,7 @@ import { containsContactDetails } from "../contact-filter";
 import { clockTime } from "../format";
 import { expireDueOffersFor } from "./offer-expiry";
 import { serializable } from "./transaction";
+import { applyEstimateCreditToPayment } from "./bookings";
 export { serializable } from "./transaction";
 
 export function isParticipant(
@@ -332,7 +333,7 @@ export async function acceptOffer(actor: Actor, input: unknown) {
       409,
       "Oferta nuk mund të pranohet më.",
     );
-    await tx.payment.create({
+    const payment = await tx.payment.create({
       data: {
         requestId: request.id,
         amount: quote.amount,
@@ -342,8 +343,11 @@ export async function acceptOffer(actor: Actor, input: unknown) {
         strategy: "PLATFORM_CHARGE",
         provider: "disabled",
         state: "PENDING",
+        method: "OFFLINE",
       },
     });
+    // A paid estimate with this pro is credited in full on every hiring path.
+    const credit = await applyEstimateCreditToPayment(tx, request, quote.profileId, payment.id);
     await notify(
       tx,
       quote.profile.userId,
@@ -356,7 +360,7 @@ export async function acceptOffer(actor: Actor, input: unknown) {
         actorId: actor.id,
         action: "OFFER_ACCEPTED",
         target: request.id,
-        meta: { quoteId: quote.id, amount: quote.amount, commission },
+        meta: { quoteId: quote.id, amount: quote.amount, commission, estimateCreditCents: credit.creditCents },
       },
     });
     return {
@@ -395,6 +399,8 @@ export async function getRequest(actor: Actor, id: string) {
           commissionAmount: true,
           proAmount: true,
           provider: true,
+          method: true,
+          estimateCreditCents: true,
           heldAt: true,
           dispute: {
             select: {
@@ -408,6 +414,20 @@ export async function getRequest(actor: Actor, id: string) {
         },
       },
       review: { select: { id: true, rating: true, text: true } },
+      booking: {
+        select: {
+          id: true, startsAt: true, hourlyRateCents: true, minMinutes: true, minutes: true, totalCents: true,
+          commissionBps: true, commissionCents: true, proCents: true, creditCents: true, dueCents: true,
+          status: true, cancelledAt: true, cancelledBy: true, cancelReason: true, feeCents: true,
+          feeProCents: true, feePlatformCents: true, refundCents: true, createdAt: true,
+          changes: {
+            orderBy: { createdAt: "asc" },
+            take: 100,
+            select: { id: true, kind: true, state: true, minutes: true, totalCents: true, note: true,
+              todoKind: true, todoCents: true, todoDoneAt: true, decidedAt: true, createdAt: true },
+          },
+        },
+      },
     },
   });
   invariant(
@@ -424,7 +444,7 @@ export async function getRequest(actor: Actor, id: string) {
   const payment = await db.payment.findUnique({ where: { requestId: id }, include: paymentActivity });
   return {
     ...request,
-    unpaidEditable: ["OPEN", "QUOTED", "BOOKED"].includes(request.state) && paymentUntouched(payment),
+    unpaidEditable: ["OPEN", "QUOTED", "BOOKED"].includes(request.state) && paymentUntouched(payment) && !request.booking,
     address: reveal ? request.address : null,
     client: {
       ...request.client,
@@ -633,6 +653,7 @@ export async function changeJob(
       include: {
         payment: { include: paymentActivity },
         selectedPro: { select: { userId: true } },
+        booking: { select: { id: true } },
       },
     });
     invariant(
@@ -641,6 +662,8 @@ export async function changeJob(
       404,
       "Kërkesa nuk u gjet.",
     );
+    // Book now jobs follow the 24-hour cancellation rules in lib/server/bookings.ts.
+    invariant(!(action === "CANCEL" && request.booking), "BOOKING_CANCEL", 409, "Përdorni anulimin e rezervimit te biseda.");
     if (action === "CONFIRM_COMPLETION") {
       role(actor, "CLIENT");
       if (request.state === "COMPLETED") return { ok: true };

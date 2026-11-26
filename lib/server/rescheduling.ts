@@ -49,6 +49,9 @@ export async function proposeReschedule(actor: Actor, id: string, input: unknown
       return { ok: true, quoteId: previous.id };
     }
     editable(request);
+    // Book now keeps its own start time and hours; changes go through the booking.
+    invariant(!(await tx.booking.findUnique({ where: { requestId: id }, select: { id: true } })), "BOOKING_LOCKED", 409,
+      "Për një rezervim me “Rezervo tani”, bini dakord për orarin në bisedë ose anuloni sipas rregullave të anulimit.");
     invariant(request.version === data.expectedVersion, "STALE", 409, "Kërkesa ka ndryshuar. Rifreskoni faqen.");
     invariant(request.selectedPro?.verification === "APPROVED" &&
       !request.selectedPro.user.suspendedAt && request.selectedPro.user.role === "PRO",

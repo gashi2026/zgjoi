@@ -6,6 +6,8 @@ import Frame, { Panel } from "./Frame";
 import ApiForm, { type Field } from "./ApiForm";
 import UploadDocument from "./UploadDocument";
 import Link from "next/link";
+import { categoryFlow } from "@/lib/server/bookings";
+import { hourOptions, hoursLabel, MINUTE_STEP } from "@/lib/book-now";
 export default async function ProfileEditor({ pro }: { pro: boolean }) {
   const actor = await pageGuard(pro ? "PRO" : "CLIENT");
   const user = await db.user.findUniqueOrThrow({
@@ -27,6 +29,7 @@ export default async function ProfileEditor({ pro }: { pro: boolean }) {
   });
   const categories = pro ? await activeCategories() : [];
   const profile = user.proProfile;
+  const flow = pro && profile ? await categoryFlow(db, profile.categorySlug) : null;
   const fields: Field[] = [
     {
       name: "name",
@@ -116,6 +119,28 @@ export default async function ProfileEditor({ pro }: { pro: boolean }) {
           </p>
         )}
       </Panel>
+      {pro && profile && flow?.bookNow && (
+        <Panel>
+          <h2 className="mb-1 text-lg font-bold">Rezervo tani · tarifa për orë</h2>
+          <p className="mb-4 text-sm text-muted">
+            Në kategorinë tuaj klientët mund t’ju rezervojnë direkt me “Rezervo tani”. Ju caktoni tarifën për orë dhe
+            minimumin e orëve; klienti zgjedh sa orë dëshiron (së paku minimumin) dhe totali është tarifa × orët.
+            Pas punës mund të propozoni ndryshim të orëve në bisedë; vlen pasi klienti ta konfirmojë.
+          </p>
+          <ApiForm
+            endpoint="/api/account/booking-settings"
+            label="Ruaj tarifën"
+            fields={[
+              { name: "enabled", label: "Prano rezervime me “Rezervo tani”", type: "checkbox", checked: Boolean(profile.hourlyRateCents) },
+              { name: "hourlyRate", label: "Tarifa për orë në euro", type: "number", step: "0.01", min: 1, max: 1000,
+                value: profile.hourlyRateCents ? profile.hourlyRateCents / 100 : "" },
+              { name: "minMinutes", label: "Minimumi i orëve për rezervim", type: "select", as: "number",
+                value: String(profile.bookingMinMinutes ?? 120),
+                options: hourOptions(MINUTE_STEP).map((m) => ({ value: String(m), label: hoursLabel(m) })) },
+            ]}
+          />
+        </Panel>
+      )}
       <Panel>
         <h2 className="mb-4 text-lg font-bold">Siguria e llogarisë</h2>
         <ApiForm

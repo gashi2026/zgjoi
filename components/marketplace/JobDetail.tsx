@@ -11,6 +11,7 @@ import { appointmentEnd } from "@/lib/appointments";
 import Frame, { Panel } from "./Frame";
 import ApiForm from "./ApiForm";
 import Thread, { type ThreadEvent } from "./Thread";
+import { BookingPanel, bookingEvents } from "./BookingPanel";
 import { serviceCategory } from "@/lib/service-categories";
 import { DEFAULT_CHAT_TIMING } from "@/lib/marketplace-validation";
 import { jobStages, jobStatus, timelineEventLabel } from "@/lib/chat-timeline";
@@ -173,7 +174,10 @@ export default async function JobDetail({
         </div>
       ),
     },
-    ...request.quotes.map(quoteCard),
+    // A Book now job shows its booking card instead of a quote card.
+    ...(request.booking
+      ? bookingEvents(request.booking, { pro, requestId: id, active: ["BOOKED", "IN_PROGRESS"].includes(request.state) })
+      : request.quotes.map(quoteCard)),
     ...statusLine("OFFER_ACCEPTED", request.acceptedQuote?.acceptedAt),
     ...statusLine(request.payment?.provider === "offline" ? "PAYMENT_MARKED_PAID_OFFLINE" : "PAYMENT_HELD", request.payment?.heldAt),
     ...statusLine("START", started?.createdAt),
@@ -223,6 +227,12 @@ export default async function JobDetail({
             Orari i konfirmuar: {dateTime(request.acceptedQuote.scheduledAt)} (ora e Kosovës).
             {latest && " Ky orar mbetet i rezervuar derisa klienti të pranojë propozimin e ri."}
           </p>
+        )}
+        {request.booking && (
+          <div className="mt-4">
+            <BookingPanel b={request.booking} pro={pro} requestId={id} requestState={request.state} version={request.version}
+              paidCents={request.payment?.state === "HELD" ? request.booking.dueCents : 0} />
+          </div>
         )}
         {request.conversation && (
           <div className="mt-4">
@@ -305,6 +315,12 @@ export default async function JobDetail({
             Pagesa · {stateLabel(request.payment.state)}
           </h2>
           <p className="mt-2">Totali: {money(request.payment.amount)}</p>
+          {request.payment.estimateCreditCents > 0 && (
+            <p className="mt-1 text-sm">
+              Kredi nga vlerësimi i paguar: −{money(Math.min(request.payment.estimateCreditCents, request.payment.amount))} · Për t’u paguar:{" "}
+              {money(Math.max(0, request.payment.amount - request.payment.estimateCreditCents))}
+            </p>
+          )}
           {pro && (
             <p className="mt-1 text-sm">
               Komisioni ({request.payment.commissionBps / 100}%): {money(request.payment.commissionAmount)} · Për ju:{" "}
