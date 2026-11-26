@@ -962,6 +962,65 @@ test("database-backed private marketplace and authorization journey", async (t) 
     assert(!page.text.includes("Anulo rezervimin pa pagesë"));
   });
 
+  await t.test("beta: an admin marks an unpaid booking as paid offline (audited, idempotent), unlocking completion, payout and review", async () => {
+    const f = await unpaidBooking();
+    const payment = await db.payment.findUniqueOrThrow({ where: { requestId: f.id } });
+    const body = { action: "MARK_PAID_OFFLINE", id: payment.id, reason: "Para në dorë, konfirmuar me telefon nga klienti." };
+    for (const jar of [f.customerJar, f.proJar, supportj]) ok(await http("/api/admin/payments", jar, body), 403);
+    ok(await http("/api/admin/payments", adminj, { ...body, reason: "shkurt" }), 400);
+    ok(await http(`/api/requests/${f.id}`, f.proJar, { action: "START" }), 409);
+    const results = await Promise.all([1, 2].map(() => http("/api/admin/payments", adminj, body)));
+    results.forEach((r) => ok(r));
+    const held = await db.payment.findUniqueOrThrow({ where: { id: payment.id } });
+    assert.equal(held.state, "HELD");
+    assert.equal(held.provider, "offline");
+    assert(held.heldAt);
+    const audits = await db.auditLog.findMany({ where: { action: "PAYMENT_MARKED_PAID_OFFLINE", target: payment.id } });
+    assert.equal(audits.length, 1);
+    assert.equal(audits[0].actorId, admin.id);
+    assert.equal((audits[0].meta as { note?: string }).note, body.reason);
+    assert.equal(await db.notification.count({ where: { kind: "FUNDED", href: { endsWith: f.id } } }), 2);
+    ok(await http(`/api/requests/${f.id}`, f.customerJar, { action: "CANCEL", expectedVersion: 2 }), 409);
+    ok(await http(`/api/requests/${f.id}`, f.proJar, { action: "START" }));
+    ok(await http(`/api/requests/${f.id}`, f.proJar, { action: "REQUEST_COMPLETION" }));
+    ok(await http(`/api/requests/${f.id}`, f.customerJar, { action: "CONFIRM_COMPLETION" }));
+    const payout = await db.payout.findUniqueOrThrow({ where: { paymentId: payment.id } });
+    assert.equal(payout.amount, held.proAmount);
+    assert.equal(payout.state, "SCHEDULED");
+    ok(await http("/api/reviews", f.customerJar, { requestId: f.id, rating: 5, text: "Punë e pastër dhe në kohë, faleminderit." }));
+    assert.equal(ok(await http("/api/admin/payments", adminj, body)).already, true);
+    assert.equal(await db.auditLog.count({ where: { action: "PAYMENT_MARKED_PAID_OFFLINE", target: payment.id } }), 1);
+  });
+
+  await t.test("reading a request expires an overdue offer without the cron and returns no internal keys", async () => {
+    const pending = ok(await http("/api/requests", bj, { ...inquiry, clientKey: randomUUID() }));
+    const sent = ok(await http("/api/offers", pj, { ...offer(), requestId: pending.id, clientKey: randomUUID() }));
+    await db.quote.update({ where: { id: sent.quoteId }, data: { expiresAt: new Date(Date.now() - 1000) } });
+    const viewed = ok(await http(`/api/requests/${pending.id}`, bj));
+    assert.equal(viewed.state, "OPEN");
+    assert.equal(viewed.quotes[0].state, "EXPIRED");
+    assert.equal(await db.notification.count({ where: { kind: "EXPIRED", href: { endsWith: `/kerkesat/${pending.id}` } } }), 2);
+    for (const key of ["creationKey", "clientId"]) assert(!(key in viewed), key);
+    assert(!("id" in viewed.client));
+    assert(!("creationKey" in viewed.quotes[0]));
+    assert(!("userId" in viewed.selectedPro));
+  });
+
+  await t.test("chat notices are coalesced per job and cleared when the thread is opened", async () => {
+    const pending = ok(await http("/api/requests", bj, { ...inquiry, clientKey: randomUUID() }));
+    const { id: conversation } = await db.conversation.findUniqueOrThrow({ where: { requestId: pending.id } });
+    const href = `/pro/kerkesat/${pending.id}`;
+    for (const text of ["Mirëdita, a jeni i lirë më 27.11.2026 nga ora 10:00?", "Buxheti im është rreth 95.50 €.", "Faleminderit!"])
+      ok(await http("/api/messages", bj, { conversationId: conversation, body: text, clientKey: randomUUID() }));
+    const notices = await db.notification.findMany({ where: { userId: pro.id, kind: "MESSAGE", href } });
+    assert.equal(notices.length, 1);
+    assert.equal(notices[0].title, "Keni mesazhe të reja");
+    ok(await http(`/api/messages?conversationId=${conversation}`, pj));
+    assert.equal(await db.notification.count({ where: { userId: pro.id, kind: "MESSAGE", href, readAt: null } }), 0);
+    ok(await http("/api/messages", bj, { conversationId: conversation, body: "Edhe një pyetje.", clientKey: randomUUID() }));
+    assert.equal(await db.notification.count({ where: { userId: pro.id, kind: "MESSAGE", href, readAt: null } }), 1);
+  });
+
   await t.test("payment attempts, provider references and settled history prevent self-service booking changes", async () => {
     const f = await unpaidBooking();
     const payment = await db.payment.findUniqueOrThrow({ where: { requestId: f.id } });
