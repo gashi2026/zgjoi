@@ -47,6 +47,12 @@ export default async function Page({
     take: 50,
     include: { booking: { select: { requestId: true, request: { select: { title: true, client: { select: { name: true } } } } } } },
   });
+  const disputeTodos = await db.dispute.findMany({
+    where: { todoKind: { not: null }, todoDoneAt: null },
+    orderBy: { resolvedAt: "asc" },
+    take: 50,
+    include: { payment: { select: { request: { select: { title: true, client: { select: { name: true } } } } } } },
+  });
   const due = (p: (typeof payments)[number]) => Math.max(0, p.amount - p.estimateCreditCents);
   return (
     <Frame
@@ -62,9 +68,20 @@ export default async function Page({
         </p>
       </Panel>
       <Panel>
-        <h2 className="text-lg font-bold">Detyra nga rezervimet (rimbursime dhe tarifa)</h2>
+        <h2 className="text-lg font-bold">Detyra: rimbursime, tarifa dhe kredi</h2>
         <p className="mt-1 text-sm text-muted">Gjatë beta-s asnjë para nuk lëviz automatikisht. Kryeni rimbursimin ose mbledhjen jashtë platformës dhe shënojeni këtu.</p>
-        {!todos.length && <p className="mt-3 text-sm">Nuk ka detyra të hapura.</p>}
+        {!todos.length && !disputeTodos.length && <p className="mt-3 text-sm">Nuk ka detyra të hapura.</p>}
+        {disputeTodos.map((t) => (
+          <div key={t.id} className="mt-4 rounded-xl bg-cream p-3">
+            <p className="font-semibold">
+              {`Kontest · ${t.todoKind === "REFUND" ? "Rimburso klientin" : "Jepi kredi klientit"}: ${money(t.todoCents ?? 0)} · ${t.payment.request.title} · ${t.payment.request.client.name}`}
+            </p>
+            {t.resolution && <p className="text-sm">{t.resolution}</p>}
+            <Link className="text-xs text-gold-dark" href={`/admin/kontestet/${t.id}`}>Shiko kontestin →</Link>
+            <ApiForm endpoint="/api/admin/disputes" values={{ id: t.id, action: "TODO_DONE" }} label="Shëno si të kryer"
+              fields={[{ name: "reason", label: "Si u krye? (p.sh. para në dorë, transfer)", required: true, minLength: 5, maxLength: 500 }]} />
+          </div>
+        ))}
         {todos.map((t) => (
           <div key={t.id} className="mt-4 rounded-xl bg-cream p-3">
             <p className="font-semibold">
@@ -108,7 +125,7 @@ export default async function Page({
           )}
           {p.dispute && (
             <div className="mt-3 rounded-xl bg-cream p-3">
-              <h3 className="font-bold">Kontesti</h3>
+              <h3 className="font-bold"><Link href={`/admin/kontestet/${p.dispute.id}`}>Kontesti →</Link></h3>
               <p className="whitespace-pre-wrap">{p.dispute.reason}</p>
               <p>{p.dispute.resolution || "Pa zgjidhje ende"}</p>
             </div>

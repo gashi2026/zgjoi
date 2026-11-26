@@ -12,6 +12,7 @@ import Frame, { Panel } from "./Frame";
 import ApiForm from "./ApiForm";
 import Thread, { type ThreadEvent } from "./Thread";
 import { BookingPanel, bookingEvents } from "./BookingPanel";
+import { canOpenDispute, outcomeLabels, DISPUTE_OPEN_DAYS, DISPUTE_RESPONSE_HOURS, type DisputeOutcome } from "@/lib/dispute-rules";
 import { serviceCategory } from "@/lib/service-categories";
 import { DEFAULT_CHAT_TIMING } from "@/lib/marketplace-validation";
 import { jobStages, jobStatus, timelineEventLabel } from "@/lib/chat-timeline";
@@ -184,6 +185,24 @@ export default async function JobDetail({
     ...statusLine("REQUEST_COMPLETION", request.completionRequestedAt),
     ...statusLine("CONFIRM_COMPLETION", request.completedAt),
     ...statusLine("DISPUTE_OPENED", request.payment?.dispute?.createdAt),
+    ...statusLine("DISPUTE_RESPONDED", request.payment?.dispute?.respondedAt),
+    ...(request.payment?.dispute?.resolvedAt && request.payment.dispute.outcome
+      ? [{
+          id: "status-DISPUTE_DECIDED",
+          createdAt: request.payment.dispute.resolvedAt.toISOString(),
+          node: (
+            <p role="status" className="mx-auto w-fit max-w-full rounded-full border border-gold/40 bg-white px-4 py-2 text-center text-xs font-semibold">
+              {[
+                `Vendimi i administratës: ${outcomeLabels[request.payment.dispute.outcome as DisputeOutcome] ?? request.payment.dispute.outcome}`,
+                request.payment.dispute.refundCents > 0 ? `rimbursim ${money(request.payment.dispute.refundCents)}` : "",
+                request.payment.dispute.customerCreditCents > 0 ? `kredi ${money(request.payment.dispute.customerCreditCents)}` : "",
+                request.payment.dispute.finalPriceCents ? `çmimi përfundimtar ${money(request.payment.dispute.finalPriceCents)}` : "",
+                dateTime(request.payment.dispute.resolvedAt),
+              ].filter(Boolean).join(" · ")}
+            </p>
+          ),
+        }]
+      : []),
     ...statusLine("CANCEL", request.cancelledAt),
   ];
   return (
@@ -368,26 +387,47 @@ export default async function JobDetail({
                 : "Pagesa është konfirmuar. Fondet mund t’i transferohen profesionistit pas konfirmimit të përfundimit nga klienti."}
             </p>
           )}
-          {request.payment.dispute && (
-            <div className="mt-3 rounded-xl bg-cream p-3">
-              <h3 className="font-bold">Kontesti</h3>
-              <p className="whitespace-pre-wrap">
-                {request.payment.dispute.reason}
-              </p>
-              <p>
-                {request.payment.dispute.resolution ||
-                  "Në shqyrtim nga administrata."}
-              </p>
-            </div>
-          )}
+          {request.payment.dispute && (() => {
+            const d = request.payment.dispute;
+            const mineOpened = d.openedByRole ? (d.openedByRole === "PRO") === pro : !pro;
+            const canRespond = !d.resolvedAt && !mineOpened && !d.response && (!d.respondBy || d.respondBy > new Date());
+            return (
+              <div className="mt-3 space-y-3 rounded-xl bg-cream p-3">
+                <h3 className="font-bold">Kontesti</h3>
+                <div>
+                  <p className="text-xs font-semibold text-gold-dark">Deklarata e {d.openedByRole === "PRO" ? "profesionistit" : "klientit"}{mineOpened ? " (ju)" : ""}</p>
+                  <p className="whitespace-pre-wrap text-sm">{d.reason}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-gold-dark">Deklarata e {d.openedByRole === "PRO" ? "klientit" : "profesionistit"}{!mineOpened ? " (ju)" : ""}</p>
+                  <p className="whitespace-pre-wrap text-sm">
+                    {d.response ?? (d.respondBy && d.respondBy > new Date() ? `Në pritje deri më ${dateTime(d.respondBy)}.` : "Nuk u shtua brenda afatit.")}
+                  </p>
+                </div>
+                {canRespond && (
+                  <ApiForm endpoint="/api/disputes" values={{ action: "RESPOND", requestId: id }} label="Shto deklaratën tuaj"
+                    fields={[{ name: "statement", label: `Përgjigjuni brenda ${DISPUTE_RESPONSE_HOURS} orëve`, type: "textarea", minLength: 20, maxLength: 4000, required: true }]} />
+                )}
+                <p className="text-sm">
+                  {d.resolvedAt
+                    ? `${outcomeLabels[d.outcome as DisputeOutcome] ?? d.outcome}${d.resolution ? ` — ${d.resolution}` : ""}`
+                    : "Në shqyrtim nga administrata."}
+                </p>
+              </div>
+            );
+          })()}
         </Panel>
       )}
-      {funded && !request.payment?.dispute && (
+      {funded && !request.payment?.dispute && canOpenDispute(request, new Date()) && (
         <Panel>
           <details>
             <summary className="cursor-pointer font-semibold">
               Raporto një problem me punën
             </summary>
+            <p className="mt-2 text-sm text-muted">
+              Pala tjetër ka {DISPUTE_RESPONSE_HOURS} orë të shtojë deklaratën e saj; pastaj vendos administrata e Zgjoi
+              (rimbursim, kredi ose pa veprim). Një problem raportohet deri në {DISPUTE_OPEN_DAYS} ditë pas punës.
+            </p>
             <div className="mt-4">
               <ApiForm
                 endpoint="/api/disputes"

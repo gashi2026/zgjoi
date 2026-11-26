@@ -30,6 +30,7 @@ const eventLabels: Record<string, { client: string; pro: string }> = {
   CONFIRM_COMPLETION: { client: "Ju konfirmuat përfundimin · Statusi: Përfunduar", pro: "Klienti konfirmoi përfundimin · Statusi: Përfunduar" },
   CANCEL: { client: "Biseda u mbyll · Statusi: Anuluar", pro: "Biseda u mbyll · Statusi: Anuluar" },
   DISPUTE_OPENED: { client: "U hap një kontest · Administrata po e shqyrton", pro: "U hap një kontest · Administrata po e shqyrton" },
+  DISPUTE_RESPONDED: { client: "Te kontesti u shtua deklarata e palës së dytë", pro: "Te kontesti u shtua deklarata e palës së dytë" },
   RESCHEDULE_ACCEPTED: { client: "Orari i ri u pranua", pro: "Klienti pranoi orarin e ri" },
 };
 export function timelineEventLabel(action: string, pro: boolean) {
