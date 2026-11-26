@@ -7,6 +7,15 @@ import { serviceCategory } from "./service-categories";
 
 export type HiringFlow = { chat: true; bookNow: boolean; estimate: boolean; estimatePriceCents: number | null };
 export const ESTIMATE_PRICE_CENTS = 1500;
+/** Owner (26 Nov 2026): a paid estimate the customer does not turn into a hire
+ * with that pro is split 10 € to the pro and 5 € to Zgjoi (like the late fee).
+ * Credited to a hire, it becomes part of the job price instead (normal commission). */
+export const ESTIMATE_PRO_SHARE_CENTS = 1000;
+export const ESTIMATE_PLATFORM_SHARE_CENTS = 500;
+export function estimateSplit(amountCents: number) {
+  const platformShareCents = Math.min(ESTIMATE_PLATFORM_SHARE_CENTS, Math.max(0, amountCents));
+  return { proShareCents: Math.max(0, amountCents) - platformShareCents, platformShareCents };
+}
 /** Code defaults. A Category row can override each value (null = default). */
 const defaultFlows: Record<string, { bookNow: boolean; estimate: boolean }> = {
   elektricist: { bookNow: true, estimate: true },

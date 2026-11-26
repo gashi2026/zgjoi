@@ -429,6 +429,7 @@ export async function getRequest(actor: Actor, id: string) {
           commissionBps: true, commissionCents: true, proCents: true, creditCents: true, dueCents: true,
           status: true, cancelledAt: true, cancelledBy: true, cancelReason: true, feeCents: true,
           feeProCents: true, feePlatformCents: true, refundCents: true, createdAt: true,
+          seriesId: true,
           changes: {
             orderBy: { createdAt: "asc" },
             take: 100,
@@ -448,15 +449,21 @@ export async function getRequest(actor: Actor, id: string) {
     404,
     "Kërkesa nuk u gjet.",
   );
+  // Paid estimate visit (step 4): the request that carries it.
+  const estimate = await db.estimate.findFirst({ where: { requestId: id }, orderBy: { createdAt: "desc" },
+    select: { id: true, state: true, amountCents: true, visitAt: true, paidAt: true, creditedRequestId: true, cancelledAt: true, createdAt: true, proShareCents: true, platformShareCents: true } });
   const reveal =
     actor.role !== "PRO" ||
     ["HELD", "RELEASED", "DISPUTED", "REFUNDED"].includes(
       request.payment?.state ?? "",
-    );
+    ) ||
+    // The pro needs the address for a paid estimate visit.
+    ["PAID", "CREDITED"].includes(estimate?.state ?? "");
   const payment = await db.payment.findUnique({ where: { requestId: id }, include: paymentActivity });
   return {
     ...request,
     unpaidEditable: ["OPEN", "QUOTED", "BOOKED"].includes(request.state) && paymentUntouched(payment) && !request.booking,
+    estimate,
     address: reveal ? request.address : null,
     client: {
       ...request.client,
