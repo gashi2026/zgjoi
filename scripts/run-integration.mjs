@@ -20,6 +20,8 @@ const env = {
   STRIPE_SECRET_KEY: "",
   STRIPE_WEBHOOK_SECRET: "",
   EMAIL_DELIVERY_ENABLED: "false",
+  // Non-production email allowlist: only the synthetic CI domain.
+  EMAIL_ALLOWLIST: "example.test",
   DOCUMENT_UPLOADS_ENABLED: "false",
 };
 const app = spawn(

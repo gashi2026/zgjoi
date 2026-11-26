@@ -1530,6 +1530,14 @@ test("database-backed private marketplace and authorization journey", async (t) 
       assert.equal(recovered.payloadEnc, "");
       assert.equal(recovered.lockedAt, null);
       assert.equal(calls.length, 2);
+      // Outside production, recipients missing from EMAIL_ALLOWLIST are never contacted.
+      const stranger = await db.outbox.create({ data: { key: `stranger-${randomUUID()}`, kind: "EMAIL", payloadEnc: encrypt(JSON.stringify({ to: "customer@not-allowlisted.example", subject: "CI only", text: "Synthetic" })) } });
+      await deliverOutbox();
+      const skipped = await db.outbox.findUniqueOrThrow({ where: { id: stranger.id } });
+      assert.equal(skipped.state, "FAILED");
+      assert.equal(skipped.lastError, "NOT_ALLOWLISTED");
+      assert.equal(skipped.payloadEnc, "");
+      assert.equal(calls.length, 2);
     } finally {
       globalThis.fetch = originalFetch;
       for (const name of names) {

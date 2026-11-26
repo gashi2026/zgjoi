@@ -515,14 +515,20 @@ export async function sendJobMessage(actor: Actor, input: unknown) {
       actor.role === "PRO"
         ? conversation.request.clientId
         : conversation.request.selectedPro?.userId;
-    if (recipient)
-      await notify(
-        tx,
-        recipient,
-        "MESSAGE",
-        "Keni një mesazh të ri",
-        `${actor.role === "PRO" ? "/llogaria" : "/pro"}/kerkesat/${conversation.requestId}`,
-      );
+    if (recipient) {
+      // Coalesce chat notices: one unread "new messages" notice per job.
+      const href = `${actor.role === "PRO" ? "/llogaria" : "/pro"}/kerkesat/${conversation.requestId}`;
+      const pending = await tx.notification.findFirst({
+        where: { userId: recipient, kind: "MESSAGE", href, readAt: null },
+        select: { id: true },
+      });
+      if (pending)
+        await tx.notification.update({
+          where: { id: pending.id },
+          data: { title: "Keni mesazhe të reja", createdAt: new Date() },
+        });
+      else await notify(tx, recipient, "MESSAGE", "Keni një mesazh të ri", href);
+    }
     return { ok: true, id: message.id };
   });
 }
@@ -564,6 +570,17 @@ export async function readJobMessages(
     take: 101,
     select: { id: true, body: true, senderId: true, createdAt: true },
   });
+  if (isParticipant(conversation.request, actor) && !before)
+    // Opening the thread clears the coalesced chat notice for this job.
+    await db.notification.updateMany({
+      where: {
+        userId: actor.id,
+        kind: "MESSAGE",
+        readAt: null,
+        href: `${actor.role === "PRO" ? "/pro" : "/llogaria"}/kerkesat/${conversation.requestId}`,
+      },
+      data: { readAt: new Date() },
+    });
   if (isParticipant(conversation.request, actor))
     await db.message.updateMany({
       where: {
