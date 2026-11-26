@@ -24,6 +24,8 @@ import {
 } from "../marketplace-validation";
 
 import { containsContactDetails } from "../contact-filter";
+import { clockTime } from "../format";
+import { expireDueOffersFor } from "./offer-expiry";
 import { serializable } from "./transaction";
 export { serializable } from "./transaction";
 
@@ -362,6 +364,7 @@ export async function acceptOffer(actor: Actor, input: unknown) {
 
 export async function getRequest(actor: Actor, id: string) {
   entityId.parse(id);
+  await expireDueOffersFor({ id });
   const request = await db.serviceRequest.findUnique({
     where: { id },
     include: {
@@ -581,11 +584,7 @@ export async function readJobMessages(
         body: m.body,
         mine: m.senderId === actor.id,
         createdAt: m.createdAt,
-        time: new Intl.DateTimeFormat("sq", {
-          hour: "2-digit",
-          minute: "2-digit",
-          timeZone: "Europe/Belgrade",
-        }).format(m.createdAt),
+        time: clockTime(m.createdAt),
       })),
   };
 }

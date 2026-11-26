@@ -10,6 +10,7 @@ import { enforceLimit } from "./rate-limit";
 import { requestIp } from "./http";
 import { supportInput, entityId, cleanText } from "../marketplace-validation";
 import { supportStatus } from "../support-hours";
+import { clockTime } from "../format";
 import { serializable } from "./marketplace";
 import { clientKey } from "../marketplace-validation";
 
@@ -99,11 +100,7 @@ export async function supportThread(ticketId?: string, before?: string) {
       .reverse()
       .map((m) => ({
         ...m,
-        time: new Intl.DateTimeFormat("sq", {
-          hour: "2-digit",
-          minute: "2-digit",
-          timeZone: "Europe/Belgrade",
-        }).format(m.createdAt),
+        time: clockTime(m.createdAt),
       })),
   };
 }
