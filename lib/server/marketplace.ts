@@ -428,6 +428,35 @@ export async function getRequest(actor: Actor, id: string) {
   };
 }
 
+/** API response for GET /api/requests/:id: drops internal keys and ids the
+ * browser never needs (creation hashes, the client's user id, the pro's user id). */
+export function publicRequestView(request: Awaited<ReturnType<typeof getRequest>>) {
+  const {
+    creationKey: _creationKey,
+    clientId: _clientId,
+    client,
+    selectedPro,
+    quotes,
+    acceptedQuote,
+    ...rest
+  } = request;
+  void _creationKey;
+  void _clientId;
+  const quoteView = <Q extends { creationKey: string | null }>({ creationKey, ...quote }: Q) => {
+    void creationKey;
+    return quote;
+  };
+  return {
+    ...rest,
+    client: { name: client.name, city: client.city },
+    selectedPro: selectedPro
+      ? { id: selectedPro.id, verification: selectedPro.verification, user: selectedPro.user }
+      : null,
+    quotes: quotes.map(quoteView),
+    acceptedQuote: acceptedQuote ? quoteView(acceptedQuote) : null,
+  };
+}
+
 export async function sendJobMessage(actor: Actor, input: unknown) {
   const data = chatInput.parse(input);
   await enforceLimit(`message:${actor.id}`, 30, 60_000);

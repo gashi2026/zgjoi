@@ -600,3 +600,102 @@ export async function refundHeldPayment(
         : "Rimbursimi është në përpunim; nuk është shënuar si i përfunduar.",
   };
 }
+
+/** Provider label for bookings an administrator marked as paid outside Zgjoi. */
+export const OFFLINE_PROVIDER = "offline";
+
+/**
+ * Beta without online payments (owner decision, Nov 2026): an administrator
+ * records that the client paid outside the platform (cash / bank transfer).
+ * This moves the payment to HELD so the professional can start, the client
+ * can confirm completion (creating the payout record) and leave a review.
+ * Admin-only, audited with who/when/note, and idempotent. No money moves.
+ */
+export async function markPaidOffline(actor: Actor, paymentId: string, note: string) {
+  invariant(actor.role === "ADMIN", "FORBIDDEN", 403, "Nuk keni qasje.");
+  entityId.parse(paymentId);
+  const cleanNote = note.trim().replace(/\s+/g, " ");
+  invariant(
+    cleanNote.length >= 10 && cleanNote.length <= 500,
+    "NOTE",
+    400,
+    "Shënoni si u pagua (p.sh. para në dorë, transfer bankar me referencë), 10–500 shkronja.",
+  );
+  return serializable(async (tx) => {
+    invariant(
+      await tx.user.findFirst({ where: { id: actor.id, role: "ADMIN", suspendedAt: null } }),
+      "FORBIDDEN",
+      403,
+      "Nuk keni qasje.",
+    );
+    const payment = await tx.payment.findUnique({
+      where: { id: paymentId },
+      include: {
+        dispute: true,
+        _count: { select: { payouts: true, events: true } },
+        request: { include: { acceptedPro: { select: { userId: true } } } },
+      },
+    });
+    invariant(payment, "NOT_FOUND", 404, "Pagesa nuk u gjet.");
+    if (payment.state === "HELD" && payment.provider === OFFLINE_PROVIDER)
+      return { ok: true, already: true, message: "Pagesa ishte shënuar tashmë si e kryer." };
+    invariant(
+      payment.state === "PENDING" &&
+        payment.provider === "disabled" &&
+        !payment.dispute &&
+        !payment._count.payouts &&
+        !payment._count.events &&
+        !payment.providerCheckoutId &&
+        !payment.stripePaymentIntentId &&
+        !payment.operation,
+      "STATE",
+      409,
+      "Kjo pagesë nuk mund të shënohet si e kryer (ka filluar një pagesë online ose ka ndryshuar gjendja).",
+    );
+    invariant(
+      payment.request.state === "BOOKED" &&
+        payment.request.acceptedQuoteId &&
+        payment.request.acceptedProfileId,
+      "STATE",
+      409,
+      "Rezervimi nuk është në pritje të pagesës.",
+    );
+    const changed = await tx.payment.updateMany({
+      where: { id: payment.id, state: "PENDING", provider: "disabled" },
+      data: { state: "HELD", heldAt: new Date(), provider: OFFLINE_PROVIDER },
+    });
+    invariant(changed.count === 1, "STALE", 409, "Pagesa ka ndryshuar. Rifreskoni faqen.");
+    if (payment.request.acceptedPro)
+      await notify(
+        tx,
+        payment.request.acceptedPro.userId,
+        "FUNDED",
+        "Pagesa u konfirmua nga Zgjoi; puna mund të fillojë",
+        `/pro/kerkesat/${payment.requestId}`,
+      );
+    await notify(
+      tx,
+      payment.request.clientId,
+      "FUNDED",
+      "Pagesa juaj u konfirmua nga Zgjoi",
+      `/llogaria/kerkesat/${payment.requestId}`,
+    );
+    await tx.auditLog.create({
+      data: {
+        actorId: actor.id,
+        action: "PAYMENT_MARKED_PAID_OFFLINE",
+        target: payment.id,
+        meta: {
+          requestId: payment.requestId,
+          amount: payment.amount,
+          commissionAmount: payment.commissionAmount,
+          proAmount: payment.proAmount,
+          currency: payment.currency,
+          note: cleanNote,
+          markedAt: new Date().toISOString(),
+        },
+      },
+    });
+    return { ok: true, message: "Pagesa u shënua si e kryer. Profesionisti mund të fillojë punën." };
+  });
+}

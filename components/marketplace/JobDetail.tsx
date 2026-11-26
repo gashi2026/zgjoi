@@ -261,7 +261,10 @@ export default async function JobDetail({
               {latest ? (
                 <p>{pro ? "Në pritje të vendimit të klientit për orarin e ri." : "Pranoni ose refuzoni propozimin e orarit para pagesës."}</p>
               ) : pro ? (
-                <p>Prisni konfirmimin e pagesës para se të filloni punën.</p>
+                <p>
+                  Prisni konfirmimin e pagesës para se të filloni punën.
+                  {!paymentsReady() && " Gjatë beta-s, pagesën e konfirmon administrata e Zgjoi dhe ju njoftojmë menjëherë."}
+                </p>
               ) : paymentsReady() ? (
                 <>
                   <p className="mb-3 text-sm">
@@ -277,8 +280,9 @@ export default async function JobDetail({
               ) : (
                 <p role="status">
                   Pagesat online nuk janë ende të disponueshme. Oferta është
-                  ruajtur; asnjë pagesë nuk është kryer. Do të njoftoheni kur
-                  pagesat të jenë gati.
+                  ruajtur dhe asnjë pagesë nuk është kryer në platformë. Gjatë
+                  beta-s, pagesa rregullohet me ekipin e Zgjoi; pasi ta
+                  konfirmojmë, profesionisti mund të fillojë punën.
                 </p>
               )}
             </div>
@@ -288,8 +292,9 @@ export default async function JobDetail({
           )}
           {funded && (
             <p className="mt-3 text-sm">
-              Pagesa është konfirmuar. Fondet mund t’i transferohen
-              profesionistit pas konfirmimit të përfundimit nga klienti.
+              {request.payment.provider === "offline"
+                ? "Pagesa u konfirmua nga administrata e Zgjoi (beta, pagesë jashtë platformës). Pjesa e profesionistit transferohet pas konfirmimit të përfundimit nga klienti."
+                : "Pagesa është konfirmuar. Fondet mund t’i transferohen profesionistit pas konfirmimit të përfundimit nga klienti."}
             </p>
           )}
           {request.payment.dispute && (
