@@ -77,6 +77,7 @@ actual deployment secrets; never commit or paste passwords into issues or logs.
 | `CRON_SECRET`           | Independent random secret for scheduled jobs. The worker verifies this secret; no automatic time-based payment release is performed.                 |
 | `STRIPE_SECRET_KEY`     | Only provider test credentials in an isolated test environment until Kosovo company/payout support and the money workflow are approved and verified. |
 | `STRIPE_WEBHOOK_SECRET` | Signing secret for the matching provider test webhook endpoint. No live-money sign-off is implied by configuring it.                                 |
+| `EMAIL_ALLOWLIST`       | Outside production (`VERCEL_ENV` not `production`) email is sent only to these comma-separated addresses or domains. Empty = no email outside production. |
 
 Generate new encryption/cron secrets locally with `openssl rand -hex 32`. Do not
 regenerate an existing production encryption key as a routine setup step. The app
@@ -91,6 +92,19 @@ Additional flags, APP_URL and storage/email variables are documented in `.env.ex
 and [OWNER-SETUP.md](docs/OWNER-SETUP.md). Keep optional integrations disabled until
 their isolated tests pass. Vercel cron runs only on production deployments; a
 Preview needs an explicit staging invocation to test its worker.
+
+### Beta without online payments
+
+While `PAYMENTS_MODE` stays `disabled`, an administrator confirms a client's
+off-platform payment on `/admin/pagesat` with **Shëno si të paguar** (API action
+`MARK_PAID_OFFLINE`). It needs a note, is idempotent, writes a
+`PAYMENT_MARKED_PAID_OFFLINE` audit row and moves the payment to `HELD` with
+provider `offline`, so the professional can start and the client can confirm
+completion and review. No money is moved; the professional's payout record is
+created as `SCHEDULED` and must be paid manually.
+
+Overdue offers are also expired whenever a request or dashboard is read, so a
+Preview without cron no longer shows expired offers as sent.
 
 ## Existing Supabase database
 
