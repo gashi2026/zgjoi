@@ -10,7 +10,10 @@ import { money, stateLabel, dateTime } from "@/lib/format";
 import { appointmentEnd } from "@/lib/appointments";
 import Frame, { Panel } from "./Frame";
 import ApiForm from "./ApiForm";
-import Thread from "./Thread";
+import Thread, { type ThreadEvent } from "./Thread";
+import { serviceCategory } from "@/lib/service-categories";
+import { DEFAULT_CHAT_TIMING } from "@/lib/marketplace-validation";
+import { jobStages, jobStatus, timelineEventLabel } from "@/lib/chat-timeline";
 export default async function JobDetail({
   id,
   pro,
@@ -42,6 +45,18 @@ export default async function JobDetail({
     }
   }
   const active = ["BOOKED", "IN_PROGRESS"].includes(request.state);
+  const counterpart = pro ? request.client.name : (request.selectedPro?.user.name ?? "Profesionisti");
+  const category = serviceCategory(request.categorySlug)?.name ?? request.categorySlug;
+  const status = jobStatus(request.state);
+  const closed = ["CANCELLED", "COMPLETED"].includes(request.state);
+  // "Në progres" has no column of its own; the job-start audit row dates it.
+  const started = ["IN_PROGRESS", "COMPLETED", "DISPUTED"].includes(request.state)
+    ? await db.auditLog.findFirst({
+        where: { action: "START", target: request.id },
+        orderBy: { createdAt: "asc" },
+        select: { createdAt: true },
+      })
+    : null;
   const jobAction = (
     action: string,
     label: string,
@@ -55,182 +70,200 @@ export default async function JobDetail({
       confirmation={confirmation}
     />
   );
+  const hiredRevision = Math.min(
+    Infinity,
+    ...request.quotes.filter((q) => q.acceptedAt).map((q) => q.revision),
+  );
+  const side = (mine: boolean) => (mine ? "ml-auto" : "mr-auto");
+  const statusLine = (key: string, at: Date | null | undefined): ThreadEvent[] => {
+    const label = timelineEventLabel(key, pro);
+    return at && label
+      ? [{
+          id: `status-${key}`,
+          createdAt: at.toISOString(),
+          node: (
+            <p role="status" className="mx-auto w-fit max-w-full rounded-full border border-gold/40 bg-white px-4 py-2 text-center text-xs font-semibold">
+              {label} · {dateTime(at)}
+            </p>
+          ),
+        }]
+      : [];
+  };
+  const quoteCard = (quote: (typeof request.quotes)[number]): ThreadEvent => {
+    const expired = quote.state === "SENT" && quote.expiresAt && quote.expiresAt <= new Date();
+    // Anything sent after the hire is a schedule-change proposal, not a new price.
+    const reschedule = quote.revision > hiredRevision;
+    const current = latest?.id === quote.id;
+    const end = quote.scheduledAt ? appointmentEnd(quote.scheduledAt, quote.duration) : null;
+    return {
+      id: `quote-${quote.id}`,
+      createdAt: quote.createdAt.toISOString(),
+      node: (
+        <article
+          aria-label={`Oferta ${quote.revision}`}
+          className={`max-w-[92%] rounded-2xl border-2 bg-white p-4 shadow-soft sm:max-w-md ${current || quote.state === "ACCEPTED" ? "border-gold" : "border-line"} ${side(pro)}`}
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-gold-dark">
+              {reschedule ? "Propozim për orar të ri" : `Ofertë · Versioni ${quote.revision}`}
+            </p>
+            <span className="rounded-full bg-honey px-3 py-1 text-xs font-semibold">
+              {expired ? "Skaduar" : stateLabel(quote.state)}
+            </span>
+          </div>
+          <p className="mt-2 text-2xl font-bold">{money(quote.amount)}</p>
+          {quote.message && <p className="mt-2 whitespace-pre-wrap text-sm">{quote.message}</p>}
+          {quote.availableAt && <p className="mt-2 text-sm">Orari: {quote.availableAt}</p>}
+          {quote.scheduledAt ? (
+            <p className="mt-1 text-sm">
+              Fillimi: {dateTime(quote.scheduledAt)} (ora e Kosovës)
+              {end && <> · Përfundimi i parashikuar: {dateTime(end)}</>}
+            </p>
+          ) : (
+            <p className="mt-1 text-sm text-muted">Data e punës caktohet në bisedë.</p>
+          )}
+          {reschedule && <p className="mt-2 text-sm font-semibold">Çmimi dhe puna mbeten të njëjta.</p>}
+          {quote.expiresAt && quote.state === "SENT" && (
+            <p className="mt-1 text-xs text-muted">Vlen deri: {dateTime(quote.expiresAt)}</p>
+          )}
+          {!pro && current && request.state === "QUOTED" && (
+            <div className="mt-4 flex flex-wrap gap-3">
+              <ApiForm
+                endpoint="/api/offers/accept"
+                values={{ quoteId: quote.id, expectedVersion: request.version }}
+                label="Puneso"
+                confirmation={`Punësoni ${counterpart} për ${money(quote.amount)}? Puna kalon në statusin “Pranuar”. Pagesa rregullohet në hapin tjetër.`}
+              />
+              {jobAction("DECLINE", "Refuzo ofertën", undefined, quote.id)}
+            </div>
+          )}
+          {pro && current && request.state === "QUOTED" && (
+            <div className="mt-4">{jobAction("WITHDRAW", "Tërhiq ofertën", "Tërhiqni këtë ofertë?", quote.id)}</div>
+          )}
+          {request.state === "BOOKED" && request.unpaidEditable && current && (
+            <div className="mt-4 flex flex-wrap gap-3">
+              {(pro ? ["WITHDRAW"] : ["ACCEPT", "DECLINE"]).map(action => (
+                <ApiForm key={action} endpoint={`/api/requests/${id}/reschedule`}
+                  values={{ action, quoteId: quote.id, expectedVersion: request.version }}
+                  label={action === "ACCEPT" ? "Prano orarin e ri" : action === "DECLINE" ? "Mbaj orarin e mëparshëm" : "Tërhiq propozimin"}
+                  confirmation={action === "ACCEPT" && quote.scheduledAt ? `Ndryshoni rezervimin në ${dateTime(quote.scheduledAt)}? Çmimi mbetet ${money(quote.amount)}.` : undefined} />
+              ))}
+            </div>
+          )}
+          <time className="mt-2 block text-xs text-muted">{dateTime(quote.createdAt)}</time>
+        </article>
+      ),
+    };
+  };
+  const events: ThreadEvent[] = [
+    {
+      id: "intro",
+      createdAt: request.createdAt.toISOString(),
+      node: (
+        <div className={`max-w-[92%] rounded-xl p-3 ${pro ? "mr-auto bg-white" : "ml-auto bg-honey"}`}>
+          <p className="text-xs font-semibold text-gold-dark">Përshkrimi i punës</p>
+          <p className="mt-1 whitespace-pre-wrap break-words text-sm">{request.detail}</p>
+          {request.timing !== DEFAULT_CHAT_TIMING && <p className="mt-2 text-xs text-muted">Koha e kërkuar: {request.timing}</p>}
+          {recurrence && <p className="mt-2 text-xs">
+            Vizitë e përsëritur: {recurrenceLabels[recurrence.cadence]} · {dateTime(new Date(recurrence.scheduledAt))} (ora e Kosovës).
+            Çdo vizitë kërkon ofertë dhe pranim të veçantë. Nuk ka tarifim automatik të kartës.
+          </p>}
+          {request.address && <p className="mt-2 text-xs">Adresa: {request.address}</p>}
+          <time className="mt-1 block text-xs text-muted">{dateTime(request.createdAt)}</time>
+        </div>
+      ),
+    },
+    ...request.quotes.map(quoteCard),
+    ...statusLine("OFFER_ACCEPTED", request.acceptedQuote?.acceptedAt),
+    ...statusLine(request.payment?.provider === "offline" ? "PAYMENT_MARKED_PAID_OFFLINE" : "PAYMENT_HELD", request.payment?.heldAt),
+    ...statusLine("START", started?.createdAt),
+    ...statusLine("REQUEST_COMPLETION", request.completionRequestedAt),
+    ...statusLine("CONFIRM_COMPLETION", request.completedAt),
+    ...statusLine("DISPUTE_OPENED", request.payment?.dispute?.createdAt),
+    ...statusLine("CANCEL", request.cancelledAt),
+  ];
   return (
     <Frame
       actor={actor}
-      title={request.title}
-      subtitle={`${stateLabel(request.state)} · ${pro ? request.client.name : (request.selectedPro?.user.name ?? "Profesionisti")} · ${request.city}`}
+      title={`Biseda me ${counterpart}`}
+      subtitle={`${category} · ${request.city} · ${request.title}`}
     >
       <Panel>
-        <h2 className="text-lg font-bold">Detajet e kërkesës</h2>
-        <p className="mt-3 whitespace-pre-wrap">{request.detail}</p>
-        <p className="mt-3 text-sm text-muted">
-          Koha e kërkuar: {request.timing}
-        </p>
-        {recurrence && <p className="mt-3 rounded-xl bg-cream p-3">
-          Vizitë e përsëritur: {recurrenceLabels[recurrence.cadence]} · {dateTime(new Date(recurrence.scheduledAt))} (ora e Kosovës).
-          Çdo vizitë kërkon ofertë dhe pranim të veçantë. Nuk ka tarifim automatik të kartës.
-        </p>}
-        {request.address && <p className="mt-2">Adresa: {request.address}</p>}
-        <p className="mt-2 text-xs text-muted">
-          Krijuar: {dateTime(request.createdAt)}
-        </p>
-      </Panel>
-      <Panel>
-        <h2 className="mb-4 text-lg font-bold">Oferta zyrtare</h2>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-lg font-bold">Statusi i punës</h2>
+          <ol aria-label="Statusi i punës" className="flex flex-wrap gap-2">
+            {status.cancelled ? (
+              <li className="rounded-full bg-red-50 px-3 py-1 text-xs font-semibold text-red-800" aria-current="step">Anuluar</li>
+            ) : (
+              jobStages.map((stage, index) => (
+                <li
+                  key={stage.key}
+                  aria-current={index === status.reached ? "step" : undefined}
+                  className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs ${index <= status.reached ? "bg-honey font-semibold text-ink" : "bg-cream text-muted"}`}
+                >
+                  <svg aria-hidden viewBox="0 0 24 24" className="h-3.5 w-3.5">
+                    <path d="M12 2 21 7v10l-9 5-9-5V7z" className={index <= status.reached ? "fill-gold" : "fill-none stroke-current"} strokeWidth="2" />
+                  </svg>
+                  {stage.label}
+                </li>
+              ))
+            )}
+          </ol>
+        </div>
+        {status.reached < 0 && !status.cancelled && (
+          <p className="mt-3 text-sm text-muted">
+            {pro
+              ? "Bisedoni me klientin dhe dërgoni një ofertë me çmim kur të jeni gati. Klienti ju punëson me butonin “Puneso”."
+              : "Bisedoni me profesionistin. Kur ai dërgon ofertën në bisedë, shtypni “Puneso” për ta punësuar."}
+          </p>
+        )}
+        {status.disputed && <p className="mt-3 text-sm">Puna është në shqyrtim nga administrata e Zgjoi.</p>}
         {request.state === "BOOKED" && request.acceptedQuote?.scheduledAt && (
-          <p className="mb-4 rounded-xl bg-cream p-3">
+          <p className="mt-3 rounded-xl bg-cream p-3 text-sm">
             Orari i konfirmuar: {dateTime(request.acceptedQuote.scheduledAt)} (ora e Kosovës).
             {latest && " Ky orar mbetet i rezervuar derisa klienti të pranojë propozimin e ri."}
           </p>
         )}
-        {!request.quotes.length && (
-          <p className="text-muted">
-            {pro
-              ? "Dërgoni çmimin, përshkrimin dhe orarin tuaj më poshtë."
-              : "Në pritje të ofertës nga profesionisti."}
-          </p>
+        {request.conversation && (
+          <div className="mt-4">
+            <Thread
+              key={request.conversation.id}
+              id={request.conversation.id}
+              closed={closed}
+              events={events}
+              placeholder={pro ? "Shkruani klientit…" : `Shkruani ${counterpart}…`}
+            />
+          </div>
         )}
-        {request.quotes.map((quote) => (
-          <article
-            key={quote.id}
-            className="mb-4 rounded-xl border border-line p-4"
-          >
-            <p className="font-bold">
-              {money(quote.amount)} ·{" "}
-              {quote.expiresAt &&
-              quote.state === "SENT" &&
-              quote.expiresAt <= new Date()
-                ? "Skaduar"
-                : stateLabel(quote.state)}{" "}
-              · Versioni {quote.revision}
-            </p>
-            <p className="mt-2 whitespace-pre-wrap">{quote.message}</p>
-            {request.state === "BOOKED" && quote.state === "SENT" && (
-              <p className="mt-2 font-semibold">Propozim për ndryshimin e orarit · Çmimi dhe puna mbeten të njëjta.</p>
-            )}
-            <p className="mt-2 text-sm">
-              {quote.availableAt} · Kohëzgjatja: {quote.duration}
-            </p>
-            {quote.scheduledAt && (
-              <p className="text-sm">
-                Fillimi: {dateTime(quote.scheduledAt)} (ora e Kosovës)
-                {appointmentEnd(quote.scheduledAt, quote.duration) && <> · Përfundimi i parashikuar: {dateTime(appointmentEnd(quote.scheduledAt, quote.duration)!)}</>}
-              </p>
-            )}
-            {quote.expiresAt && (
-              <p className="text-sm text-muted">
-                Pranohet deri: {dateTime(quote.expiresAt)}
-              </p>
-            )}
-            {!pro && latest?.id === quote.id && request.state === "QUOTED" && (
-              <div className="mt-4 flex flex-wrap gap-3">
-                <ApiForm
-                  endpoint="/api/offers/accept"
-                  values={{
-                    quoteId: quote.id,
-                    expectedVersion: request.version,
-                  }}
-                  label="Prano ofertën"
-                  confirmation={`Pranoni ofertën prej ${money(quote.amount)}? Pagesa kryhet në hapin tjetër.`}
-                />
-                {jobAction("DECLINE", "Refuzo ofertën", undefined, quote.id)}
-              </div>
-            )}
-            {pro && latest?.id === quote.id && request.state === "QUOTED" && (
-              <div className="mt-4">
-                {jobAction(
-                  "WITHDRAW",
-                  "Tërhiq ofertën",
-                  "Tërhiqni këtë ofertë?",
-                  quote.id,
-                )}
-              </div>
-            )}
-            {request.state === "BOOKED" && request.unpaidEditable && latest?.id === quote.id && (
-              <div className="mt-4 flex flex-wrap gap-3">
-                {(pro ? ["WITHDRAW"] : ["ACCEPT", "DECLINE"]).map(action => (
-                  <ApiForm key={action} endpoint={`/api/requests/${id}/reschedule`}
-                    values={{ action, quoteId: quote.id, expectedVersion: request.version }}
-                    label={action === "ACCEPT" ? "Prano orarin e ri" : action === "DECLINE" ? "Mbaj orarin e mëparshëm" : "Tërhiq propozimin"}
-                    confirmation={action === "ACCEPT" ? `Ndryshoni rezervimin në ${dateTime(quote.scheduledAt!)}? Çmimi mbetet ${money(quote.amount)}.` : undefined} />
-                ))}
-              </div>
-            )}
-          </article>
-        ))}
-        {commissionError && <p className="rounded-xl bg-cream p-3" role="alert">{commissionError}</p>}
+        {commissionError && <p className="mt-4 rounded-xl bg-cream p-3" role="alert">{commissionError}</p>}
         {pro && commission && ["OPEN", "QUOTED"].includes(request.state) && (
-          <div className="space-y-4">
-            <p className="text-sm text-muted">
-              Komisioni aktual i platformës është {commission.bps / 100}% e
-              çmimit total. Shumat e rezervimit shfaqen pas pranimit. Pagesat
-              janë ende në provë. Norma fiksohet në pranimin e ofertës dhe nuk ndryshon për pagesat ekzistuese.
+          <details className="mt-4 rounded-2xl border border-gold bg-white p-4" open={!request.quotes.length}>
+            <summary className="cursor-pointer font-semibold">
+              {request.quotes.length ? "Dërgo një ofertë të re" : "Dërgo ofertën me çmim"}
+            </summary>
+            <p className="my-3 text-sm text-muted">
+              Oferta shfaqet në bisedë si kartë me butonin “Puneso”. Një ofertë e re zëvendëson të mëparshmen.
+              Komisioni aktual i platformës është {commission.bps / 100}% e çmimit total dhe fiksohet kur klienti ju punëson.
+              Pagesat janë ende në provë.
             </p>
             <ApiForm
               key={request.version}
               endpoint="/api/offers"
               idempotent
               values={{ requestId: id, expectedVersion: request.version }}
-              label={
-                request.quotes.length ? "Dërgo ofertën e re" : "Dërgo ofertën"
-              }
+              label="Dërgo ofertën në bisedë"
               fields={[
-                {
-                  name: "amount",
-                  label: "Çmimi total në euro",
-                  type: "number",
-                  min: 0.01,
-                  max: 100000,
-                  step: "0.01",
-                  required: true,
-                },
-                {
-                  name: "description",
-                  label: "Çfarë përfshihet në çmim?",
-                  type: "textarea",
-                  minLength: 20,
-                  maxLength: 4000,
-                  required: true,
-                },
-                {
-                  name: "timing",
-                  label: "Përshkrimi i orarit",
-                  required: true,
-                  minLength: 3,
-                  maxLength: 120,
-                },
-                {
-                  name: "duration",
-                  label: "Kohëzgjatja në minuta",
-                  type: "number",
-                  min: 1,
-                  max: 43200,
-                  step: "1",
-                  required: true,
-                  hint: "P.sh. 120 për dy orë. Ky interval rezervohet kur klienti pranon ofertën.",
-                },
-                {
-                  name: "expiresAt",
-                  label: "Oferta skadon (ora e Kosovës)",
-                  kosovoTime: true,
-                  type: "datetime-local",
-                  required: true,
-                  hint: "Brenda 30 ditësh dhe para fillimit të punës. Shkruani orën lokale të Kosovës.",
-                },
-                {
-                  name: "scheduledAt",
-                  label: "Fillimi i punës (ora e Kosovës)",
-                  kosovoTime: true,
-                  type: "datetime-local",
-                  required: true,
-                  hint: "Pas skadimit të ofertës. Shkruani orën lokale të Kosovës.",
-                },
+                { name: "amount", label: "Çmimi total në euro", type: "number", min: 0.01, max: 100000, step: "0.01", required: true },
+                { name: "description", label: "Shënim (opsional)", type: "textarea", maxLength: 4000, hint: "P.sh. çfarë përfshihet në çmim. Pa numra telefoni, email ose lidhje." },
+                { name: "scheduledAt", label: "Data dhe ora e fillimit (opsionale, ora e Kosovës)", type: "datetime-local", kosovoTime: true, hint: "Nëse e caktoni, orari rezervohet kur klienti ju punëson. Ndryshe data caktohet në bisedë." },
+                { name: "duration", label: "Kohëzgjatja në minuta (nëse caktoni datën)", type: "number", min: 1, max: 43200, step: "1", hint: "P.sh. 120 për dy orë." },
+                { name: "expiresInHours", label: "Oferta vlen", type: "select", as: "number", required: true, value: "72",
+                  options: [{ value: "24", label: "24 orë" }, { value: "72", label: "3 ditë" }, { value: "168", label: "7 ditë" }] },
               ]}
             />
-          </div>
+          </details>
         )}
-        {pro && request.state === "BOOKED" && request.unpaidEditable && (
+        {pro && request.state === "BOOKED" && request.unpaidEditable && request.acceptedQuote?.scheduledAt && (
           <details className="mt-4">
             <summary className="cursor-pointer font-semibold">Propozo orar tjetër</summary>
             <p className="my-3 text-sm text-muted">Klienti duhet ta pranojë ndryshimin. Orari i mëparshëm mbetet i rezervuar; çmimi dhe përshkrimi i punës nuk ndryshojnë. Orari i ri kontrollohet përsëri kur pranohet.</p>
@@ -242,6 +275,28 @@ export default async function JobDetail({
                 { name: "scheduledAt", label: "Fillimi i ri (ora e Kosovës)", type: "datetime-local", kosovoTime: true, required: true },
               ]} />
           </details>
+        )}
+        {funded && active && !request.payment?.dispute && (
+          <div className="mt-4 rounded-2xl bg-cream p-4">
+            <h3 className="mb-3 font-bold">Ecuria e punës</h3>
+            {pro ? (
+              <div className="flex flex-wrap gap-3">
+                {request.state === "BOOKED" && jobAction("START", "Fillo punën")}
+                {!request.completionRequestedAt &&
+                  jobAction("REQUEST_COMPLETION", "Kërko konfirmimin e klientit", "Puna ka përfunduar dhe është gati për konfirmim?")}
+                {request.completionRequestedAt && <p>Klientit i është kërkuar të konfirmojë përfundimin.</p>}
+              </div>
+            ) : (
+              <>
+                {request.completionRequestedAt && <p className="mb-3">Profesionisti e ka shënuar punën gati për konfirmim.</p>}
+                {jobAction(
+                  "CONFIRM_COMPLETION",
+                  "Konfirmo përfundimin",
+                  "Konfirmoni se puna ka përfunduar sipas marrëveshjes? Ky veprim lejon transferimin e pagesës te profesionisti.",
+                )}
+              </>
+            )}
+          </div>
         )}
       </Panel>
       {request.payment && (
@@ -308,38 +363,6 @@ export default async function JobDetail({
                   "Në shqyrtim nga administrata."}
               </p>
             </div>
-          )}
-        </Panel>
-      )}
-      {funded && active && !request.payment?.dispute && (
-        <Panel>
-          <h2 className="mb-4 text-lg font-bold">Ecuria e punës</h2>
-          {pro ? (
-            <div className="flex flex-wrap gap-3">
-              {request.state === "BOOKED" && jobAction("START", "Fillo punën")}
-              {!request.completionRequestedAt &&
-                jobAction(
-                  "REQUEST_COMPLETION",
-                  "Kërko konfirmimin e klientit",
-                  "Puna ka përfunduar dhe është gati për konfirmim?",
-                )}
-              {request.completionRequestedAt && (
-                <p>Klientit i është kërkuar të konfirmojë përfundimin.</p>
-              )}
-            </div>
-          ) : (
-            <>
-              {request.completionRequestedAt && (
-                <p className="mb-3">
-                  Profesionisti e ka shënuar punën gati për konfirmim.
-                </p>
-              )}
-              {jobAction(
-                "CONFIRM_COMPLETION",
-                "Konfirmo përfundimin",
-                "Konfirmoni se puna ka përfunduar sipas marrëveshjes? Ky veprim lejon transferimin e pagesës te profesionisti.",
-              )}
-            </>
           )}
         </Panel>
       )}
@@ -423,22 +446,14 @@ export default async function JobDetail({
           )}
         </Panel>
       )}
-      {request.conversation && (
-        <Panel>
-          <h2 className="mb-4 text-lg font-bold">Biseda private</h2>
-          <Thread
-            key={request.conversation.id}
-            id={request.conversation.id}
-            closed={["CANCELLED", "COMPLETED"].includes(request.state)}
-          />
-        </Panel>
-      )}
       {request.unpaidEditable && (
         <Panel>
           {jobAction(
             "CANCEL",
-            request.state === "BOOKED" ? "Anulo rezervimin pa pagesë" : "Anulo kërkesën",
-            "Anuloni këtë kërkesë dhe ofertat e saj pa pagesë? Orari lirohet dhe pala tjetër njoftohet.",
+            request.state === "BOOKED" ? "Anulo rezervimin pa pagesë" : "Mbyll bisedën",
+            request.state === "BOOKED"
+              ? "Anuloni këtë rezervim pa pagesë? Orari lirohet dhe pala tjetër njoftohet."
+              : "Mbyllni këtë bisedë? Ofertat e hapura tërhiqen dhe pala tjetër njoftohet.",
           )}
         </Panel>
       )}

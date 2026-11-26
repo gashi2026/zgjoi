@@ -2,10 +2,9 @@ import type { NavItem } from "@/components/AccountShell";
 
 export const proNav: NavItem[] = [
   { href: "/pro/paneli", label: "Paneli", icon: "layoutGrid" },
-  { href: "/pro/kerkesat", label: "Kërkesat", icon: "inbox" },
+  { href: "/pro/kerkesat", label: "Bisedat", icon: "messageSquare" },
   { href: "/pro/punet", label: "Punët", icon: "briefcase" },
   { href: "/pro/kalendari", label: "Kalendari", icon: "calendarDays" },
-  { href: "/pro/mesazhet", label: "Mesazhet", icon: "messageSquare" },
   { href: "/pro/pagesat", label: "Pagesat e mia", icon: "wallet" },
   { href: "/pro/te-ardhurat", label: "Të ardhurat", icon: "receipt" },
   { href: "/pro/njoftimet", label: "Njoftimet", icon: "inbox" },
@@ -14,9 +13,8 @@ export const proNav: NavItem[] = [
 
 export const clientNav: NavItem[] = [
   { href: "/llogaria", label: "Paneli", icon: "layoutGrid" },
-  { href: "/llogaria/kerkesat", label: "Kërkesat e mia", icon: "briefcase" },
+  { href: "/llogaria/kerkesat", label: "Bisedat e mia", icon: "messageSquare" },
   { href: "/llogaria/ofertat", label: "Ofertat", icon: "fileText" },
-  { href: "/llogaria/mesazhet", label: "Mesazhet", icon: "messageSquare" },
   { href: "/llogaria/te-preferuarit", label: "Të preferuarit", icon: "heart" },
   { href: "/llogaria/njoftimet", label: "Njoftimet", icon: "inbox" },
   { href: "/llogaria/cilesimet", label: "Cilësimet", icon: "settings" },

@@ -113,7 +113,7 @@ export async function createInquiry(actor: Actor, input: unknown) {
       tx,
       profile.userId,
       "INQUIRY",
-      "Keni një kërkesë të re private",
+      "Një klient hapi një bisedë të re me ju",
       `/pro/kerkesat/${request.id}`,
     );
     await tx.auditLog.create({
@@ -135,13 +135,16 @@ export async function createOffer(actor: Actor, input: unknown) {
   role(actor, "PRO");
   const data = offerInput.parse(input);
   assertNoContact(`${data.description}\n${data.timing}`);
-  const expiresAt = new Date(data.expiresAt),
-    scheduledAt = new Date(data.scheduledAt),
-    now = new Date();
+  const now = new Date(),
+    // The in-chat quote card sends an expiry choice; older clients send a timestamp.
+    expiresAt = data.expiresAt
+      ? new Date(data.expiresAt)
+      : new Date(now.getTime() + (data.expiresInHours ?? 0) * 3_600_000),
+    scheduledAt = data.scheduledAt ? new Date(data.scheduledAt) : null;
   invariant(
     expiresAt.getTime() > now.getTime() + 60_000 &&
       expiresAt.getTime() <= now.getTime() + 30 * 86400000 &&
-      scheduledAt > expiresAt,
+      (!scheduledAt || scheduledAt > expiresAt),
     "TIMING",
     400,
     "Oferta duhet të skadojë para fillimit të punës, brenda 30 ditëve.",
@@ -176,7 +179,8 @@ export async function createOffer(actor: Actor, input: unknown) {
     await requireActiveCategory(request.categorySlug, tx);
     if (readRecurrence(request.answers)) invariant(await eligibleRecurringBooking(tx, request, scheduledAt),
       "RECURRENCE_UNAVAILABLE", 409, "Oferta duhet të respektojë orarin dhe kushtet e vizitës së përsëritur.");
-    await assertAppointmentAvailable(tx, actor.proProfile!.id, scheduledAt, data.duration, request.id);
+    if (scheduledAt)
+      await assertAppointmentAvailable(tx, actor.proProfile!.id, scheduledAt, data.duration ?? "", request.id);
     const revision =
       (
         await tx.quote.aggregate({
@@ -193,10 +197,10 @@ export async function createOffer(actor: Actor, input: unknown) {
         requestId: request.id,
         profileId: actor.proProfile!.id,
         amount: data.amount,
-        lines: [{ label: data.description, qty: 1, priceCents: data.amount }],
+        lines: [{ label: data.description || "Çmimi total i punës", qty: 1, priceCents: data.amount }],
         message: data.description,
-        availableAt: data.timing,
-        duration: data.duration,
+        availableAt: data.timing || null,
+        duration: scheduledAt ? data.duration : null,
         scheduledAt,
         expiresAt,
         revision: revision + 1,
@@ -221,7 +225,7 @@ export async function createOffer(actor: Actor, input: unknown) {
       tx,
       request.clientId,
       "OFFER",
-      "Keni një ofertë zyrtare të re",
+      "Keni një ofertë të re në bisedë",
       `/llogaria/kerkesat/${request.id}`,
     );
     await tx.auditLog.create({
@@ -277,8 +281,8 @@ export async function acceptOffer(actor: Actor, input: unknown) {
       quote.state === "SENT" &&
         quote.expiresAt &&
         quote.expiresAt > new Date() &&
-        quote.scheduledAt &&
-        quote.scheduledAt > new Date(),
+        // A quote without a start date is hired now and scheduled in the chat.
+        (!quote.scheduledAt || quote.scheduledAt > new Date()),
       "EXPIRED",
       409,
       "Oferta ka skaduar ose është tërhequr. Kërkoni një ofertë të re.",
@@ -294,7 +298,8 @@ export async function acceptOffer(actor: Actor, input: unknown) {
     await requireActiveCategory(request.categorySlug, tx);
     const commission = await bookingCommission(tx, request, quote.scheduledAt, true);
     const bps = commission.bps;
-    await assertAppointmentAvailable(tx, quote.profileId, quote.scheduledAt!, quote.duration ?? "", request.id);
+    if (quote.scheduledAt)
+      await assertAppointmentAvailable(tx, quote.profileId, quote.scheduledAt, quote.duration ?? "", request.id);
     const updated = await tx.serviceRequest.updateMany({
       where: {
         id: request.id,
@@ -343,7 +348,7 @@ export async function acceptOffer(actor: Actor, input: unknown) {
       tx,
       quote.profile.userId,
       "ACCEPTED",
-      "Oferta u pranua; pagesa është në pritje",
+      "Klienti ju punësoi; pagesa është në pritje",
       `/pro/kerkesat/${request.id}`,
     );
     await tx.auditLog.create({
@@ -390,9 +395,11 @@ export async function getRequest(actor: Actor, id: string) {
           commissionAmount: true,
           proAmount: true,
           provider: true,
+          heldAt: true,
           dispute: {
             select: {
               id: true,
+              createdAt: true,
               reason: true,
               resolution: true,
               resolvedAt: true,
@@ -736,8 +743,8 @@ export async function changeJob(
         action,
         action === "CONFIRM_COMPLETION"
           ? "Klienti konfirmoi përfundimin e punës"
-          : action === "CANCEL" ? "Kërkesa u anulua pa pagesë"
-          : "Kërkesa juaj është përditësuar",
+          : action === "CANCEL" ? "Biseda u mbyll; puna u anulua pa pagesë"
+          : "Biseda juaj është përditësuar",
         `${actor.role === "PRO" ? "/llogaria" : "/pro"}/kerkesat/${id}`,
       );
     await tx.auditLog.create({

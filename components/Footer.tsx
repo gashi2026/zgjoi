@@ -7,7 +7,7 @@ export default function Footer() {
         <div>
           <Logo />
           <p className="mt-4 text-sm text-muted">
-            Zgjoi lidh klientët në Kosovë me profesionistët përmes kërkesave
+            Zgjoi lidh klientët në Kosovë me profesionistët përmes bisedave
             private dhe ofertave të qarta.
           </p>
         </div>

@@ -84,7 +84,7 @@ export default function DualCards() {
                 </h2>
                 <BenefitList
                   items={[
-                    "Merr kërkesa private nga klientët",
+                    "Merr biseda private nga klientët",
                     "Ndërto profilin tënd profesional",
                     "Rrit të ardhurat",
                   ]}

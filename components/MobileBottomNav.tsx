@@ -59,14 +59,14 @@ function AccountBottomNav({ pathname }: { pathname: string }) {
           ]
         : me.role === "PRO"
           ? [
-              { href: "/pro/mesazhet", label: "Mesazhet", icon: MessageSquare },
+              { href: "/pro/kerkesat", label: "Bisedat", icon: MessageSquare },
               { href: "/pro/paneli", label: "Punët e mia", icon: LayoutGrid },
               { href: "/pro/profili", label: "Profili", icon: UserRound },
             ]
           : [
               {
-                href: "/llogaria/mesazhet",
-                label: "Mesazhet",
+                href: "/llogaria/kerkesat",
+                label: "Bisedat",
                 icon: MessageSquare,
               },
               { href: "/llogaria", label: "Punët e mia", icon: LayoutGrid },

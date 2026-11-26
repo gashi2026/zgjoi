@@ -44,7 +44,7 @@ export default function Page() {
           required: true,
         },
       ]}
-      text="Zgjidhni një profesionist dhe dërgojini kërkesën tuaj privatisht. Lexoni kushtet te lidhja në fund të faqes."
+      text="Zgjidhni një profesionist dhe hapni një bisedë private me të. Lexoni kushtet te lidhja në fund të faqes."
     />
   );
 }

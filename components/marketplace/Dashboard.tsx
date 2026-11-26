@@ -26,7 +26,7 @@ export default async function Dashboard({
   const base = pro ? "/pro" : "/llogaria";
   const titles = {
     home: "Paneli im",
-    requests: "Kërkesat e mia",
+    requests: "Bisedat e mia",
     offers: "Ofertat e mia",
     messages: "Bisedat e mia",
     jobs: "Punët e mia",
@@ -175,15 +175,15 @@ export default async function Dashboard({
       title={titles[view]}
       subtitle={
         pro
-          ? "Kërkesa private të dërguara vetëm te ju."
-          : "Kërkesat, ofertat dhe bisedat tuaja në një vend."
+          ? "Bisedat private me klientët që ju zgjodhën. Dërgoni ofertën në bisedë; klienti ju punëson me “Puneso”."
+          : "Bisedat, ofertat dhe punët tuaja në një vend."
       }
     >
       {view === "home" && (
         <Panel>
           <div className="flex flex-wrap justify-between gap-4">
             <p>
-              {count} kërkesa ·{" "}
+              {count} {count === 1 ? "bisedë" : "biseda"} ·{" "}
               <Link className="text-gold-dark" href={`${base}/njoftimet`}>
                 {unreadNotificationsLabel(unread)}
               </Link>
@@ -216,11 +216,11 @@ export default async function Dashboard({
       <Panel>
         {!requests.length && (
           <div>
-            <h2 className="font-bold">Nuk ka kërkesa në këtë listë ende.</h2>
+            <h2 className="font-bold">Nuk ka biseda në këtë listë ende.</h2>
             <p className="mt-2 text-muted">
               {pro
                 ? "Klientët mund t’ju kontaktojnë pasi profili juaj të miratohet."
-                : "Kërkoni një shërbim, zgjidhni një profesionist dhe dërgoni detajet e punës."}
+                : "Gjeni një profesionist dhe hapni një bisedë nga profili i tij për t’i përshkruar punën."}
             </p>
             {!pro && (
               <Link href="/kerko" className="mt-4 inline-block text-gold-dark">
@@ -260,7 +260,7 @@ export default async function Dashboard({
               href={`${base}/kerkesat/${r.id}`}
               className="mt-3 inline-block text-sm text-gold-dark"
             >
-              Hap kërkesën dhe bisedën →
+              Hap bisedën →
             </Link>
           </article>
         ))}
