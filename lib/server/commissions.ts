@@ -7,6 +7,7 @@ import { commissionMonth, eliteWinners, commissionRate, COMMISSION_POLICY_VERSIO
 import { allowedCategorySlugs, serviceCategory } from "../service-categories";
 import { eligibleRecurringBooking } from "./recurring";
 import { serializable } from "./transaction";
+import { isRecurringVisit } from "../recurring-series";
 
 const snapshotSchema = z.object({
   version: z.literal(COMMISSION_POLICY_VERSION), month: z.string(), sourceMonth: z.string(),
@@ -50,8 +51,16 @@ export async function eliteMonth(tx: Prisma.TransactionClient, now = new Date(),
 
 export async function bookingCommission(tx: Prisma.TransactionClient,
   request: Pick<ServiceRequest, "id" | "clientId" | "categorySlug" | "selectedProfileId" | "answers" | "creationKey">,
-  scheduledAt: Date | null, persist = false, now = new Date()) {
-  const recurring = await eligibleRecurringBooking(tx, request, scheduledAt);
+  scheduledAt: Date | null, persist = false, now = new Date(), opts: { seriesId?: string; occurrenceAt?: Date } = {}) {
+  // A Book now occurrence of an ACTIVE recurring series with this same customer
+  // and pro: the first visit pays the normal rate (15%, 10% elite); later visits
+  // are recurring (5%). Verified here, never from client input.
+  const series = opts.seriesId ? await tx.recurringSeries.findFirst({ where: { id: opts.seriesId, status: "ACTIVE",
+    clientId: request.clientId, profileId: request.selectedProfileId ?? "" } }) : null;
+  invariant(!opts.seriesId || (series && serviceCategory(series.categorySlug)?.slug === serviceCategory(request.categorySlug)?.slug),
+    "SERIES_UNAVAILABLE", 409, "Rezervimi i përsëritur nuk është më aktiv.");
+  const recurring = series ? isRecurringVisit(series, opts.occurrenceAt ?? scheduledAt)
+    : await eligibleRecurringBooking(tx, request, scheduledAt);
   invariant(!readRecurrence(request.answers) || recurring, "RECURRENCE_UNAVAILABLE", 409, "Kushtet e rezervimit të përsëritur kanë ndryshuar. Kërkoni një ofertë të re.");
   const snapshot = await eliteMonth(tx, now, persist);
   const elite = snapshot.winners.some(w => w.profileId === request.selectedProfileId &&

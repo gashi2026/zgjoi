@@ -86,6 +86,11 @@ export default async function Page({
             ? `Rezervoni direkt me tarifë për orë (${money(terms.rateCents)}/orë, së paku ${hoursLabel(terms.minMinutes)}), ose bisedoni privatisht dhe e punësoni me “Puneso”.`
             : "Bisedoni privatisht për punën. Çmimi përfundimtar dhe koha vijnë si ofertë në bisedë, dhe ju e punësoni me “Puneso”."}
         </p>
+        {flow.estimate && flow.estimatePriceCents && (
+          <p className="mt-2 text-sm text-muted">
+            Nuk jeni të sigurt sa punë është? Kërkoni një vizitë vlerësimi për {money(flow.estimatePriceCents)}. Nëse e punësoni këtë profesionist, {money(flow.estimatePriceCents)} zbriten plotësisht nga puna.
+          </p>
+        )}
         {terms && (
           <div className="mt-4 inline-flex flex-wrap items-center gap-2 rounded-2xl border border-gold/50 bg-white px-4 py-3 text-sm">
             <svg aria-hidden viewBox="0 0 24 24" className="h-4 w-4"><path d="M12 2 21 7v10l-9 5-9-5V7z" className="fill-gold" /></svg>
@@ -108,6 +113,14 @@ export default async function Page({
           >
             Fillo bisedën
           </Link>
+          {flow.estimate && flow.estimatePriceCents && actor?.role !== "PRO" && (
+            <Link
+              className="rounded-full border-2 border-gold px-5 py-3 font-semibold"
+              href={`/kerko-vleresim?pro=${pro.id}`}
+            >
+              Kërko vlerësim · {money(flow.estimatePriceCents)}
+            </Link>
+          )}
           {actor?.role === "CLIENT" && (
             <ApiForm
               endpoint="/api/favorites"

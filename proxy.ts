@@ -24,6 +24,7 @@ export function proxy(req: NextRequest) {
     [
       "/api/stripe/webhook",
       "/api/cron/escrow",
+      "/api/cron/recurring",
       "/robots.txt",
       "/sitemap.xml",
     ].includes(pathname)

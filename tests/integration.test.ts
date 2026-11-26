@@ -1036,7 +1036,9 @@ test("database-backed private marketplace and authorization journey", async (t) 
     const late = await db.booking.findUniqueOrThrow({ where: { id: withCredit.id }, include: { changes: true } });
     assert.deepEqual([late.feeCents, late.feeProCents, late.feePlatformCents, late.refundCents], [1500, 1000, 500, 0]);
     assert.equal(late.changes.find(c => c.kind === "CANCELLATION")?.todoKind, "COLLECT", "unpaid late fee becomes an admin to-do");
-    assert.equal((await db.estimate.findUniqueOrThrow({ where: { id: estimate.id } })).state, "PAID", "credit returns for the next hire");
+    const returned = await db.estimate.findUniqueOrThrow({ where: { id: estimate.id } });
+    assert.equal(returned.state, "PAID", "credit returns for the next hire");
+    assert.deepEqual([returned.proShareCents, returned.platformShareCents], [1000, 500], "unused again: 10 € pro / 5 € Zgjoi split");
 
     // The chat path credits the same estimate when the customer hires with Puneso.
     const opened = ok(await http("/api/requests", cj, { profileId, detail: "Ndërrimi i një ndërprerësi në korridor.", city: "Prishtinë", clientKey: randomUUID() }));
@@ -1045,6 +1047,175 @@ test("database-backed private marketplace and authorization journey", async (t) 
     const hired = await db.payment.findUniqueOrThrow({ where: { requestId: opened.id } });
     assert.equal(hired.estimateCreditCents, 1500);
     assert.equal(hired.amount, 1000, "no minimum price; the customer owes nothing more under €15");
+  });
+  await t.test("recurring Book now: weekly series (first visit 15%, then 5%), monthly, cron generation, pause/resume/cancel with the 24 h rule, pro proposal confirmed by the customer", async () => {
+    const { generateRecurringBookings } = await import("../lib/server/recurring-series");
+    const customer = await account("CLIENT", "SeriesClient"), professional = await account("PRO", "SeriesPro"), stranger = await account("CLIENT", "SeriesStranger");
+    const cj: Jar = new Map([["zgjoi_session", (await persistSession(customer.id, passwordHash)).token]]);
+    const pjar: Jar = new Map([["zgjoi_session", (await persistSession(professional.id, passwordHash)).token]]);
+    const sj: Jar = new Map([["zgjoi_session", (await persistSession(stranger.id, passwordHash)).token]]);
+    const profileId = professional.proProfile!.id;
+    const start = (days: number) => { const d = new Date(Date.now() + days * 86400000); d.setUTCSeconds(0, 0); return d.toISOString(); };
+    ok(await http("/api/account/booking-settings", pjar, { enabled: true, hourlyRate: "20", minMinutes: 120 }));
+    const bookPage = (await http(`/rezervo-tani?pro=${profileId}`, cj)).text;
+    assert(bookPage.includes("Çdo javë, e njëjta ditë dhe orë") && bookPage.includes("Çdo muaj, e njëjta datë dhe orë"));
+    const body = (extra: Record<string, unknown> = {}) => ({ profileId, clientKey: randomUUID(), startsAt: start(3), minutes: 120,
+      detail: "Pastrim i përjavshëm i banesës, dy dhoma.", city: "Prishtinë", address: "Rruga e Serisë 3", ...extra });
+    ok(await http("/api/bookings", cj, body({ repeat: "DAILY" })), 400);
+    const created = ok(await http("/api/bookings", cj, body({ repeat: "WEEKLY" })));
+    assert(created.seriesId);
+    const series = await db.recurringSeries.findUniqueOrThrow({ where: { id: created.seriesId } });
+    assert.deepEqual([series.status, series.cadence, series.proposedBy, series.minutes, series.hourlyRateCents], ["ACTIVE", "WEEKLY", "CLIENT", 120, 2000]);
+    const first = await db.booking.findUniqueOrThrow({ where: { requestId: created.id }, include: { request: { include: { payment: true } } } });
+    assert.equal(first.seriesId, series.id);
+    assert.deepEqual([first.totalCents, first.commissionBps, first.commissionCents, first.proCents], [4000, 1500, 600, 3400], "the first visit of a series pays the normal 15%");
+    assert.equal(first.request.payment?.commissionBps, 1500);
+    // The cron route is secret-protected; it creates the occurrence 7 days later (within the 14-day horizon) once.
+    ok(await http("/api/cron/recurring"), 403);
+    ok(await http("/api/cron/recurring", new Map(), undefined, { Authorization: "Bearer wrong" }), 403);
+    const cron = () => http("/api/cron/recurring", new Map(), undefined, { Authorization: `Bearer ${process.env.CRON_SECRET}` });
+    ok(await cron()); ok(await cron());
+    const live = () => db.booking.findMany({ where: { seriesId: series.id, status: "CONFIRMED" }, orderBy: { startsAt: "asc" }, include: { request: { include: { payment: true } } } });
+    let occurrences = await live();
+    assert.equal(occurrences.length, 2, "first booking + one generated occurrence, no duplicates");
+    assert.equal(occurrences[1].startsAt.getTime() - occurrences[0].startsAt.getTime(), 7 * 86400000);
+    assert.deepEqual([occurrences[1].commissionBps, occurrences[1].commissionCents, occurrences[1].request.payment?.commissionBps], [500, 200, 500], "later visits 5%");
+    assert.equal(occurrences[1].request.state, "BOOKED");
+    assert.equal(occurrences[1].request.payment?.state, "PENDING");
+    assert((await http("/llogaria/perseritjet", cj)).text.includes("Çdo javë"));
+    assert((await http("/pro/perseritjet", pjar)).text.includes("Pauzo"));
+    assert((await http(`/llogaria/kerkesat/${occurrences[1].requestId}`, cj)).text.includes("Rezervim i përsëritur"));
+    ok(await http(`/api/recurring/${series.id}`, sj, { action: "PAUSE" }), 404);
+    ok(await http(`/api/recurring/${series.id}`, cj, { action: "DECLINE" }), 409);
+    // Pause: the visit within 24 h stays; the one a week later is cancelled free.
+    await db.booking.update({ where: { id: first.id }, data: { startsAt: new Date(Date.now() + 3 * 3600000) } });
+    const paused = ok(await http(`/api/recurring/${series.id}`, cj, { action: "PAUSE" }));
+    assert(paused.message.includes("1 vizita të ardhshme u anuluan falas"));
+    const afterPause = await db.booking.findMany({ where: { seriesId: series.id }, orderBy: { startsAt: "asc" }, include: { changes: true } });
+    assert.deepEqual(afterPause.map(b => b.status), ["CONFIRMED", "CANCELLED"]);
+    assert.equal(afterPause[1].feeCents, 0);
+    assert.equal(afterPause[1].cancelledBy, "CLIENT");
+    ok(await cron());
+    assert.equal((await live()).length, 1, "a paused series generates nothing");
+    // Resume regenerates the released occurrence.
+    ok(await http(`/api/recurring/${series.id}`, pjar, { action: "RESUME" }));
+    occurrences = await live();
+    assert.equal(occurrences.length, 2);
+    assert.equal(occurrences[1].occurrenceAt!.toISOString(), afterPause[1].occurrenceAt!.toISOString());
+    // The pro cancels the series: the far visit is cancelled free (pro, > 24 h); the near one stays under the normal rules.
+    ok(await http(`/api/recurring/${series.id}`, pjar, { action: "CANCEL" }));
+    assert.equal((await db.recurringSeries.findUniqueOrThrow({ where: { id: series.id } })).status, "CANCELLED");
+    const afterCancel = await live();
+    assert.deepEqual(afterCancel.map(b => b.id), [first.id]);
+    ok(await http(`/api/recurring/${series.id}`, cj, { action: "RESUME" }), 409);
+    // A single visit of the series still uses the late-cancel rule (< 24 h: €15).
+    const near = await db.serviceRequest.findUniqueOrThrow({ where: { id: created.id } });
+    ok(await http(`/api/bookings/${created.id}`, cj, { action: "CANCEL", expectedVersion: near.version }));
+    const lateFee = await db.booking.findUniqueOrThrow({ where: { id: first.id } });
+    assert.deepEqual([lateFee.feeCents, lateFee.feeProCents, lateFee.feePlatformCents], [1500, 1000, 500]);
+
+    // Pro proposal from a plain booking: nothing is booked until the customer confirms.
+    const plain = ok(await http("/api/bookings", cj, body({ startsAt: start(5) })));
+    const plainBooking = await db.booking.findUniqueOrThrow({ where: { requestId: plain.id } });
+    assert.equal(plainBooking.commissionBps, 1500, "a one-off booking keeps 15%");
+    ok(await http(`/api/bookings/${plain.id}`, cj, { action: "PROPOSE_SERIES", clientKey: randomUUID(), cadence: "WEEKLY" }), 403);
+    const proposed = ok(await http(`/api/bookings/${plain.id}`, pjar, { action: "PROPOSE_SERIES", clientKey: randomUUID(), cadence: "BIWEEKLY" }));
+    ok(await http(`/api/bookings/${plain.id}`, pjar, { action: "PROPOSE_SERIES", clientKey: randomUUID(), cadence: "WEEKLY" }), 409);
+    const proposal = await db.recurringSeries.findUniqueOrThrow({ where: { id: proposed.id } });
+    assert.deepEqual([proposal.status, proposal.proposedBy, proposal.sourceRequestId], ["PROPOSED", "PRO", plain.id]);
+    assert.equal(proposal.firstStartsAt.getTime() - plainBooking.startsAt.getTime(), 14 * 86400000);
+    assert((await http(`/llogaria/kerkesat/${plain.id}`, cj)).text.includes("Konfirmo përsëritjen"));
+    ok(await cron());
+    assert.equal(await db.booking.count({ where: { seriesId: proposal.id } }), 0, "a proposal books nothing");
+    ok(await http(`/api/recurring/${proposal.id}`, pjar, { action: "CONFIRM" }), 403);
+    ok(await http(`/api/recurring/${proposal.id}`, cj, { action: "CONFIRM" }));
+    assert.equal((await db.recurringSeries.findUniqueOrThrow({ where: { id: proposal.id } })).status, "ACTIVE");
+    // Its first visit is 19 days out (beyond the 14-day window): the next visit always exists, so it is booked on confirm, at 15%.
+    const generated = await db.booking.findFirstOrThrow({ where: { seriesId: proposal.id } });
+    assert.equal(generated.startsAt.toISOString(), proposal.firstStartsAt.toISOString());
+    assert.deepEqual([generated.commissionBps, generated.commissionCents], [1500, 600], "first visit of a pro-proposed series: normal rate");
+    assert.equal((await generateRecurringBookings(new Date(Date.now() + 6 * 86400000))).created, 0, "booked a week ahead: nothing to add");
+    // Six days before that visit, the following one (two weeks later) is added at 5%; a second run adds nothing.
+    const later = new Date(proposal.firstStartsAt.getTime() - 6 * 86400000);
+    assert.equal((await generateRecurringBookings(later)).created, 1);
+    assert.equal((await generateRecurringBookings(later)).created, 0, "idempotent");
+    const proVisits = await db.booking.findMany({ where: { seriesId: proposal.id }, orderBy: { startsAt: "asc" } });
+    assert.equal(proVisits[1].startsAt.getTime() - proVisits[0].startsAt.getTime(), 14 * 86400000);
+    assert.deepEqual([proVisits[1].commissionBps, proVisits[1].commissionCents], [500, 200]);
+
+    // Monthly ("Çdo muaj"): same date each month; the next visit is booked right away even though it is beyond 14 days.
+    const monthlyStart = start(4);
+    const monthly = ok(await http("/api/bookings", cj, body({ repeat: "MONTHLY", startsAt: monthlyStart })));
+    const monthlySeries = await db.recurringSeries.findUniqueOrThrow({ where: { id: monthly.seriesId } });
+    const { kosovoSlot, occurrenceAt } = await import("../lib/recurring-series");
+    assert.deepEqual([monthlySeries.cadence, monthlySeries.monthDay], ["MONTHLY", Number(kosovoSlot(new Date(monthlyStart)).date.slice(8))]);
+    ok(await cron());
+    const monthVisits = await db.booking.findMany({ where: { seriesId: monthlySeries.id }, orderBy: { startsAt: "asc" } });
+    assert.equal(monthVisits.length, 2, "first visit + next month's visit");
+    assert.equal(monthVisits[1].startsAt.toISOString(), occurrenceAt(new Date(monthlyStart), "MONTHLY", 1, monthlySeries.monthDay)!.toISOString());
+    assert(monthVisits[1].startsAt.getTime() - Date.now() > 14 * 86400000);
+    assert.deepEqual([monthVisits[0].commissionBps, monthVisits[1].commissionBps], [1500, 500]);
+    assert((await http("/llogaria/perseritjet", cj)).text.includes("Çdo muaj, më"));
+    await assert.rejects(db.$executeRawUnsafe(`UPDATE "RecurringSeries" SET "monthDay" = NULL WHERE id = '${monthlySeries.id}'`), "monthly needs its day");
+  });
+  await t.test("paid €15 estimate: request in chat, admin marks paid, address revealed, credited on the chat hire; cancel unpaid", async () => {
+    const customer = await account("CLIENT", "EstimateClient"), professional = await account("PRO", "EstimatePro");
+    const cj: Jar = new Map([["zgjoi_session", (await persistSession(customer.id, passwordHash)).token]]);
+    const pjar: Jar = new Map([["zgjoi_session", (await persistSession(professional.id, passwordHash)).token]]);
+    const profileId = professional.proProfile!.id;
+    assert((await http(`/profesionisti/${professional.proProfile!.slug}`)).text.includes("Kërko vlerësim"));
+    assert.equal((await http(`/kerko-vleresim?pro=${profileId}`, cj)).status, 200);
+    const visitAt = new Date(Date.now() + 2 * 86400000).toISOString();
+    const req = (extra: Record<string, unknown> = {}) => http("/api/estimates", cj, { profileId, clientKey: randomUUID(), visitAt,
+      detail: "Prizat në kuzhinë nuk punojnë, duhet kontroll.", city: "Prishtinë", address: "Rruga e Vlerësimit 7", ...extra });
+    ok(await http("/api/estimates", pjar, { profileId, clientKey: randomUUID(), visitAt, detail: "Kontroll i instalimit.", city: "Prishtinë" }), 403);
+    ok(await req({ detail: "Më shkruani te test@example.com për vizitën." }), 400);
+    ok(await req({ visitAt: new Date(Date.now() + 10 * 60000).toISOString() }), 400);
+    const opened = ok(await req());
+    ok(await req(), 409);
+    const estimate = await db.estimate.findFirstOrThrow({ where: { requestId: opened.id } });
+    assert.deepEqual([estimate.state, estimate.amountCents, estimate.clientId, estimate.profileId], ["PENDING", 1500, customer.id, profileId]);
+    const request = await db.serviceRequest.findUniqueOrThrow({ where: { id: opened.id }, include: { conversation: true } });
+    assert.equal(request.state, "OPEN");
+    assert(request.conversation);
+    assert((await http(`/llogaria/kerkesat/${opened.id}`, cj)).text.includes("Vizitë vlerësimi"));
+    const before = await http(`/pro/kerkesat/${opened.id}`, pjar);
+    assert(before.text.includes("Pagesa është në pritje") && !before.text.includes("Rruga e Vlerësimit 7"), "address hidden until paid");
+    ok(await http("/api/admin/estimates", cj, { action: "MARK_PAID", id: estimate.id, reason: "Para në dorë te zyra." }), 403);
+    ok(await http("/api/admin/estimates", adminj, { action: "MARK_PAID", id: estimate.id, reason: "short" }), 400);
+    assert((await http("/admin/pagesat", adminj)).text.includes("Vizitat e vlerësimit"));
+    ok(await http("/api/admin/estimates", adminj, { action: "MARK_PAID", id: estimate.id, reason: "Para në dorë, konfirmuar me telefon." }));
+    ok(await http("/api/admin/estimates", adminj, { action: "MARK_PAID", id: estimate.id, reason: "Para në dorë, konfirmuar me telefon." }));
+    const paid = await db.estimate.findUniqueOrThrow({ where: { id: estimate.id } });
+    assert.equal(paid.state, "PAID");
+    assert(paid.paidAt && paid.paidById);
+    assert.deepEqual([paid.proShareCents, paid.platformShareCents], [1000, 500], "not hired yet: 10 € pro, 5 € Zgjoi");
+    assert((await http("/admin/pagesat", adminj)).text.includes("Ndarja nëse nuk punësohet"));
+    await assert.rejects(db.$executeRawUnsafe(`UPDATE "Estimate" SET "proShareCents" = 1200 WHERE id = '${estimate.id}'`), "split must add up");
+    assert((await http(`/pro/kerkesat/${opened.id}`, pjar)).text.includes("Rruga e Vlerësimit 7"), "address shown for the paid visit");
+    ok(await http(`/api/estimates/${estimate.id}`, cj, { action: "CANCEL" }), 409);
+    // The pro sends the price in the same chat; hiring with Puneso credits the €15, commission on the full €100.
+    const sent = ok(await http("/api/offers", pjar, { requestId: opened.id, clientKey: randomUUID(), expectedVersion: 0, amount: "100", expiresInHours: 24 }));
+    ok(await http("/api/offers/accept", cj, { quoteId: sent.quoteId, expectedVersion: 1 }));
+    const payment = await db.payment.findUniqueOrThrow({ where: { requestId: opened.id } });
+    assert.deepEqual([payment.amount, payment.estimateCreditCents, payment.commissionAmount], [10000, 1500, 1500]);
+    const credited = await db.estimate.findUniqueOrThrow({ where: { id: estimate.id } });
+    assert.deepEqual([credited.state, credited.creditedRequestId, credited.proShareCents, credited.platformShareCents], ["CREDITED", opened.id, null, null], "hired: no split");
+    ok(await http("/api/admin/estimates", adminj, { action: "REFUND", id: estimate.id, reason: "Provë rimbursimi pas kreditimit." }), 409);
+    // A new, unpaid request can be withdrawn by the customer; an admin cannot mark it paid afterwards.
+    const second = ok(await req());
+    const pending = await db.estimate.findFirstOrThrow({ where: { requestId: second.id } });
+    ok(await http(`/api/estimates/${pending.id}`, pjar, { action: "CANCEL" }), 403);
+    ok(await http(`/api/estimates/${pending.id}`, cj, { action: "CANCEL" }));
+    assert.equal((await db.estimate.findUniqueOrThrow({ where: { id: pending.id } })).state, "CANCELLED");
+    ok(await http("/api/admin/estimates", adminj, { action: "MARK_PAID", id: pending.id, reason: "Para në dorë, konfirmuar me telefon." }), 409);
+    // A paid estimate that was never used can be refunded by an admin.
+    const third = ok(await req());
+    const unused = await db.estimate.findFirstOrThrow({ where: { requestId: third.id } });
+    ok(await http("/api/admin/estimates", adminj, { action: "MARK_PAID", id: unused.id, reason: "Transfer bankar, referenca ZG-1." }));
+    ok(await http("/api/admin/estimates", adminj, { action: "REFUND", id: unused.id, reason: "Vizita nuk u bë, u kthye në dorë." }));
+    const refunded = await db.estimate.findUniqueOrThrow({ where: { id: unused.id } });
+    assert.deepEqual([refunded.state, refunded.proShareCents], ["REFUNDED", null]);
   });
   await t.test("disputes: either side flags, the other responds within 48 h, the admin decides a final price; trust history and the 3-cancellation alert", async () => {
     const customer = await account("CLIENT", "DisputeClient"), professional = await account("PRO", "DisputePro");
@@ -2161,9 +2332,9 @@ test("database-backed private marketplace and authorization journey", async (t) 
       const checks = await db.$queryRaw<
         { tables: bigint; rls: bigint; exposed: bigint }[]
       >`SELECT count(*) AS tables, count(*) FILTER (WHERE c.relrowsecurity) AS rls, count(*) FILTER (WHERE has_table_privilege('anon',c.oid,'SELECT,INSERT,UPDATE,DELETE') OR has_table_privilege('authenticated',c.oid,'SELECT,INSERT,UPDATE,DELETE')) AS exposed FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind='r'`;
-      // 28 marketplace tables + Booking, BookingChange, Estimate (Book now) + BookingArrival, GeocodeCache (Arrita).
-      assert.equal(Number(checks[0].tables), 33);
-      assert.equal(Number(checks[0].rls), 33);
+      // 28 marketplace tables + Booking, BookingChange, Estimate (Book now) + BookingArrival, GeocodeCache (Arrita) + RecurringSeries.
+      assert.equal(Number(checks[0].tables), 34);
+      assert.equal(Number(checks[0].rls), 34);
       assert.equal(Number(checks[0].exposed), 0);
       await assert.rejects(
         db.payment.update({ where: { requestId }, data: { amount: 100 } }),
