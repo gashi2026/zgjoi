@@ -1,6 +1,9 @@
 import { money, dateTime } from "@/lib/format";
 import { cancellationOutcome, hourOptions, hoursLabel, bookingTotal, isLate, MINUTE_STEP, type CancelReason } from "@/lib/book-now";
 import ApiForm from "./ApiForm";
+import ArrivalPanel, { WaitCountdown } from "./ArrivalPanel";
+import { checkInWindow, contactLabels, customerArrivalLine, nobodyHomeGate, noShowGate, NO_SHOW_AFTER_MINUTES, type ContactResult } from "@/lib/arrival";
+import { clockTime } from "@/lib/format";
 import type { ThreadEvent } from "./Thread";
 
 export type BookingView = {
@@ -10,6 +13,8 @@ export type BookingView = {
   feeCents: number; feeProCents: number; feePlatformCents: number; refundCents: number; createdAt: Date;
   changes: { id: string; kind: string; state: string; minutes: number | null; totalCents: number | null; note: string | null;
     todoKind: string | null; todoCents: number | null; todoDoneAt: Date | null; decidedAt: Date | null; createdAt: Date }[];
+  siteGeocode?: string | null;
+  arrival?: { checkedInAt: Date; distanceM: number | null; method: string; helplineAt: Date | null; waitEndsAt: Date | null; contactResult: string | null } | null;
 };
 const changeState: Record<string, string> = { PROPOSED: "Në pritje të konfirmimit", CONFIRMED: "Konfirmuar", DECLINED: "Refuzuar", SUPERSEDED: "Zëvendësuar" };
 
@@ -33,6 +38,10 @@ export function bookingEvents(b: BookingView, opts: { pro: boolean; requestId: s
       </article>
     ),
   }];
+  const line = (id: string, at: Date, text: string) => items.push({ id, createdAt: at.toISOString(),
+    node: <p role="status" className="mx-auto w-fit max-w-full rounded-full border border-gold/40 bg-white px-4 py-2 text-center text-xs font-semibold">{text}</p> });
+  if (b.arrival) line(`arrival-${b.id}`, b.arrival.checkedInAt, customerArrivalLine(b.arrival));
+  if (b.arrival?.helplineAt) line(`helpline-${b.id}`, b.arrival.helplineAt, `Profesionisti po pret te adresa · Zgjoi po e kontakton klientin · ${clockTime(b.arrival.helplineAt)}`);
   for (const c of b.changes) {
     if (c.kind === "HOURS" && c.minutes && c.totalCents) items.push({
       id: `hours-${c.id}`, createdAt: c.createdAt.toISOString(),
@@ -66,8 +75,8 @@ export function bookingEvents(b: BookingView, opts: { pro: boolean; requestId: s
 }
 
 /** Terms in force, history, the pro's hour-change form and the cancellation buttons. */
-export function BookingPanel({ b, pro, requestId, requestState, version, paidCents }: {
-  b: BookingView; pro: boolean; requestId: string; requestState: string; version: number; paidCents: number;
+export function BookingPanel({ b, pro, requestId, requestState, version, paidCents, whatsapp = null }: {
+  b: BookingView; pro: boolean; requestId: string; requestState: string; version: number; paidCents: number; whatsapp?: string | null;
 }) {
   const now = new Date();
   // The booking row already holds the confirmed terms; proposals never count until confirmed.
@@ -82,6 +91,11 @@ export function BookingPanel({ b, pro, requestId, requestState, version, paidCen
     );
   };
   const history = b.changes.filter(c => c.kind === "CANCELLATION" || c.state !== "PROPOSED");
+  const arrival = b.arrival ?? null;
+  const noShow = noShowGate(b.startsAt, arrival, now);
+  const nobodyHome = nobodyHomeGate(arrival, now);
+  const open = b.status === "CONFIRMED" && requestState === "BOOKED";
+  const waiting = arrival?.waitEndsAt && arrival.waitEndsAt > now;
   return (
     <div className="rounded-2xl border border-gold/60 bg-white p-4">
       <h2 className="text-lg font-bold">Rezervimi</h2>
@@ -95,6 +109,20 @@ export function BookingPanel({ b, pro, requestId, requestState, version, paidCen
           Anuluar {b.cancelledAt ? dateTime(b.cancelledAt) : ""}.
           {b.feeCents > 0 && ` Tarifa: ${money(b.feeCents)} (${money(b.feeProCents)} profesionisti, ${money(b.feePlatformCents)} Zgjoi).`}
           {` Rimbursim: ${money(b.refundCents)}.`} Gjatë beta-s rimbursimin e kryen ekipi i Zgjoi.
+        </p>
+      )}
+      {pro && open && (arrival || checkInWindow(b.startsAt, now) !== "CLOSED") && (
+        <ArrivalPanel requestId={requestId} startsAt={b.startsAt.toISOString()} whatsapp={arrival ? whatsapp : null}
+          canCheckIn={checkInWindow(b.startsAt, now) === "OPEN"}
+          contactLabel={arrival?.contactResult ? contactLabels[arrival.contactResult as ContactResult] ?? null : null}
+          arrival={arrival && { checkedInAt: arrival.checkedInAt.toISOString(), distanceM: arrival.distanceM, method: arrival.method,
+            helplineAt: arrival.helplineAt?.toISOString() ?? null, waitEndsAt: arrival.waitEndsAt?.toISOString() ?? null, contactResult: arrival.contactResult }} />
+      )}
+      {!pro && arrival && open && (
+        <p role="status" className="mt-3 rounded-xl bg-honey/60 p-3 text-sm font-semibold">
+          {waiting && arrival.waitEndsAt
+            ? <WaitCountdown endsAt={arrival.waitEndsAt.toISOString()} template="Profesionisti po ju pret, {m} min" done={customerArrivalLine(arrival)} />
+            : customerArrivalLine(arrival)}
         </p>
       )}
       {pro && active && (
@@ -118,9 +146,23 @@ export function BookingPanel({ b, pro, requestId, requestState, version, paidCen
           </p>
           <div className="flex flex-wrap gap-3">
             {!started && cancel("CANCEL", "Anulo rezervimin")}
-            {started && !pro && cancel("NO_SHOW", "Profesionisti nuk erdhi")}
-            {started && pro && cancel("NOBODY_HOME", "Nuk kishte askënd në shtëpi")}
+            {started && !pro && noShow === "NO_SHOW" && cancel("NO_SHOW", "Profesionisti nuk erdhi")}
+            {started && pro && nobodyHome.ok && cancel("NOBODY_HOME", "Askush s'ishte në shtëpi")}
           </div>
+          {started && !pro && noShow === "TOO_EARLY" && (
+            <p className="text-xs text-muted">Nëse profesionisti nuk shënon “Arrita”, mosparaqitjen mund ta raportoni {NO_SHOW_AFTER_MINUTES} minuta pas fillimit ({clockTime(new Date(b.startsAt.getTime() + NO_SHOW_AFTER_MINUTES * 60_000))}).</p>
+          )}
+          {started && !pro && noShow === "DISPUTE" && paidCents > 0 && (
+            <details>
+              <summary className="cursor-pointer text-sm font-semibold">Profesionisti nuk erdhi?</summary>
+              <p className="my-2 text-sm text-muted">Profesionisti shënoi “Arrita” te adresa. Raporti juaj shkon te administrata si kontest me provat e të dyja palëve.</p>
+              <ApiForm endpoint={`/api/bookings/${requestId}`} values={{ action: "NO_SHOW", expectedVersion: version }} label="Dërgo te administrata"
+                fields={[{ name: "statement", label: "Çfarë ndodhi?", type: "textarea", required: true, minLength: 20, maxLength: 4000 }]} />
+            </details>
+          )}
+          {started && pro && !nobodyHome.ok && b.arrival && (
+            <p className="text-xs text-muted">{nobodyHome.message}</p>
+          )}
         </div>
       )}
       {history.length > 0 && (

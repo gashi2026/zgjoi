@@ -482,12 +482,58 @@ model Booking {
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
+  // Arrita: the booking address on the map (Nominatim, cached). OK | NOT_FOUND | UNAVAILABLE
+  siteLat          Float?
+  siteLng          Float?
+  siteGeocode      String?
+  siteGeocodedAt   DateTime?
+
   request ServiceRequest  @relation(fields: [requestId], references: [id], onDelete: Cascade)
   profile ProProfile      @relation(fields: [profileId], references: [id])
   changes BookingChange[]
+  arrival BookingArrival?
 
   @@index([profileId, startsAt])
   @@index([clientId, createdAt])
+}
+
+/// Arrita: the pro's proof of presence at the booking address. Only valid
+/// check-ins are stored. Coordinates are never shown to the customer.
+model BookingArrival {
+  id            String    @id @default(cuid())
+  bookingId     String    @unique
+  proUserId     String
+  checkedInAt   DateTime // server time
+  lat           Float
+  lng           Float
+  accuracyM     Int?
+  distanceM     Int? // null when the address could not be located
+  method        String // GPS | PHOTO
+  photo         Bytes?
+  photoMime     String?
+  photoSize     Int?
+  helplineAt    DateTime?
+  waitEndsAt    DateTime?
+  contactResult String? // REACHED_GOES_AHEAD | REACHED_CANCELLED | NO_ANSWER
+  contactNote   String?
+  contactById   String?
+  contactAt     DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([helplineAt])
+}
+
+/// Free geocoding results (Nominatim), cached by a hash of the query.
+model GeocodeCache {
+  key       String   @id
+  status    String // OK | NOT_FOUND
+  lat       Float?
+  lng       Float?
+  provider  String
+  createdAt DateTime @default(now())
 }
 
 /// History of a booking: hour-change proposals and cancellations. Admin

@@ -9,6 +9,7 @@ import { proTrust } from "@/lib/server/trust";
 import { entityId } from "@/lib/marketplace-validation";
 import Frame, { Panel } from "@/components/marketplace/Frame";
 import ApiForm from "@/components/marketplace/ApiForm";
+import ArrivalAdminPanel, { arrivalAdminSelect } from "@/components/marketplace/ArrivalAdminPanel";
 export const dynamic = "force-dynamic";
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
   const actor = await pageGuard("ADMIN");
@@ -20,7 +21,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
       client: { select: { name: true, city: true } },
       acceptedPro: { select: { id: true, slug: true, user: { select: { name: true } } } },
       acceptedQuote: { select: { amount: true, scheduledAt: true, duration: true, message: true } },
-      booking: { select: { minutes: true, hourlyRateCents: true, startsAt: true, status: true } },
+      booking: { select: { minutes: true, hourlyRateCents: true, startsAt: true, status: true, siteGeocode: true, arrival: { select: arrivalAdminSelect } } },
     } } } } },
   });
   if (!d) notFound();
@@ -42,6 +43,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
         {trust && <p className="mt-2 text-sm text-muted">Historiku i profesionistit: {trust.booked} punë · {trust.onTime} në kohë · {trust.late} me vonesë · {trust.notFinished} pa përfunduar · {trust.disputes} konteste · {trust.cancellations} anulime (90 ditë)</p>}
         <Link className="mt-2 inline-block text-sm text-gold-dark" href="/admin/pagesat">Pagesat dhe detyrat →</Link>
       </Panel>
+      {r.booking && <ArrivalAdminPanel requestId={r.id} startsAt={r.booking.startsAt} siteGeocode={r.booking.siteGeocode} arrival={r.booking.arrival} active={false} />}
       <Panel>
         <h2 className="text-lg font-bold">Deklaratat</h2>
         <div className="mt-3 rounded-xl bg-cream p-3">

@@ -74,6 +74,8 @@ actual deployment secrets; never commit or paste passwords into issues or logs.
 | `DIRECT_URL`            | Direct/session connection for database administration when supported by the host network. No migrations run in this build.                           |
 | `ENCRYPTION_KEY`        | Existing 32-byte key represented as 64 hex characters. Keep it stable; replacing it prevents decryption of existing protected data.                  |
 | `ZGJOI_PASSWORD`        | Existing coming-soon lock. Keep production restricted during development. This is not customer authentication.                                       |
+| `ZGJOI_HELPLINE_WHATSAPP` | Arrita helpline: the admin WhatsApp number (international, digits only). The pro's “Thirr ndihmën e Zgjoi” button opens a prefilled wa.me message to it. Unset = on-site admin alert only; never invent a number. |
+| `GEOCODING_PROVIDER`    | Arrita address lookup. Empty = free Nominatim (cached, ≤1 request/s). `off` = no lookup; check-ins then need a photo. |
 | `CRON_SECRET`           | Independent random secret for scheduled jobs. The worker verifies this secret; no automatic time-based payment release is performed.                 |
 | `STRIPE_SECRET_KEY`     | Only provider test credentials in an isolated test environment until Kosovo company/payout support and the money workflow are approved and verified. |
 | `STRIPE_WEBHOOK_SECRET` | Signing secret for the matching provider test webhook endpoint. No live-money sign-off is implied by configuring it.                                 |

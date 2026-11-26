@@ -1106,6 +1106,112 @@ test("database-backed private marketplace and authorization journey", async (t) 
     const { proTrust } = await import("../lib/server/trust");
     assert.deepEqual(await proTrust(profileId), { booked: 4, onTime: 1, late: 0, notFinished: 3, disputes: 1, cancellations: 3 });
   });
+  await t.test("arrita: check-in within 200 m or with a photo, helpline wait and admin contact log gate “nobody home”; a no-show after a check-in becomes a dispute", async () => {
+    const customer = await account("CLIENT", "ArritaClient"), professional = await account("PRO", "ArritaPro");
+    await db.user.update({ where: { id: customer.id }, data: { phone: "+38344000111" } });
+    const cj: Jar = new Map([["zgjoi_session", (await persistSession(customer.id, passwordHash)).token]]);
+    const pjar: Jar = new Map([["zgjoi_session", (await persistSession(professional.id, passwordHash)).token]]);
+    const profileId = professional.proProfile!.id;
+    ok(await http("/api/account/booking-settings", pjar, { enabled: true, hourlyRate: "20", minMinutes: 60 }));
+    const site = { lat: 42.6629, lng: 21.1655 }; // seeded coordinates (CI never calls the geocoder)
+    let day = 3;
+    async function booking(startOffsetMin: number, geocoded = true) {
+      const created = ok(await http("/api/bookings", cj, { profileId, clientKey: randomUUID(), startsAt: new Date(Date.now() + day++ * 86400000).toISOString(),
+        minutes: 120, detail: "Kontroll i prizave në dhomën e ndenjes.", city: "Prishtinë", address: "Rruga e Testit 7" }));
+      const b = await db.booking.update({ where: { requestId: created.id }, data: { startsAt: new Date(Date.now() + startOffsetMin * 60000),
+        ...(geocoded ? { siteGeocode: "OK", siteLat: site.lat, siteLng: site.lng } : { siteGeocode: "NOT_FOUND" }) } });
+      return { id: created.id as string, bookingId: b.id };
+    }
+    const arrive = (id: string, body: Record<string, unknown>, jar = pjar) => http(`/api/bookings/${id}/arrival`, jar, body);
+    const near = { action: "CHECK_IN", lat: site.lat + 0.0004, lng: site.lng, accuracy: 12 }; // ≈45 m
+    const far = { action: "CHECK_IN", lat: site.lat + 0.01, lng: site.lng, accuracy: 12 };    // ≈1.1 km
+    const jpeg = `data:image/jpeg;base64,${Buffer.from("ffd8ffdb" + "00".repeat(200), "hex").toString("base64")}`;
+    const version = async (id: string) => (await db.serviceRequest.findUniqueOrThrow({ where: { id } })).version;
+
+    // Window: closed until 15 minutes before the start.
+    const a = await booking(120);
+    assert.equal(ok(await arrive(a.id, near), 409).code, "ARRIVAL_EARLY");
+    await db.booking.update({ where: { id: a.bookingId }, data: { startsAt: new Date(Date.now() + 5 * 60000) } });
+    ok(await arrive(a.id, near, cj), 403);
+    assert.equal(ok(await arrive(a.id, far), 409).code, "PHOTO_REQUIRED", "over 200 m needs a photo");
+    ok(await arrive(a.id, { action: "HELPLINE" }), 409);
+    const checked = ok(await arrive(a.id, near));
+    assert.match(checked.message, /te adresa/);
+    const arrival = await db.bookingArrival.findUniqueOrThrow({ where: { bookingId: a.bookingId } });
+    assert.equal(arrival.method, "GPS");
+    assert(arrival.distanceM! > 20 && arrival.distanceM! < 80);
+    const clientChat = (await http(`/llogaria/kerkesat/${a.id}`, cj)).text;
+    assert(clientChat.includes("Profesionisti arriti") && clientChat.includes("te adresa"));
+    assert(!clientChat.includes(String(near.lat)) && !clientChat.includes(`${arrival.distanceM} m`), "the customer never sees coordinates or distance");
+
+    // “Nobody home” needs: check-in, helpline, 30 minutes since the tap, and the admin's “no answer”.
+    await db.booking.update({ where: { id: a.bookingId }, data: { startsAt: new Date(Date.now() - 60000) } });
+    const blocked = ok(await http(`/api/bookings/${a.id}`, pjar, { action: "NOBODY_HOME", expectedVersion: await version(a.id) }), 409);
+    assert.match(blocked.message, /Thirr ndihmën e Zgjoi/);
+    ok(await arrive(a.id, { action: "HELPLINE" }, cj), 403);
+    const tapped = ok(await arrive(a.id, { action: "HELPLINE" }));
+    assert.equal(tapped.whatsapp, null, "no number configured: on-site alert only");
+    assert(await db.notification.findFirst({ where: { userId: admin.id, kind: "HELPLINE", href: `/admin/rezervimet/${a.id}` } }));
+    assert(await db.auditLog.findFirst({ where: { action: "HELPLINE_TAPPED", target: a.id } }));
+    assert((await http(`/llogaria/kerkesat/${a.id}`, cj)).text.includes("Profesionisti po ju pret"));
+    const proChat = (await http(`/pro/kerkesat/${a.id}`, pjar)).text;
+    assert(proChat.includes("Numri i WhatsApp-it të ndihmës nuk është vendosur ende"));
+    assert.match(ok(await http(`/api/bookings/${a.id}`, pjar, { action: "NOBODY_HOME", expectedVersion: await version(a.id) }), 409).message, /prisni edhe/);
+    await db.bookingArrival.update({ where: { bookingId: a.bookingId }, data: { helplineAt: new Date(Date.now() - 31 * 60000), waitEndsAt: new Date(Date.now() - 60000) } });
+    assert.match(ok(await http(`/api/bookings/${a.id}`, pjar, { action: "NOBODY_HOME", expectedVersion: await version(a.id) }), 409).message, /nuk u përgjigj/);
+    ok(await http("/api/admin/arrival", pjar, { requestId: a.id, result: "NO_ANSWER" }), 403);
+    assert((await http(`/admin/rezervimet/${a.id}`, adminj)).text.includes("Arrita · prova e paraqitjes"));
+    ok(await http("/api/admin/arrival", adminj, { requestId: a.id, result: "NO_ANSWER", note: "Thirra dy herë." }));
+    ok(await http(`/api/bookings/${a.id}`, pjar, { action: "NOBODY_HOME", expectedVersion: await version(a.id) }));
+    const closed = await db.booking.findUniqueOrThrow({ where: { id: a.bookingId }, include: { request: true } });
+    assert.deepEqual([closed.cancelReason, closed.feeCents, closed.feeProCents, closed.feePlatformCents, closed.request.cancelledBy], ["NOBODY_HOME", 1500, 1000, 500, "NOBODY_HOME"]);
+
+    // Unlocated address: a photo is required; it is visible to the pro and admins only.
+    const b = await booking(5, false);
+    assert.equal(ok(await arrive(b.id, near), 409).code, "PHOTO_REQUIRED");
+    ok(await arrive(b.id, { ...near, photo: "data:image/gif;base64,R0lGODlh" }), 400);
+    ok(await arrive(b.id, { ...near, photo: jpeg }));
+    const withPhoto = await db.bookingArrival.findUniqueOrThrow({ where: { bookingId: b.bookingId } });
+    assert.deepEqual([withPhoto.method, withPhoto.distanceM, withPhoto.photoMime], ["PHOTO", null, "image/jpeg"]);
+    assert.equal((await http(`/api/bookings/${b.id}/arrival/photo`, pjar)).status, 200);
+    assert.equal((await http(`/api/bookings/${b.id}/arrival/photo`, adminj)).status, 200);
+    assert.equal((await http(`/api/bookings/${b.id}/arrival/photo`, cj)).status, 404);
+    assert((await http(`/llogaria/kerkesat/${b.id}`, cj)).text.includes("konfirmuar me foto"));
+    // The admin reached the customer, who cancelled at the door: the late customer cancellation applies.
+    ok(await arrive(b.id, { action: "HELPLINE" }));
+    ok(await http("/api/admin/arrival", adminj, { requestId: b.id, result: "REACHED_CANCELLED" }));
+    const doorCancel = await db.booking.findUniqueOrThrow({ where: { id: b.bookingId } });
+    assert.deepEqual([doorCancel.status, doorCancel.cancelledBy, doorCancel.feeCents], ["CANCELLED", "CLIENT", 1500]);
+
+    // Customer no-show: only from 15 minutes after the start, and only without a check-in.
+    const c = await booking(-5);
+    assert.equal(ok(await http(`/api/bookings/${c.id}`, cj, { action: "NO_SHOW", expectedVersion: await version(c.id) }), 409).code, "TOO_EARLY");
+    await db.booking.update({ where: { id: c.bookingId }, data: { startsAt: new Date(Date.now() - 16 * 60000) } });
+    ok(await http(`/api/bookings/${c.id}`, cj, { action: "NO_SHOW", expectedVersion: await version(c.id) }));
+    assert.equal((await db.serviceRequest.findUniqueOrThrow({ where: { id: c.id } })).cancelledBy, "PRO_NO_SHOW");
+
+    // With a valid check-in, the customer's no-show report becomes a dispute with the Arrita evidence.
+    const d = await booking(5);
+    const payment = await db.payment.findUniqueOrThrow({ where: { requestId: d.id } });
+    ok(await http("/api/admin/payments", adminj, { action: "MARK_PAID_OFFLINE", id: payment.id, reason: "Para në dorë, konfirmuar me telefon nga klienti." }));
+    ok(await arrive(d.id, near));
+    await db.booking.update({ where: { id: d.bookingId }, data: { startsAt: new Date(Date.now() - 20 * 60000) } });
+    assert.equal(ok(await http(`/api/bookings/${d.id}`, cj, { action: "NO_SHOW", expectedVersion: await version(d.id) }), 400).code, "STATEMENT");
+    const flagged = ok(await http(`/api/bookings/${d.id}`, cj, { action: "NO_SHOW", expectedVersion: await version(d.id), statement: "Nuk erdhi askush te dera, prita gjithë kohën." }));
+    assert.equal(flagged.dispute, true);
+    const job = await db.serviceRequest.findUniqueOrThrow({ where: { id: d.id }, include: { payment: { include: { dispute: true } }, booking: true } });
+    assert.equal(job.state, "DISPUTED");
+    assert.equal(job.booking?.status, "CONFIRMED", "no automatic refund");
+    const disputePage = (await http(`/admin/kontestet/${job.payment!.dispute!.id}`, adminj)).text;
+    assert(disputePage.includes("Arrita · prova e paraqitjes") && disputePage.includes("Largësia nga adresa"));
+
+    // Trust history: an Arrita check-in more than 15 minutes after the start counts as late.
+    const e = await booking(-20);
+    ok(await arrive(e.id, near));
+    await db.serviceRequest.update({ where: { id: e.id }, data: { state: "COMPLETED", completedAt: new Date(), startedAt: new Date() } });
+    const { proTrust } = await import("../lib/server/trust");
+    assert.equal((await proTrust(profileId)).late, 1);
+  });
   async function unpaidBooking() {
     const customer = await account("CLIENT", "BookingClient"), professional = await account("PRO", "BookingPro");
     const customerJar: Jar = new Map([["zgjoi_session", (await persistSession(customer.id, passwordHash)).token]]);
@@ -2055,9 +2161,9 @@ test("database-backed private marketplace and authorization journey", async (t) 
       const checks = await db.$queryRaw<
         { tables: bigint; rls: bigint; exposed: bigint }[]
       >`SELECT count(*) AS tables, count(*) FILTER (WHERE c.relrowsecurity) AS rls, count(*) FILTER (WHERE has_table_privilege('anon',c.oid,'SELECT,INSERT,UPDATE,DELETE') OR has_table_privilege('authenticated',c.oid,'SELECT,INSERT,UPDATE,DELETE')) AS exposed FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind='r'`;
-      // 28 marketplace tables + Booking, BookingChange and Estimate (Book now).
-      assert.equal(Number(checks[0].tables), 31);
-      assert.equal(Number(checks[0].rls), 31);
+      // 28 marketplace tables + Booking, BookingChange, Estimate (Book now) + BookingArrival, GeocodeCache (Arrita).
+      assert.equal(Number(checks[0].tables), 33);
+      assert.equal(Number(checks[0].rls), 33);
       assert.equal(Number(checks[0].exposed), 0);
       await assert.rejects(
         db.payment.update({ where: { requestId }, data: { amount: 100 } }),
