@@ -514,8 +514,10 @@ model RecurringSeries {
   clientId        String
   profileId       String
   categorySlug    String
-  cadence         String // WEEKLY | BIWEEKLY
+  cadence         String // WEEKLY | BIWEEKLY | MONTHLY
   weekday         Int // 0 = Monday, Kosovo time
+  /// MONTHLY only: day of the month (1–31); 29–31 fall back to the month's last day.
+  monthDay        Int?
   startMinute     Int // minutes from midnight, Kosovo time
   minutes         Int
   hourlyRateCents Int
@@ -616,24 +618,29 @@ model BookingChange {
 /// the customer hires the same pro by any path, the full amount is credited
 /// to that job once (customer pays total − €15; commission on the full price).
 model Estimate {
-  id                String    @id @default(cuid())
-  clientId          String
-  profileId         String
-  requestId         String?
-  amountCents       Int       @default(1500)
-  state             String    @default("PENDING") // PENDING | PAID | CREDITED | REFUNDED | CANCELLED
-  paidAt            DateTime?
-  creditedRequestId String?   @unique
-  creditedAt        DateTime?
-  createdAt         DateTime  @default(now())
+  id                 String    @id @default(cuid())
+  clientId           String
+  profileId          String
+  requestId          String?
+  amountCents        Int       @default(1500)
+  state              String    @default("PENDING") // PENDING | PAID | CREDITED | REFUNDED | CANCELLED
+  paidAt             DateTime?
+  creditedRequestId  String?   @unique
+  creditedAt         DateTime?
+  createdAt          DateTime  @default(now())
   /// Step 4: the requested visit time (Kosovo) and the beta mark-as-paid trail.
-  visitAt           DateTime?
-  paidById          String?
-  paidNote          String?
-  cancelledAt       DateTime?
-  cancelledBy       String? // CLIENT | ADMIN
-  refundedAt        DateTime?
-  creationKey       String?   @unique
+  visitAt            DateTime?
+  paidById           String?
+  paidNote           String?
+  cancelledAt        DateTime?
+  cancelledBy        String? // CLIENT | ADMIN
+  refundedAt         DateTime?
+  creationKey        String?   @unique
+  /// Owner (26 Nov 2026): a paid estimate that is not credited to a hire is
+  /// split 10 € to the pro and 5 € to Zgjoi (like the late-cancel fee split on
+  /// Booking). Set when marked paid; cleared when credited to a hire or refunded.
+  proShareCents      Int?
+  platformShareCents Int?
 
   profile ProProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
 

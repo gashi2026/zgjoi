@@ -6,9 +6,9 @@ import { checkInWindow, contactLabels, customerArrivalLine, nobodyHomeGate, noSh
 import { clockTime } from "@/lib/format";
 import type { ThreadEvent } from "./Thread";
 import Link from "next/link";
-import { SERIES_CADENCES, cadenceLabels, seriesLabel, seriesStatusLabels, seriesCommissionBps } from "@/lib/recurring-series";
+import { SERIES_CADENCES, cadenceOptionLabels, seriesLabel, seriesStatusLabels, seriesCommissionBps } from "@/lib/recurring-series";
 
-export type SeriesLite = { id: string; cadence: string; weekday: number; startMinute: number; status: string; minutes: number;
+export type SeriesLite = { id: string; cadence: string; weekday: number; monthDay?: number | null; startMinute: number; status: string; minutes: number;
   hourlyRateCents: number; firstStartsAt: Date; categorySlug: string; proposedBy: string };
 
 export type BookingView = {
@@ -221,11 +221,11 @@ function RecurringBlock({ b, pro, requestId, requestState, series, proposal, cat
     <details className="mt-3">
       <summary className="cursor-pointer font-semibold">Propozo rezervim të përsëritur</summary>
       <p className="my-2 text-sm text-muted">
-        E njëjta ditë dhe orë, me tarifën tuaj aktuale për orë. Klienti e konfirmon në bisedë. Komisioni për rezervimet e përsëritura është {seriesCommissionBps(categorySlug) / 100}%.
+        E njëjta ditë dhe orë (çdo muaj: e njëjta datë), me tarifën tuaj aktuale për orë. Klienti e konfirmon në bisedë. Vizita e parë ka komisionin e zakonshëm; vizitat e mëpastajme {seriesCommissionBps(categorySlug) / 100}%.
       </p>
       <ApiForm endpoint={`/api/bookings/${requestId}`} idempotent values={{ action: "PROPOSE_SERIES" }} label="Dërgo propozimin"
         fields={[{ name: "cadence", label: "Sa shpesh?", type: "select", required: true, value: "WEEKLY",
-          options: SERIES_CADENCES.map(c => ({ value: c, label: cadenceLabels[c] })) }]} />
+          options: SERIES_CADENCES.map(c => ({ value: c, label: cadenceOptionLabels[c] })) }]} />
     </details>
   );
   return null;

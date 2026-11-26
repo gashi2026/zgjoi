@@ -451,7 +451,7 @@ export async function getRequest(actor: Actor, id: string) {
   );
   // Paid estimate visit (step 4): the request that carries it.
   const estimate = await db.estimate.findFirst({ where: { requestId: id }, orderBy: { createdAt: "desc" },
-    select: { id: true, state: true, amountCents: true, visitAt: true, paidAt: true, creditedRequestId: true, cancelledAt: true, createdAt: true } });
+    select: { id: true, state: true, amountCents: true, visitAt: true, paidAt: true, creditedRequestId: true, cancelledAt: true, createdAt: true, proShareCents: true, platformShareCents: true } });
   const reveal =
     actor.role !== "PRO" ||
     ["HELD", "RELEASED", "DISPUTED", "REFUNDED"].includes(

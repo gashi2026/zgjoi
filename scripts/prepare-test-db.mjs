@@ -40,6 +40,7 @@ try {
   execute("supabase/staging/disputes-trust.sql");
   execute("supabase/staging/arrita-checkin.sql");
   execute("supabase/staging/recurring-estimate.sql");
+  execute("supabase/staging/recurring-monthly-split.sql");
   console.log(
     "Disposable Postgres: foundation bootstrap and marketplace upgrade both applied.",
   );

@@ -11,7 +11,7 @@ import { entityId } from "../marketplace-validation";
 import { serviceCategory } from "../service-categories";
 import { checkHours } from "../book-now";
 import {
-  SERIES_CADENCES, type SeriesCadence, kosovoSlot, seriesLabel, upcomingOccurrences, occurrenceAt,
+  SERIES_CADENCES, type SeriesCadence, kosovoSlot, kosovoDay, seriesLabel, plannedOccurrences, occurrenceAt,
   occurrencesToRelease, GENERATION_HORIZON_DAYS, MIN_LEAD_MINUTES,
 } from "../recurring-series";
 import { bookableTerms, categoryFlow, insertBookNow, recordCancellation } from "./bookings";
@@ -20,12 +20,15 @@ type SeriesRowInput = {
   clientId: string; profileId: string; categorySlug: string; cadence: SeriesCadence; firstStartsAt: Date;
   minutes: number; rateCents: number; detail: string; city: string; address: string | null;
   proposedBy: "CLIENT" | "PRO"; status: "ACTIVE" | "PROPOSED"; creationKey: string; now: Date; sourceRequestId?: string;
+  /** MONTHLY only: the day of the month the customer asked for (1–31). */
+  monthDay?: number;
 };
 export async function createSeriesRow(tx: Prisma.TransactionClient, s: SeriesRowInput) {
   const slot = kosovoSlot(s.firstStartsAt);
   return tx.recurringSeries.create({ data: {
     clientId: s.clientId, profileId: s.profileId, categorySlug: s.categorySlug, cadence: s.cadence,
-    weekday: slot.weekday, startMinute: slot.startMinute, minutes: s.minutes, hourlyRateCents: s.rateCents,
+    weekday: slot.weekday, startMinute: slot.startMinute,
+    monthDay: s.cadence === "MONTHLY" ? (s.monthDay ?? kosovoDay(s.firstStartsAt)) : null, minutes: s.minutes, hourlyRateCents: s.rateCents,
     detail: s.detail, city: s.city, address: s.address, firstStartsAt: s.firstStartsAt, status: s.status,
     proposedBy: s.proposedBy, sourceRequestId: s.sourceRequestId ?? null, creationKey: s.creationKey,
     confirmedAt: s.status === "ACTIVE" ? s.now : null,
@@ -57,13 +60,14 @@ export async function proposeSeriesFromBooking(tx: Prisma.TransactionClient, act
   const now = new Date();
   let first: Date | null = null;
   for (let k = 1; k < 200 && !first; k++) {
-    const at = occurrenceAt(booking.startsAt, cadence, k);
+    const at = occurrenceAt(booking.startsAt, cadence, k, kosovoDay(booking.startsAt));
     if (at && at.getTime() > now.getTime() + 24 * 3_600_000) first = at;
   }
   invariant(first, "TIMING", 409, "Nuk u gjet një datë e ardhshme për këtë orar.");
   const series = await createSeriesRow(tx, { clientId: booking.clientId, profileId: booking.profileId, categorySlug: booking.request.categorySlug,
     cadence, firstStartsAt: first, minutes, rateCents: terms.rateCents, detail: booking.request.detail ?? "Rezervim i përsëritur",
-    city: booking.request.city, address: booking.request.address, proposedBy: "PRO", status: "PROPOSED", creationKey, now, sourceRequestId: booking.request.id });
+    city: booking.request.city, address: booking.request.address, proposedBy: "PRO", status: "PROPOSED", creationKey, now, sourceRequestId: booking.request.id,
+    monthDay: kosovoDay(booking.startsAt) });
   await notify(tx, booking.clientId, "RECURRING", "Profesionisti propozoi një rezervim të përsëritur; konfirmoni ose refuzoni", hrefFor("CLIENT"));
   await tx.auditLog.create({ data: { actorId: actor.id, action: "RECURRING_SERIES_PROPOSED", target: series.id,
     meta: { cadence, firstStartsAt: first.toISOString(), minutes, rateCents: terms.rateCents, sourceRequestId: booking.request.id } } });
@@ -144,7 +148,8 @@ export async function seriesAction(actor: Actor, id: string, input: unknown) {
 }
 
 type GenerateResult = { created: number; skipped: number; paused: boolean };
-/** Creates the bookings for one ACTIVE series within the horizon. Each
+/** Creates the bookings for one ACTIVE series within the 14-day horizon, and
+ * always the next visit when none is booked a week or more ahead (monthly). Each
  * occurrence is its own transaction; a taken slot is skipped (both sides are
  * told), and a pro who can no longer be booked pauses the series. */
 export async function generateForSeries(seriesId: string, now = new Date()): Promise<GenerateResult> {
@@ -152,7 +157,9 @@ export async function generateForSeries(seriesId: string, now = new Date()): Pro
   const series = await db.recurringSeries.findUnique({ where: { id: seriesId } });
   if (!series || series.status !== "ACTIVE") return out;
   const cadence = series.cadence as SeriesCadence;
-  for (const at of upcomingOccurrences({ firstStartsAt: series.firstStartsAt, cadence, generatedUntil: series.generatedUntil }, now)) {
+  const latestLive = await db.booking.findFirst({ where: { seriesId, status: "CONFIRMED", startsAt: { gt: now } },
+    orderBy: { startsAt: "desc" }, select: { startsAt: true } });
+  for (const at of plannedOccurrences({ firstStartsAt: series.firstStartsAt, cadence, generatedUntil: series.generatedUntil, monthDay: series.monthDay }, now, latestLive?.startsAt ?? null)) {
     try {
       const step = await serializable(async (tx) => {
         const s = await tx.recurringSeries.findUnique({ where: { id: seriesId } });
@@ -201,7 +208,8 @@ export async function generateForSeries(seriesId: string, now = new Date()): Pro
   return out;
 }
 
-/** Cron: generate upcoming occurrences for every ACTIVE series. */
+/** Cron: generate upcoming occurrences for every ACTIVE series whose cursor is
+ * inside the horizon (a monthly series booked beyond it waits until it is). */
 export async function generateRecurringBookings(now = new Date(), limit = 200) {
   const due = await db.recurringSeries.findMany({
     where: { status: "ACTIVE", OR: [{ generatedUntil: null }, { generatedUntil: { lt: new Date(now.getTime() + GENERATION_HORIZON_DAYS * 86_400_000 - MIN_LEAD_MINUTES * 60_000) } }] },

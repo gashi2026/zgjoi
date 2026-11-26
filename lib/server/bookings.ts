@@ -15,6 +15,7 @@ import { serviceCategory, categorySlugs } from "../service-categories";
 import {
   hiringFlow, checkHours, bookingTotal, priceJob, estimateCredit, cancellationOutcome, adjustmentTodo,
   hoursLabel, returnsEstimateCredit, MINUTE_STEP, MAX_BOOKING_MINUTES, MIN_RATE_CENTS, MAX_RATE_CENTS, type CancelReason,
+  estimateSplit,
 } from "../book-now";
 import { clientKey, cleanText, entityId, euroAmount } from "../marketplace-validation";
 import { money, clockTime } from "../format";
@@ -95,7 +96,8 @@ async function creditEstimate(tx: Prisma.TransactionClient, clientId: string, pr
   const credit = estimateCredit(candidates, clientId, profileId);
   if (!credit.estimateId) return credit;
   const updated = await tx.estimate.updateMany({ where: { id: credit.estimateId, state: "PAID", creditedRequestId: null },
-    data: { state: "CREDITED", creditedRequestId: requestId, creditedAt: new Date() } });
+    // Credited to a hire: the 10 €/5 € no-hire split no longer applies.
+    data: { state: "CREDITED", creditedRequestId: requestId, creditedAt: new Date(), proShareCents: null, platformShareCents: null } });
   invariant(updated.count === 1, "STALE", 409, "Kredia e vlerësimit ka ndryshuar. Provoni përsëri.");
   return credit;
 }
@@ -125,7 +127,7 @@ export async function insertBookNow(tx: Prisma.TransactionClient, b: BookNowInse
     state: "BOOKED", scheduledAt: b.startsAt, creationKey: hashToken(`booking-request:${b.creationKey}`), conversation: { create: {} },
   } });
   await assertAppointmentAvailable(tx, b.profile.id, b.startsAt, `${b.minutes} min`, request.id);
-  const commission = await bookingCommission(tx, request, b.startsAt, true, b.now, b.series ? { seriesId: b.series.id } : {});
+  const commission = await bookingCommission(tx, request, b.startsAt, true, b.now, b.series ? { seriesId: b.series.id, occurrenceAt: b.series.occurrenceAt } : {});
   const credit = await creditEstimate(tx, b.clientId, b.profile.id, request.id);
   const price = priceJob(totalCents, commission.bps, credit.creditCents);
   const quote = await tx.quote.create({ data: {
@@ -331,7 +333,13 @@ export async function recordCancellation(tx: Prisma.TransactionClient, booking: 
   if (request.payment.state === "PENDING") await tx.payment.update({ where: { id: request.payment.id }, data: { state: "EXPIRED" } });
   // A credited estimate returns to the customer for their next hire with this pro
   // (customer-fault cases follow RETURN_CREDIT_ON_CUSTOMER_FAULT).
-  if (returnsEstimateCredit(outcome.rule)) await tx.estimate.updateMany({ where: { creditedRequestId: request.id, state: "CREDITED" }, data: { state: "PAID", creditedRequestId: null, creditedAt: null } });
+  if (returnsEstimateCredit(outcome.rule)) {
+    // The credit goes back to the customer: until it is used again, the paid
+    // estimate is split 10 € pro / 5 € Zgjoi as a no-hire estimate.
+    for (const e of await tx.estimate.findMany({ where: { creditedRequestId: request.id, state: "CREDITED" } }))
+      await tx.estimate.updateMany({ where: { id: e.id, state: "CREDITED" },
+        data: { state: "PAID", creditedRequestId: null, creditedAt: null, ...estimateSplit(e.amountCents) } });
+  }
   const cancelledBy = reason === "NO_SHOW" ? "PRO_NO_SHOW" : reason === "NOBODY_HOME" ? "NOBODY_HOME" : by;
   await tx.serviceRequest.update({ where: { id: request.id }, data: { state: "CANCELLED", cancelledAt: now, cancelledBy, version: { increment: 1 } } });
   if (cancelledBy === "PRO" || cancelledBy === "PRO_NO_SHOW") await checkCancellationAlert(tx, booking.profileId, now);

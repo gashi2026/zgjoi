@@ -30,10 +30,10 @@ export default async function SeriesList({ actor }: { actor: Actor }) {
       <Panel>
         <h2 className="text-lg font-bold">Si funksionon</h2>
         <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">
-          <li>E njëjta ditë dhe orë, çdo javë ose çdo dy javë. Çdo vizitë krijohet si rezervim më vete {GENERATION_HORIZON_DAYS} ditë përpara dhe paguhet paraprakisht (gjatë beta-s e konfirmon Zgjoi).</li>
+          <li>E njëjta ditë dhe orë çdo javë ose çdo dy javë, ose e njëjta datë çdo muaj (29–31: dita e fundit e muajit kur muaji është më i shkurtër). Çdo vizitë krijohet si rezervim më vete {GENERATION_HORIZON_DAYS} ditë përpara — vizita e radhës është gjithmonë e rezervuar — dhe paguhet paraprakisht (gjatë beta-s e konfirmon Zgjoi).</li>
           <li>Anulimi i një vizite: falas deri {FREE_CANCEL_HOURS} orë para; më vonë {money(LATE_FEE_CENTS)} (10 € profesionisti, 5 € Zgjoi). Nëse profesionisti anulon vonë ose nuk vjen: rimbursim i plotë.</li>
           <li>Pauza ose anulimi i serisë anulon falas vizitat që janë më shumë se {FREE_CANCEL_HOURS} orë larg; vizitat brenda {FREE_CANCEL_HOURS} orëve mbeten.</li>
-          {pro && <li>Komisioni i Zgjoi për rezervimet e përsëritura është {seriesCommissionBps("pastrim") / 100}% (në vend të 15%).</li>}
+          {pro && <li>Komisioni i Zgjoi: vizita e parë e serisë ka komisionin e zakonshëm (15%, ose 10% për elitë); çdo vizitë e mëpastajme {seriesCommissionBps("pastrim") / 100}%.</li>}
         </ul>
       </Panel>
       {!list.length && (
@@ -41,7 +41,7 @@ export default async function SeriesList({ actor }: { actor: Actor }) {
           <p className="text-sm text-muted">
             {pro
               ? "Nuk keni rezervime të përsëritura. Mund t’i propozoni klientit një përsëritje nga karta e rezervimit në bisedë."
-              : "Nuk keni rezervime të përsëritura. Zgjidhni “Çdo javë” ose “Çdo dy javë” kur rezervoni me “Rezervo tani”."}
+              : "Nuk keni rezervime të përsëritura. Zgjidhni “Çdo javë”, “Çdo dy javë” ose “Çdo muaj” kur rezervoni me “Rezervo tani”."}
           </p>
         </Panel>
       )}

@@ -5,7 +5,7 @@ import { money, dateTime, stateLabel } from "@/lib/format";
 import { paymentsReady } from "@/lib/server/payments";
 import Frame, { Panel } from "@/components/marketplace/Frame";
 import ApiForm from "@/components/marketplace/ApiForm";
-import { hoursLabel } from "@/lib/book-now";
+import { hoursLabel, ESTIMATE_PRO_SHARE_CENTS, ESTIMATE_PLATFORM_SHARE_CENTS } from "@/lib/book-now";
 import { estimateStateLabels } from "@/lib/estimate-labels";
 export default async function Page({
   searchParams,
@@ -76,7 +76,7 @@ export default async function Page({
       </Panel>
       <Panel>
         <h2 className="text-lg font-bold">Vizitat e vlerësimit</h2>
-        <p className="mt-1 text-sm text-muted">Kur klienti paguan vlerësimin jashtë platformës, shënojeni këtu. Një vlerësim i paguar zbritet plotësisht nga puna e parë me të njëjtin profesionist (çdo rrugë punësimi); komisioni mbetet mbi çmimin e plotë.</p>
+        <p className="mt-1 text-sm text-muted">Kur klienti paguan vlerësimin jashtë platformës, shënojeni këtu. Një vlerësim i paguar zbritet plotësisht nga puna e parë me të njëjtin profesionist (çdo rrugë punësimi); komisioni mbetet mbi çmimin e plotë. Nëse klienti nuk e punëson, ndahet: {money(ESTIMATE_PRO_SHARE_CENTS)} profesionisti, {money(ESTIMATE_PLATFORM_SHARE_CENTS)} Zgjoi.</p>
         {!estimates.length && <p className="mt-3 text-sm">Nuk ka vlerësime në pritje ose të papërdorura.</p>}
         {estimates.map((e) => (
           <div key={e.id} className="mt-4 rounded-xl bg-cream p-3">
@@ -84,6 +84,9 @@ export default async function Page({
               Vlerësim {money(e.amountCents)} · {estimateClients.get(e.clientId) ?? "Klienti"} → {e.profile.user.name} · {estimateStateLabels[e.state] ?? e.state}
             </p>
             <p className="text-xs text-muted">Kërkuar {dateTime(e.createdAt)}{e.visitAt ? ` · vizita ${dateTime(e.visitAt)}` : ""}{e.paidAt ? ` · paguar ${dateTime(e.paidAt)}` : ""}</p>
+            {e.proShareCents != null && e.platformShareCents != null && (
+              <p className="text-sm">Ndarja nëse nuk punësohet: <strong>{money(e.proShareCents)}</strong> për {e.profile.user.name} · <strong>{money(e.platformShareCents)}</strong> Zgjoi</p>
+            )}
             {e.state === "PENDING" ? (
               <div className="mt-2 space-y-2">
                 <ApiForm endpoint="/api/admin/estimates" values={{ id: e.id, action: "MARK_PAID" }} label="Shëno si të paguar"

@@ -1,5 +1,5 @@
 -- Recurring schedules + paid €15 estimate: production rollout (NOT applied; apply only after the owner approves shipping this to main).
--- Same additive body as supabase/staging/recurring-estimate.sql. Apply BEFORE the code that reads these columns reaches main.
+-- Same additive body as supabase/staging/recurring-estimate.sql followed by supabase/staging/recurring-monthly-split.sql. Apply BEFORE the code that reads these columns reaches main.
 -- Additive only: no existing row is rewritten. The Estimate state check is widened with CANCELLED.
 DO $guard$
 BEGIN
@@ -84,3 +84,11 @@ ALTER TABLE public."Booking" ADD CONSTRAINT "Booking_series_valid" CHECK (("seri
 -- Widen the estimate states with CANCELLED (an unpaid request withdrawn); existing rows all still satisfy it.
 ALTER TABLE public."Estimate" DROP CONSTRAINT "Estimate_state_valid";
 ALTER TABLE public."Estimate" ADD CONSTRAINT "Estimate_state_valid" CHECK (state IN ('PENDING','PAID','CREDITED','REFUNDED','CANCELLED') AND "amountCents" >= 0 AND ("cancelledBy" IS NULL OR "cancelledBy" IN ('CLIENT','ADMIN')));
+
+-- Owner answers (26 Nov 2026): monthly cadence ("Çdo muaj") and the 10 € / 5 € split of an estimate that is not credited to a hire.
+ALTER TABLE public."RecurringSeries" ADD COLUMN "monthDay" INTEGER;
+ALTER TABLE public."Estimate" ADD COLUMN "proShareCents" INTEGER, ADD COLUMN "platformShareCents" INTEGER;
+-- Widen the series check with MONTHLY (existing WEEKLY/BIWEEKLY rows have monthDay NULL and still satisfy it).
+ALTER TABLE public."RecurringSeries" DROP CONSTRAINT "RecurringSeries_valid";
+ALTER TABLE public."RecurringSeries" ADD CONSTRAINT "RecurringSeries_valid" CHECK (cadence IN ('WEEKLY','BIWEEKLY','MONTHLY') AND weekday BETWEEN 0 AND 6 AND "startMinute" BETWEEN 0 AND 1439 AND minutes BETWEEN 30 AND 720 AND "hourlyRateCents" BETWEEN 100 AND 100000 AND status IN ('PROPOSED','ACTIVE','PAUSED','CANCELLED','DECLINED') AND "proposedBy" IN ('CLIENT','PRO') AND ("pausedBy" IS NULL OR "pausedBy" IN ('CLIENT','PRO','SYSTEM')) AND ("cancelledBy" IS NULL OR "cancelledBy" IN ('CLIENT','PRO')) AND ((cadence = 'MONTHLY') = ("monthDay" IS NOT NULL)) AND ("monthDay" IS NULL OR "monthDay" BETWEEN 1 AND 31));
+ALTER TABLE public."Estimate" ADD CONSTRAINT "Estimate_split_valid" CHECK ((("proShareCents" IS NULL) = ("platformShareCents" IS NULL)) AND ("proShareCents" IS NULL OR ("proShareCents" >= 0 AND "platformShareCents" >= 0 AND "proShareCents" + "platformShareCents" = "amountCents")));

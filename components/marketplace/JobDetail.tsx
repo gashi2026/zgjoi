@@ -8,6 +8,7 @@ import { db } from "@/lib/server/db";
 import { helplineLink } from "@/lib/server/arrival";
 import { readRecurrence, recurrenceLabels } from "@/lib/recurring-bookings";
 import { money, stateLabel, dateTime } from "@/lib/format";
+import { ESTIMATE_PRO_SHARE_CENTS, ESTIMATE_PLATFORM_SHARE_CENTS } from "@/lib/book-now";
 import { appointmentEnd } from "@/lib/appointments";
 import Frame, { Panel } from "./Frame";
 import ApiForm from "./ApiForm";
@@ -55,7 +56,7 @@ export default async function JobDetail({
     ? helplineLink({ request: { client: await db.user.findUniqueOrThrow({ where: { id: request.clientId }, select: { name: true, phone: true } }) } }, arrival, request.id)
     : null;
   // Recurring schedules: the series this booking belongs to, or an open pro proposal made from it.
-  const seriesSelect = { id: true, cadence: true, weekday: true, startMinute: true, status: true, minutes: true,
+  const seriesSelect = { id: true, cadence: true, weekday: true, monthDay: true, startMinute: true, status: true, minutes: true,
     hourlyRateCents: true, firstStartsAt: true, categorySlug: true, proposedBy: true } as const;
   const [series, proposal] = request.booking ? await Promise.all([
     request.booking.seriesId ? db.recurringSeries.findUnique({ where: { id: request.booking.seriesId }, select: seriesSelect }) : null,
@@ -206,8 +207,8 @@ export default async function JobDetail({
               ? "Pagesa është në pritje. Zgjoi ju njofton kur klienti ta paguajë; atëherë shfaqet adresa."
               : "Paguhet paraprakisht. Gjatë beta-s pagesa nuk bëhet online: ekipi i Zgjoi e konfirmon.")}
             {estimate.state === "PAID" && (pro
-              ? `E paguar. Nëse klienti ju punëson (me “Rezervo tani” ose me ofertë në bisedë), ${money(estimate.amountCents)} i zbriten klientit nga totali; komisioni llogaritet mbi çmimin e plotë.`
-              : `E paguar. Nëse e punësoni këtë profesionist, ${money(estimate.amountCents)} zbriten plotësisht nga puna.`)}
+              ? `E paguar. Nëse klienti ju punëson (me “Rezervo tani” ose me ofertë në bisedë), ${money(estimate.amountCents)} i zbriten klientit nga totali; komisioni llogaritet mbi çmimin e plotë. Nëse nuk ju punëson, ju merrni ${money(estimate.proShareCents ?? ESTIMATE_PRO_SHARE_CENTS)} për vizitën (${money(estimate.platformShareCents ?? ESTIMATE_PLATFORM_SHARE_CENTS)} Zgjoi).`
+              : `E paguar. Nëse e punësoni këtë profesionist, ${money(estimate.amountCents)} zbriten plotësisht nga puna. Përndryshe nuk kthehet (${money(estimate.proShareCents ?? ESTIMATE_PRO_SHARE_CENTS)} profesionisti, ${money(estimate.platformShareCents ?? ESTIMATE_PLATFORM_SHARE_CENTS)} Zgjoi).`)}
             {estimate.state === "CREDITED" && `${money(estimate.amountCents)} u zbritën nga puna me këtë profesionist.`}
             {estimate.state === "CANCELLED" && "Kërkesa për vlerësim u anulua."}
             {estimate.state === "REFUNDED" && "Vlerësimi u rimbursua."}

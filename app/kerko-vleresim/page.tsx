@@ -5,6 +5,7 @@ import { publicProfile } from "@/lib/server/catalog";
 import { db } from "@/lib/server/db";
 import { categoryFlow } from "@/lib/server/bookings";
 import { money } from "@/lib/format";
+import { ESTIMATE_PRO_SHARE_CENTS, ESTIMATE_PLATFORM_SHARE_CENTS } from "@/lib/book-now";
 import { serviceCategory } from "@/lib/service-categories";
 import Frame, { Panel } from "@/components/marketplace/Frame";
 import ApiForm from "@/components/marketplace/ApiForm";
@@ -31,6 +32,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ p
           <li>Vizita e vlerësimit kushton {price} dhe paguhet paraprakisht. Gjatë beta-s pagesa nuk bëhet online: ekipi i Zgjoi e konfirmon.</li>
           <li>Nëse më pas e punësoni {pro.user.name} (me “Rezervo tani” ose me “Puneso” në bisedë), {price} zbriten plotësisht nga totali.</li>
           <li>Komisioni i Zgjoi llogaritet mbi çmimin e plotë të punës; ju paguani totalin minus {price}.</li>
+          <li>Nëse nuk e punësoni, vlerësimi nuk kthehet: {money(ESTIMATE_PRO_SHARE_CENTS)} shkojnë te profesionisti për vizitën dhe {money(ESTIMATE_PLATFORM_SHARE_CENTS)} te Zgjoi.</li>
         </ul>
         {open ? (
           <p className="rounded-xl bg-honey p-3 text-sm font-semibold" role="status">

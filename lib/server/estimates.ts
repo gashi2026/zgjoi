@@ -11,6 +11,7 @@ import { categoryFlow } from "./bookings";
 import { containsContactDetails } from "../contact-filter";
 import { clientKey, cleanText, entityId } from "../marketplace-validation";
 import { money, dateTime } from "../format";
+import { estimateSplit } from "../book-now";
 
 /** Paid estimate visit (step 4): Elektricist and Mjeshtër i Ujit by default
  * (Category.estimateEnabled overrides). The customer requests a visit in a
@@ -88,13 +89,13 @@ export async function adminEstimateAction(actor: Actor, input: unknown) {
       if (["PAID", "CREDITED"].includes(estimate.state)) return { ok: true, already: true, message: "Vlerësimi ishte shënuar tashmë si i paguar." };
       invariant(estimate.state === "PENDING", "STATE", 409, "Ky vlerësim nuk është në pritje të pagesës.");
       const changed = await tx.estimate.updateMany({ where: { id: estimate.id, state: "PENDING" },
-        data: { state: "PAID", paidAt: now, paidById: actor.id, paidNote: note } });
+        data: { state: "PAID", paidAt: now, paidById: actor.id, paidNote: note, ...estimateSplit(estimate.amountCents) } });
       invariant(changed.count === 1, "STALE", 409, "Vlerësimi ka ndryshuar. Rifreskoni faqen.");
       await notify(tx, estimate.profile.userId, "ESTIMATE", "Pagesa e vlerësimit u konfirmua nga Zgjoi; vizita mund të bëhet", href(true));
       await notify(tx, estimate.clientId, "ESTIMATE", `Pagesa e vlerësimit (${money(estimate.amountCents)}) u konfirmua; zbritet nëse e punësoni profesionistin`, href(false));
     } else if (data.action === "REFUND") {
       invariant(estimate.state === "PAID" && !estimate.creditedRequestId, "STATE", 409, "Rimbursohet vetëm një vlerësim i paguar që nuk është zbritur nga një punë.");
-      await tx.estimate.update({ where: { id: estimate.id }, data: { state: "REFUNDED", refundedAt: now } });
+      await tx.estimate.update({ where: { id: estimate.id }, data: { state: "REFUNDED", refundedAt: now, proShareCents: null, platformShareCents: null } });
       await notify(tx, estimate.clientId, "ESTIMATE", "Vlerësimi u rimbursua nga Zgjoi", href(false));
     } else {
       invariant(estimate.state === "PENDING", "STATE", 409, "Anulohet vetëm një vlerësim i papaguar.");
@@ -102,7 +103,8 @@ export async function adminEstimateAction(actor: Actor, input: unknown) {
       await notify(tx, estimate.clientId, "ESTIMATE", "Kërkesa për vlerësim u anulua nga Zgjoi", href(false));
     }
     await tx.auditLog.create({ data: { actorId: actor.id, action: `ESTIMATE_${data.action}`, target: estimate.id,
-      meta: { amountCents: estimate.amountCents, requestId: estimate.requestId, note } } });
+      meta: { amountCents: estimate.amountCents, requestId: estimate.requestId, note,
+        ...(data.action === "MARK_PAID" ? { split: estimateSplit(estimate.amountCents) } : {}) } } });
     return { ok: true, message: data.action === "MARK_PAID" ? "Vlerësimi u shënua si i paguar." : data.action === "REFUND" ? "Vlerësimi u shënua si i rimbursuar." : "Kërkesa u anulua." };
   });
 }
