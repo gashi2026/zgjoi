@@ -46,7 +46,8 @@ export async function geocodeBooking(requestId: string) {
   const booking = await db.booking.findUnique({ where: { requestId }, select: { id: true, siteGeocode: true, request: { select: { address: true, city: true } } } });
   if (!booking || booking.siteGeocode === "OK" || booking.siteGeocode === "NOT_FOUND") return;
   const result = await geocodeAddress(booking.request.address, booking.request.city);
-  await db.booking.update({ where: { id: booking.id }, data: {
+  // Compare-and-set: never overwrite a result written meanwhile (another request, an admin fix).
+  await db.booking.updateMany({ where: { id: booking.id, siteGeocode: booking.siteGeocode }, data: {
     siteGeocode: result.status, siteLat: result.point?.lat ?? null, siteLng: result.point?.lng ?? null, siteGeocodedAt: new Date() } });
 }
 

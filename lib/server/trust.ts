@@ -11,10 +11,11 @@ export async function proTrust(profileId: string, tx: TrustDB = db, now = new Da
   const jobs = await tx.serviceRequest.findMany({
     where: { acceptedProfileId: profileId, acceptedQuoteId: { not: null } },
     select: { state: true, scheduledAt: true, startedAt: true, cancelledAt: true, cancelledBy: true, payment: { select: { dispute: { select: { id: true } } } },
-      booking: { select: { arrival: { select: { checkedInAt: true } } } } },
+      booking: { select: { startsAt: true, arrival: { select: { checkedInAt: true } } } } },
     take: 5000,
   });
-  return summarizeTrust(jobs.map(j => ({ ...j, arrivedAt: arrivalTime(j.booking?.arrival, j.startedAt), hasDispute: !!j.payment?.dispute })), now);
+  // A Book now booking keeps its own start time (moved by reschedules); prefer it.
+  return summarizeTrust(jobs.map(j => ({ ...j, scheduledAt: j.booking?.startsAt ?? j.scheduledAt, arrivedAt: arrivalTime(j.booking?.arrival, j.startedAt), hasDispute: !!j.payment?.dispute })), now);
 }
 
 /** Call after a pro-side cancellation. Alerts admins once per 90-day window. */

@@ -32,6 +32,8 @@ test("helpline link needs a configured number; photos and geocoding are validate
   assert.equal(helplineNumber("abc"), null);
   assert.equal(whatsappLink(null, "x"), null);
   assert.equal(whatsappLink(helplineNumber("+1 555 0100 200"), "a b"), "https://wa.me/15550100200?text=a%20b");
+  assert.equal(helplineNumber("00383 44 123 456"), "38344123456");
+  assert.equal(helplineNumber("+383.44.123.456"), "38344123456");
   assert.ok("error" in decodePhoto("data:image/gif;base64,R0lGODlh"));
   assert.ok("bytes" in decodePhoto(`data:image/jpeg;base64,${Buffer.from("ffd8ff00", "hex").toString("base64")}`));
   assert.deepEqual(parseNominatim([{ lat: "42.1", lon: "21.2" }]), { lat: 42.1, lng: 21.2 });

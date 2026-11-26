@@ -46,3 +46,8 @@ Optional, safe defaults when unset: `PAYMENTS_MODE` (unset = payments off), `EMA
   (or promote it). The previous code ignores the new additive columns. Never "Redeploy" an old commit (see 0).
 - Database: the migration is additive; to undo, restore the JSON backup into a fresh project or
   drop the new objects in a reviewed script. Do not run `prisma db push` against production.
+
+## 5. Arrita (proof of presence) rollout
+1. Apply `supabase/production/20261126_arrita_checkin.sql` to production with a migration (additive; refuses staging; requires the go-live SQL first).
+2. Set `ZGJOI_HELPLINE_WHATSAPP` (Production + Preview, sensitive; any format, normalized to wa.me digits) and optionally `GEOCODING_PROVIDER` (default Nominatim; `off` disables).
+3. Only then merge beta → main. Rollback stays instant rollback; the new tables are unused by older builds.

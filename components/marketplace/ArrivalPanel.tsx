@@ -127,6 +127,9 @@ export default function ArrivalPanel({ requestId, startsAt, arrival, whatsapp, c
           {whatsapp && <> <a href={whatsapp} target="_blank" rel="noopener noreferrer" className="text-gold-dark underline">Hap përsëri WhatsApp</a></>}
         </p>
       )}
+      {helpline && !whatsapp && (
+        <p className="mt-2 text-xs text-muted">Numri i WhatsApp-it të ndihmës nuk është vendosur ende. Administrata u njoftua në faqe.</p>
+      )}
       {message && <p role="status" className="mt-2 text-sm">{message}</p>}
     </div>
   );

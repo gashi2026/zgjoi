@@ -101,7 +101,7 @@ export function arrivalTime(a: { checkedInAt: Date } | null | undefined, started
 
 /** wa.me needs the number in international format, digits only. */
 export function helplineNumber(raw: string | undefined | null) {
-  const digits = (raw ?? "").replace(/[\s()+-]/g, "");
+  const digits = (raw ?? "").replace(/[\s().+-]/g, "").replace(/^00/, "");
   return /^[1-9]\d{7,14}$/.test(digits) ? digits : null;
 }
 export function whatsappLink(number: string | null, text: string) {
