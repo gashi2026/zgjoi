@@ -45,7 +45,7 @@ export function renderEmailHtml(content: EmailContent, year = new Date().getFull
   const td = `font-family:${FONT};`;
   const cta = content.cta ? (() => {
     const href = safeUrl(content.cta.url);
-    return `</div></div><table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin:24px 0 20px;"><tr><td bgcolor="#F5C542" align="center" style="${td}background-color:#F5C542;background-image:linear-gradient(#F5C542,#F5C542);border-radius:10px;mso-padding-alt:16px 18px;"><a href="${href}" style="${td}display:block;padding:16px 18px;border:1px solid #F5C542;border-radius:10px;font-size:16px;line-height:22px;font-weight:600;color:#171717;text-decoration:none;">${escapeHtml(content.cta.label)}</a></td></tr></table><div class="zg-screen"><div class="zg-diff">
+    return `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin:24px 0 20px;"><tr><td bgcolor="#F5C542" align="center" style="${td}background-color:#F5C542;background-image:linear-gradient(#F5C542,#F5C542);border-radius:10px;mso-padding-alt:16px 18px;"><a href="${href}" style="${td}display:block;padding:16px 18px;border:1px solid #F5C542;border-radius:10px;font-size:16px;line-height:22px;font-weight:600;color:#171717;text-decoration:none;">${escapeHtml(content.cta.label)}</a></td></tr></table>
 <p style="${td}font-size:12px;line-height:18px;margin:0 0 14px;color:#666666;">Nëse butoni nuk funksionon, <a href="${href}" style="${td}color:#6B500B;text-decoration:underline;">kliko këtu</a>.</p>`;
   })() : "";
   const body = content.body
@@ -55,32 +55,30 @@ export function renderEmailHtml(content: EmailContent, year = new Date().getFull
     ? `<p style="${td}margin:16px 0 0;color:#666666;font-size:13px;line-height:21px;">${richText(content.note)}</p>`
     : "";
   return `<!doctype html>
-<html lang="sq"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light only"><meta name="supported-color-schemes" content="light only"><title>${escapeHtml(emailSubject(content))}</title><!--[if !mso]><!--><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&amp;display=swap"><style type="text/css">:root{color-scheme:light only;supported-color-schemes:light only;} body,table,td,p,a,h1,div {font-family: ${FONT};} @media only screen and (max-width:480px){.zg-pad{padding-left:20px!important;padding-right:20px!important}.zg-h1{font-size:24px!important;line-height:31px!important}}</style><!--<![endif]--><style type="text/css">u + .body .zg-screen{background:#000;mix-blend-mode:screen;} u + .body .zg-diff{background:#000;mix-blend-mode:difference;}</style></head>
+<html lang="sq"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light only"><meta name="supported-color-schemes" content="light only"><title>${escapeHtml(emailSubject(content))}</title><!--[if !mso]><!--><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&amp;display=swap"><style type="text/css">:root{color-scheme:light only;supported-color-schemes:light only;} body,table,td,p,a,h1,div {font-family: ${FONT};} @media only screen and (max-width:480px){.zg-pad{padding-left:20px!important;padding-right:20px!important}.zg-h1{font-size:24px!important;line-height:31px!important}}</style><!--<![endif]--><style type="text/css"></style></head>
 <body class="body" style="margin:0;padding:0;background-color:#F7F7F7;background-image:linear-gradient(#F7F7F7,#F7F7F7);${td}color:#171717;">
 <div style="display:none;max-height:0;max-width:0;overflow:hidden;opacity:0;mso-hide:all;">${escapeHtml(content.preheader)}</div>
 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#F7F7F7" style="background-color:#F7F7F7;background-image:linear-gradient(#F7F7F7,#F7F7F7);"><tr><td align="center" style="${td}padding:24px 12px;">
 <!--[if mso]><table role="presentation" width="560"><tr><td><![endif]-->
 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#FFFFFF" style="max-width:560px;background-color:#FFFFFF;background-image:linear-gradient(#FFFFFF,#FFFFFF);border:1px solid #EEEEEE;border-radius:16px;">
-<tr><td style="${td}padding:30px 26px 0;" align="center"><div class="zg-screen"><div class="zg-diff"><div style="${td}font-size:36px;font-weight:800;line-height:44px;letter-spacing:-1.5px;color:#171717;">Zgjoi</div></div></div></td></tr>
+<tr><td style="${td}padding:30px 26px 0;" align="center"><div style="${td}font-size:36px;font-weight:800;line-height:44px;letter-spacing:-1.5px;color:#171717;">Zgjoi</div></td></tr>
 <tr><td style="${td}padding:24px 26px 0;"><table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr><td bgcolor="#E9B936" height="3" style="${td}background-color:#E9B936;background-image:linear-gradient(#E9B936,#E9B936);height:3px;line-height:3px;font-size:1px;border-radius:3px;">&nbsp;</td></tr></table></td></tr>
 <tr><td align="center" class="zg-pad" style="${td}padding:28px 36px 30px;">
-<div class="zg-screen"><div class="zg-diff">
+
 <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" style="margin:0 auto 22px;"><tr><td width="64" height="64" align="center" valign="middle" bgcolor="#FFF7E1" style="background-color:#FFF7E1;background-image:linear-gradient(#FFF7E1,#FFF7E1);width:64px;height:64px;border-radius:50%;font-size:31px;line-height:64px;color:#B78B18;${td}"><span aria-hidden="true">${escapeHtml(content.icon)}</span></td></tr></table>
 <h1 class="zg-h1" style="${td}margin:0 0 15px;color:#171717;font-size:28px;line-height:35px;letter-spacing:-.6px;font-weight:700;">${escapeHtml(content.title)}</h1>
 <p style="${td}margin:0 0 24px;color:#666666;font-size:15px;line-height:23px;">${escapeHtml(content.subtitle)}</p>
 ${body}
 ${cta}
 ${note}
-</div></div>
 </td></tr>
 <tr><td style="${td}padding:0 26px;"><table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr><td bgcolor="#EEEEEE" height="1" style="${td}background-color:#EEEEEE;background-image:linear-gradient(#EEEEEE,#EEEEEE);height:1px;line-height:1px;font-size:1px;">&nbsp;</td></tr></table></td></tr>
 <tr><td align="center" style="${td}padding:24px 26px 30px;font-size:12px;line-height:20px;color:#666666;">
-<div class="zg-screen"><div class="zg-diff">
+
 <p style="${td}margin:0 0 10px;font-weight:bold;font-size:14px;color:#171717;">Zgjoi — Gjithçka fillon këtu.</p>
 <p style="${td}margin:0 0 10px;"><a href="${EMAIL_SITE}" style="${td}color:#666666;text-decoration:underline;">www.zgjoi.com</a> &nbsp;·&nbsp; <a href="mailto:${EMAIL_SUPPORT}" style="${td}color:#666666;text-decoration:underline;">${EMAIL_SUPPORT}</a></p>
 <p style="${td}margin:0 0 10px;">Ky email është dërguar automatikisht. Ju lutemi, mos iu përgjigjni këtij emaili.</p>
 <p style="${td}margin:0;">© ${year} Zgjoi</p>
-</div></div>
 </td></tr></table><!--[if mso]></td></tr></table><![endif]-->
 </td></tr></table></body></html>`;
 }
