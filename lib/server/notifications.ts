@@ -6,8 +6,8 @@ import { invariant } from "./errors";
 import { notificationPreferences } from "./notification-preferences";
 import { hashToken } from "./tokens";
 import { emailRecipientAllowed, maskEmail } from "../email-allowlist";
-import { tFor } from "../i18n/dictionaries";
 import { isLocale, localizePath, type Locale } from "../i18n/config";
+import { accountNoticeEmail, confirmSignupEmail, NOTICE_STYLE, renderEmail, resetPasswordEmail } from "../email/design";
 
 /** Replies go to the public contact address, not the no-reply sender. */
 export const EMAIL_REPLY_TO = "info@zgjoi.com";
@@ -23,13 +23,14 @@ export function jobNoticeHrefAllowed(href: string) {
 }
 
 /** Body posted to https://api.resend.com/emails. Never include secrets here. */
-export function resendEmailPayload(message: { to: string; subject: string; text: string }) {
+export function resendEmailPayload(message: { to: string; subject: string; text: string; html?: string }) {
   return {
     from: process.env.EMAIL_FROM,
     to: [message.to],
     reply_to: EMAIL_REPLY_TO,
     subject: message.subject,
     text: message.text,
+    ...(message.html ? { html: message.html } : {}),
   };
 }
 
@@ -76,15 +77,11 @@ export async function notify(
       const key = kind === "MESSAGE"
         ? `job-email:${hashToken(`${userId}:${href}:${Math.floor(Date.now() / 300_000)}`)}`
         : `job-email:${notice.id}`;
-      // Notifications are stored in Albanian and translated on display; the email goes out in the recipient's language.
-      const locale = userLocale(user.locale);
-      const t = tFor(locale);
-      const subjectTitle = t.tx(title);
-      const link = localizePath(href, locale);
       await tx.outbox.createMany({ skipDuplicates: true, data: [{ key, kind: "EMAIL", payloadEnc: encrypt(JSON.stringify({
         type: "JOB_NOTICE", kind, userId, notificationId: notice.id, to: user.email,
         expiresAt: new Date(Date.now() + 23 * 3600_000).toISOString(),
-        subject: `${subjectTitle} — Zgjoi`, text: t("server.notifications.logAccountDetailsNotification", { title: subjectTitle, base, href: link, base2: locale === "en" ? `${base}/en` : base }),
+        // Email content is Albanian (approved design); the stored Albanian title is used as-is.
+        ...renderEmail(accountNoticeEmail({ title, url: `${base}${href}`, ...NOTICE_STYLE[kind] })),
       })) }] });
     }
   }
@@ -126,7 +123,6 @@ export async function queueAccountEmail(
   locale: Locale = "sq",
 ) {
   const base = applicationUrl();
-  const t = tFor(locale);
   if (!base || !/^[a-fA-F0-9]{64}$/.test(process.env.ENCRYPTION_KEY ?? ""))
     return { queued: false };
   const path = localizePath(
@@ -142,12 +138,12 @@ export async function queueAccountEmail(
           to,
           tokenId: key,
           expiresAt: expiresAt.toISOString(),
-          subject: t(
+          // Same link format as before (token in the URL fragment, never sent to the server or analytics).
+          ...renderEmail(
             purpose === "EMAIL_VERIFY"
-              ? "server.notifications.verifyEmailZgjoi"
-              : "server.notifications.resetPasswordZgjoi",
+              ? confirmSignupEmail(`${base}${path}#token=${token}`)
+              : resetPasswordEmail(`${base}${path}#token=${token}`),
           ),
-          text: t("server.notifications.openLinkContinueToken", { base, path, token }),
         }),
       ),
     },
@@ -270,6 +266,7 @@ async function submitEmailJobs(jobs: EmailJob[]) {
         to: string;
         subject: string;
         text: string;
+        html?: string;
         tokenId?: string;
         expiresAt?: string;
         type?: string;
