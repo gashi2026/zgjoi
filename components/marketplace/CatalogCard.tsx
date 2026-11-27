@@ -2,6 +2,7 @@ import Link from "@/components/i18n/Link";
 import type { Prisma } from "@prisma/client";
 import { publicProSelect, initials } from "@/lib/server/catalog";
 import { money } from "@/lib/format";
+import { displayRate } from "@/lib/pro-categories";
 import { Avatar } from "@/components/Brand";
 import { getT } from "@/lib/i18n/server";
 export type CatalogPro = Prisma.ProProfileGetPayload<{
@@ -11,10 +12,12 @@ export default async function CatalogCard({
   pro,
   category,
 }: {
-  pro: CatalogPro;
+  pro: CatalogPro & { displayRateCents?: number | null };
   category?: string;
 }) {
   const t = await getT();
+  const rate = pro.displayRateCents !== undefined ? pro.displayRateCents
+    : displayRate(pro.categories, pro.hourlyRateCents, null);
   return (
     <article className="flex flex-col gap-3 rounded-2xl border border-line bg-white p-5 shadow-soft">
       <div className="flex items-center gap-3">
@@ -36,7 +39,7 @@ export default async function CatalogCard({
           ? t("catalogCard.reviews", { value: pro.ratingAvg.toFixed(1), ratingCount: pro.ratingCount })
           : t("catalogCard.noReviewsYet")}{" "}
         {pro.priceFrom ? t("catalogCard.from", { amount: money(pro.priceFrom, t.locale) }) : t("catalogCard.askForPrice")}
-        {pro.hourlyRateCents ? ` · ${t("catalogCard.hourlyRate", { amount: money(pro.hourlyRateCents, t.locale) })}` : ""}</p>
+        {rate ? ` · ${t("catalogCard.hourlyRate", { amount: money(rate, t.locale) })}` : ""}</p>
       <Link
         href={`/profesionisti/${pro.slug}`}
         className="mt-auto rounded-full border border-gold px-4 py-3 text-center text-sm font-semibold"

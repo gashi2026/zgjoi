@@ -1,6 +1,6 @@
 import { serviceCategory } from "@/lib/service-categories";
 import ProfessionsEditor from "./ProfessionsEditor";
-import { MAX_PRO_CATEGORIES } from "@/lib/pro-categories";
+import { MAX_PRO_CATEGORIES, professionRate } from "@/lib/pro-categories";
 import { pageGuard } from "@/lib/server/guard";
 import { db } from "@/lib/server/db";
 import { activeCategories } from "@/lib/server/catalog";
@@ -41,6 +41,8 @@ export default async function ProfileEditor({ pro }: { pro: boolean }) {
   const bookNowCategories = pro ? await Promise.all(categories.map(async (c) => ((await categoryFlow(db, c.slug)).bookNow ? c.slug : null))) : [];
   const bookNowSlugs: string[] = bookNowCategories.flatMap((s) => (s ? [s] : []));
   const defaultMin = String(profile?.bookingMinMinutes ?? DEFAULT_MIN_MINUTES);
+  // Book now needs at least one Book now profession with an hourly rate (its own, else the legacy single rate).
+  const bookNowRated = Boolean(profile?.categories.some((c, i) => flows[i]?.bookNow && professionRate(c, profile.hourlyRateCents)));
   const euros = (cents: number | null) => (cents ? (cents % 100 ? (cents / 100).toFixed(2) : String(cents / 100)) : "");
   const fields: Field[] = [
     {
@@ -119,40 +121,26 @@ export default async function ProfileEditor({ pro }: { pro: boolean }) {
               const slug = serviceCategory(c.categorySlug)?.slug;
               return slug && categories.some((x) => x.slug === slug) ? [{ slug, priceFrom: euros(c.priceFromCents),
                 minMinutes: c.minMinutes ? String(c.minMinutes) : bookNowSlugs.includes(slug) ? defaultMin : "",
+                // Rates live per profession; a pro who had the old single rate sees it pre-filled on their Book now professions.
+                hourlyRate: euros(c.hourlyRateCents ?? (bookNowSlugs.includes(slug) ? profile.hourlyRateCents : null)),
                 approved: Boolean(c.approvedAt) }] : [];
             })}
             bookNowSlugs={bookNowSlugs} defaultMin={defaultMin}
             hours={hourOptions(MINUTE_STEP).map((m) => ({ value: String(m), label: t.tx(hoursLabel(m)) }))} />
         </section>
       )}
-      {pro && profile && (
-        <Panel>
-          <h2 className="mb-1 text-lg font-bold" id="tarifa">{t("profileEditor.hourlyRate")}</h2>
-          <p className="mb-4 text-sm text-muted">{t("profileEditor.hourlyRateIntro")}</p>
-          <div data-testid="hourly-rate-form">
-            <ApiForm
-              endpoint="/api/account/hourly-rate"
-              label={t("profileEditor.saveHourlyRate")}
-              fields={[
-                { name: "hourlyRate", label: t("profileEditor.hourlyRateOptional"), type: "number", step: "0.01", min: 1, max: 1000,
-                  value: profile.hourlyRateCents ? profile.hourlyRateCents / 100 : "", hint: t("profileEditor.hourlyRateHint") },
-              ]}
-            />
-          </div>
-        </Panel>
-      )}
       {pro && profile && bookNowOffered && (
         <Panel>
           <h2 className="mb-1 text-lg font-bold">{t("profileEditor.bookNowTitle")}</h2>
           <p className="mb-4 text-sm text-muted">
-            {t("profileEditor.categoryCustomersCanBook")} {t("profileEditor.minimumHoursInProfessions")}</p>
-          {!profile.hourlyRateCents && <p className="mb-4 rounded-xl bg-[#FFF9E3] p-3 text-sm" role="status">{t("profileEditor.bookNowNeedsRate")}</p>}
+            {t("profileEditor.categoryCustomersCanBook")}</p>
+          {!bookNowRated && <p className="mb-4 rounded-xl bg-[#FFF9E3] p-3 text-sm" role="status">{t("profileEditor.bookNowNeedsRateProfession")}</p>}
           <div data-testid="book-now-form">
             <ApiForm
               endpoint="/api/account/booking-settings"
               label={t("profileEditor.saveBookNow")}
               fields={[
-                { name: "enabled", label: t("profileEditor.acceptBookingsBookNow"), type: "checkbox", checked: bookNowOn(profile) && Boolean(profile.hourlyRateCents) },
+                { name: "enabled", label: t("profileEditor.acceptBookingsBookNow"), type: "checkbox", checked: bookNowOn(profile) && bookNowRated },
               ]}
             />
           </div>

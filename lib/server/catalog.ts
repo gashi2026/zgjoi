@@ -3,7 +3,7 @@ import { activeServiceCategories } from "./service-catalog";
 import "server-only";
 import { proUserWhere } from "./id-verification";
 import { publicCategoriesSelect } from "./pro-categories";
-import { publicCategories } from "../pro-categories";
+import { displayRate, publicCategories } from "../pro-categories";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { db } from "./db";
@@ -144,13 +144,17 @@ export async function searchPros(input: Record<string, unknown> = {}) {
   };
 }
 
-type WithCategories = { categorySlug: string; priceFrom: number | null; categories: { categorySlug: string; priceFromCents: number | null; position: number; approvedAt: Date | null }[] };
+type WithCategories = { categorySlug: string; priceFrom: number | null; hourlyRateCents: number | null;
+  categories: { categorySlug: string; priceFromCents: number | null; hourlyRateCents: number | null; position: number; approvedAt: Date | null }[] };
 /** Public view of a pro: only approved, active professions (primary first); `categorySlug` is the
- * profession to show on a card (the one searched for, else the first), `priceFrom` its price. */
+ * profession to show on a card (the one searched for, else the first), `priceFrom` its price,
+ * `displayRateCents` its hourly rate (else the lowest). */
 export function withDisplayCategory<T extends WithCategories>(pro: T, active: readonly string[], wanted?: string) {
   const rows = publicCategories(pro.categories, active).map((r) => ({ ...r, categorySlug: serviceCategory(r.categorySlug)!.slug }));
   const show = rows.find((r) => r.categorySlug === serviceCategory(wanted ?? "")?.slug) ?? rows[0];
-  return { ...pro, categories: rows, categorySlug: show?.categorySlug ?? pro.categorySlug, priceFrom: show ? show.priceFromCents : pro.priceFrom };
+  return { ...pro, categories: rows, categorySlug: show?.categorySlug ?? pro.categorySlug, priceFrom: show ? show.priceFromCents : pro.priceFrom,
+    // Card rate: the searched profession's rate, else the lowest of the pro's professions.
+    displayRateCents: displayRate(rows, pro.hourlyRateCents, wanted || null) };
 }
 
 export async function publicProfile(id: string) {

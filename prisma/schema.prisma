@@ -172,7 +172,8 @@ model ProProfile {
   budgetResetAt       DateTime          @default(now())
   /// Book now (hourly): the pro's own rate and minimum booking length.
   /// Null until the pro opts in; only used in categories with Book now.
-  /// One hourly rate per pro (all professions), optional, editable any time; shown publicly, used by Book now.
+  /// Legacy single hourly rate. Rates now live per profession (ProCategory.hourlyRateCents); this is only
+  /// the fallback for pros who have not saved their professions yet, and is cleared when they do.
   hourlyRateCents     Int?
   /// Book now switch, separate from the rate. Null = legacy row: on when a rate is set (the old meaning).
   bookNowEnabled      Boolean?
@@ -212,6 +213,9 @@ model ProCategory {
   /// Minimum booking length for this profession, in minutes (30-minute steps, 30..720).
   /// Null = none set: Book now falls back to ProProfile.bookingMinMinutes.
   minMinutes     Int?
+  /// Hourly rate for this profession, in cents (Book now charges rate × hours). Null = none set:
+  /// falls back to the legacy ProProfile.hourlyRateCents until the pro saves their professions.
+  hourlyRateCents Int?
   position       Int        @default(0)
   approvedAt     DateTime?
   createdAt      DateTime   @default(now())

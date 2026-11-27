@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { signupInput } from "../lib/marketplace-validation";
-import { MAX_PRO_CATEGORIES, lowestPrice, normalizeCategorySlugs, offersCategory, pickCategory, publicCategories } from "../lib/pro-categories";
+import { MAX_PRO_CATEGORIES, displayRate, lowestPrice, normalizeCategorySlugs, offersCategory, pickCategory, professionRate, publicCategories } from "../lib/pro-categories";
 import { nextPathFor, SIGNUP_ID_PATH } from "../lib/server/auth";
 import { professionsInput } from "../lib/server/pro-categories";
 import { bookingMinimum, hourOptions, validMinMinutes } from "../lib/book-now";
@@ -94,6 +94,8 @@ test("pro categories SQL is additive, backfills the old category, and the produc
     assert.match(sql, /ALTER TABLE "ProCategory" ADD COLUMN IF NOT EXISTS "minMinutes" INTEGER/);
     assert.match(sql, /"minMinutes" BETWEEN 30 AND 720 AND "minMinutes" % 30 = 0/);
     assert.match(sql, /ALTER TABLE "ProProfile" ADD COLUMN IF NOT EXISTS "bookNowEnabled" BOOLEAN/);
+    assert.match(sql, /ALTER TABLE "ProCategory" ADD COLUMN IF NOT EXISTS "hourlyRateCents" INTEGER/);
+    assert.match(sql, /"hourlyRateCents" BETWEEN 100 AND 100000/);
   }
   assert.match(staging, /_staging_environment' AND value->>'kind' = 'staging'/);
   assert.match(production, /This is the production rollout/);
@@ -119,11 +121,20 @@ test("minimum hours: per profession, optional, half-hour steps, falling back to 
   assert.doesNotMatch(editor, /name: "minMinutes"/, "the minimum lives with each profession, not in the Book now rate form");
 });
 
-test("the hourly rate is one per pro, for every pro, separate from the Book now switch", () => {
+test("pricing is per profession: minimum price, hourly rate and minimum hours on each row", () => {
+  assert.equal(professionRate({ hourlyRateCents: 1500 }, 1200), 1500);
+  assert.equal(professionRate({ hourlyRateCents: null }, 1200), 1200, "legacy single rate until the pro saves");
+  assert.equal(professionRate(null, null), null);
+  const rows = [{ categorySlug: "dado", hourlyRateCents: 1000 }, { categorySlug: "pastrim", hourlyRateCents: 1500 }, { categorySlug: "kopshtar", hourlyRateCents: null }];
+  assert.equal(displayRate(rows, null, "pastrim"), 1500, "the searched profession's rate");
+  assert.equal(displayRate(rows, null, "nane"), 1000, "aliases match");
+  assert.equal(displayRate(rows, null, null), 1000, "else the lowest");
+  assert.equal(displayRate(rows, null, "kopshtar"), null);
+  const parsed = professionsInput.parse({ categories: [{ slug: "pastrim", hourlyRate: "12,50" }, { slug: "dado", hourlyRate: "" }] });
+  assert.deepEqual(parsed.categories.map((c) => c.hourlyRate), [1250, undefined]);
+  assert.equal(professionsInput.safeParse({ categories: [{ slug: "pastrim", hourlyRate: "2000" }] }).success, false);
   const editor = readFileSync("components/marketplace/ProfileEditor.tsx", "utf8");
-  const rateForm = editor.slice(editor.indexOf('endpoint="/api/account/hourly-rate"'));
-  assert.ok(editor.indexOf('endpoint="/api/account/hourly-rate"') > 0);
-  assert.ok(editor.lastIndexOf("bookNowOffered &&", editor.indexOf('endpoint="/api/account/hourly-rate"')) < editor.indexOf("{pro && profile && (\n        <Panel>\n          <h2 className=\"mb-1 text-lg font-bold\" id=\"tarifa\""), "the rate form is not behind the Book now check");
-  const bookNowForm = rateForm.slice(rateForm.indexOf('endpoint="/api/account/booking-settings"'));
-  assert.doesNotMatch(bookNowForm.slice(0, bookNowForm.indexOf("</Panel>")), /name: "hourlyRate"/, "the Book now form is only the switch");
+  assert.doesNotMatch(editor, /hourly-rate"|name: "hourlyRate"/, "no single per-pro rate form any more");
+  assert.match(editor, /endpoint="\/api\/account\/booking-settings"/, "the Book now switch stays");
+  assert.match(readFileSync("components/marketplace/ProfessionsEditor.tsx", "utf8"), /data-testid=\{`rate-\$\{row\.slug\}`\}/);
 });

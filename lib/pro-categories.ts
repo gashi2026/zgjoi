@@ -3,7 +3,7 @@ import { serviceCategory } from "./service-categories";
 /** Most professions one pro can offer at once (sign-up and profile panel). */
 export const MAX_PRO_CATEGORIES = 5;
 
-export type ProCategoryRow = { categorySlug: string; priceFromCents: number | null; position: number; approvedAt: Date | null; minMinutes?: number | null };
+export type ProCategoryRow = { categorySlug: string; priceFromCents: number | null; position: number; approvedAt: Date | null; minMinutes?: number | null; hourlyRateCents?: number | null };
 
 /** Canonical, de-duplicated, catalogue-only list of slugs in the order chosen. Unknown slugs
  * (e.g. the legacy "trainer-personal") are dropped. */
@@ -42,4 +42,18 @@ export function pickCategory(rows: readonly ProCategoryRow[], requested?: string
 export function offersCategory(rows: readonly ProCategoryRow[], slug: string): boolean {
   const wanted = serviceCategory(slug)?.slug;
   return !!wanted && publicCategories(rows).some((r) => serviceCategory(r.categorySlug)!.slug === wanted);
+}
+
+/** A profession's hourly rate: its own, else the pro's legacy single rate (pros who have not saved
+ * their professions since rates moved per profession). */
+export function professionRate(row: { hourlyRateCents?: number | null } | null | undefined, legacy: number | null | undefined): number | null {
+  return row?.hourlyRateCents ?? legacy ?? null;
+}
+/** Rate to show on a search card: the searched profession's, else the lowest across professions. */
+export function displayRate(rows: readonly { categorySlug: string; hourlyRateCents?: number | null }[], legacy: number | null | undefined, wanted?: string | null): number | null {
+  const want = wanted ? serviceCategory(wanted)?.slug : undefined;
+  const match = want ? rows.find((r) => serviceCategory(r.categorySlug)?.slug === want) : undefined;
+  if (match) return professionRate(match, legacy);
+  const rates = rows.map((r) => professionRate(r, legacy)).filter((r): r is number => typeof r === "number" && r > 0);
+  return rates.length ? Math.min(...rates) : null;
 }

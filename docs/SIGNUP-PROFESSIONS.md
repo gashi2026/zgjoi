@@ -69,12 +69,18 @@ Rollback note: once a pro has signed up without a price, `priceFrom` is NULL; ol
 - Enforced server-side in `createBooking` (`checkHours`), in recurring proposals, and in the duration list on
   `/rezervo-tani` (it starts at the minimum). The hourly rate stays one per pro.
 
-## Hourly rate (one per pro, every pro)
+## Pricing per profession (owner decision, replaces the single per-pro rate)
 
-- Owner decision: one hourly rate for all of a pro's professions, available to every pro (not only Book now categories),
-  optional, changeable any time in `/pro/profili` ("Tarifa për orë" panel, `/api/account/hourly-rate`) with no re-review.
-  An empty field removes it. Shown on the public profile and search cards when set.
-- Book now is a separate switch (`ProProfile.bookNowEnabled`, own panel, only for pros with a Book now profession).
-  Switching it off keeps the rate; turning it on needs a rate. Null = legacy row: on when a rate is set (today's meaning),
-  so no backfill. Saving a rate never turns Book now on by itself.
-- Accepted defaults: no price or rate needed for approval; a newly added profession needs its own approval; max 5 professions.
+- Each profession row has its own optional **minimum price** (`priceFromCents`, the "from" price), **hourly rate**
+  (`ProCategory.hourlyRateCents`, €1–€1,000) and **minimum hours** (`minMinutes`), all editable any time in
+  `/pro/profili#profesionet` with no re-review. There is no single per-pro rate form any more.
+- Book now (one on/off switch per pro, `ProProfile.bookNowEnabled`) is available for a profession only when it is a
+  Book now category AND has an hourly rate; it charges that profession's rate × hours with that profession's minimum.
+  Recurring proposals and estimate credits go through the same per-profession terms; an existing series keeps the
+  rate it started with.
+- Backward compatibility: a profession without a rate falls back to the legacy `ProProfile.hourlyRateCents`, so existing
+  Book now pros keep working with no SQL backfill. The panel pre-fills that rate on their Book now professions, and the
+  first save of the professions panel moves it onto the rows and clears the legacy value (Book now switch unchanged).
+- Public profile: each profession card shows minimum price (or "Ask for a price"), hourly rate and minimum hours.
+  Search cards show the searched profession's rate, else the pro's lowest.
+- Accepted defaults: no price or rate needed for approval; a newly added profession needs its own approval; max 5.

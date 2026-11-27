@@ -7,6 +7,7 @@ import { money, dateTime } from "@/lib/format";
 import ApiForm from "@/components/marketplace/ApiForm";
 import { categoryFlow, bookableTerms } from "@/lib/server/bookings";
 import { bookingMinimum, hoursLabel } from "@/lib/book-now";
+import { professionRate } from "@/lib/pro-categories";
 import { proTrust } from "@/lib/server/trust";
 import { TRUST_PUBLIC } from "@/lib/trust";
 import TrustDonut from "@/components/marketplace/TrustDonut";
@@ -46,6 +47,7 @@ export default async function Page({
   // One entry per approved profession (primary first), each with its own hiring paths and price.
   const professions = pro.categories.map((c, i) => ({
     slug: c.categorySlug, priceFromCents: c.priceFromCents, flow: flows[i], terms: bookableTerms(pro, flows[i], c), minMinutes: bookingMinimum(c.minMinutes, null),
+    rateCents: professionRate(c, flows[i].bookNow ? pro.hourlyRateCents : null),
     category: categories.find((x) => x.slug === c.categorySlug),
   }));
   const main = professions[0];
@@ -91,11 +93,6 @@ export default async function Page({
             ? t("proProfile.reviews", { value: pro.ratingAvg.toFixed(1), ratingCount: pro.ratingCount })
             : t("proProfile.noReviewsYet")}
         </p>
-        {pro.hourlyRateCents && (many || !terms) ? (
-          <p className="mt-2 inline-flex items-center gap-2 text-sm font-semibold" data-testid="pro-hourly-rate">
-            <svg aria-hidden viewBox="0 0 24 24" className="h-4 w-4"><path d="M12 2 21 7v10l-9 5-9-5V7z" className="fill-gold" /></svg>
-            {t("proProfile.hourlyRate", { amount: money(pro.hourlyRateCents, t.locale) })}</p>
-        ) : null}
         {trust && <TrustDonut summary={trust} />}
         {!many && <p className="mt-2 text-sm text-muted">
           {terms
@@ -155,8 +152,8 @@ export default async function Page({
                 </span>
                 <div>
                   <p className="font-bold">{t.tx(p.category?.name)}</p>
-                  <p className="text-sm">{p.priceFromCents ? t("proProfile.priceFrom", { amount: money(p.priceFromCents, t.locale) }) : <span className="text-muted">{t("proProfile.askForPrice")}</span>}
-</p>
+                  <p className="text-sm">{p.priceFromCents ? t("proProfile.minimumPrice", { amount: money(p.priceFromCents, t.locale) }) : <span className="text-muted">{t("proProfile.askForPrice")}</span>}</p>
+                  {p.rateCents ? <p className="text-sm font-semibold" data-testid={`rate-${p.slug}`}>{t("proProfile.ratePerHour", { amount: t("proProfile.hr", { amount: money(p.rateCents, t.locale) }) })}</p> : null}
                   {(p.terms?.minMinutes ?? p.minMinutes) && (
                     <p className="text-xs text-muted" data-testid={`min-hours-${p.slug}`}>
                       {t("proProfile.minimumHours", { label: t.tx(hoursLabel((p.terms?.minMinutes ?? p.minMinutes)!)) })}</p>

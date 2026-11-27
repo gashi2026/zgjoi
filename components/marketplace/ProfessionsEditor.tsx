@@ -5,10 +5,10 @@ import { buttonClass, inputClass } from "./ApiForm";
 import CategoryIcon from "@/components/CategoryIcon";
 
 export type ProfessionOption = { slug: string; label: string; icon: string };
-export type ProfessionRow = { slug: string; priceFrom: string; minMinutes: string; approved: boolean };
+export type ProfessionRow = { slug: string; priceFrom: string; hourlyRate: string; minMinutes: string; approved: boolean };
 
-/** Profile panel, editable any time: the pro's professions (first = main), an optional "price from"
- * and minimum hours for each. No price = customers see "ask for a price" and start a chat.
+/** Profile panel, editable any time: the pro's professions (first = main) and, for each, an optional
+ * "price from" (minimum price), hourly rate and minimum hours. No price = customers see "ask for a price" and start a chat.
  * For Book now professions the minimum limits the hours a customer can book (always set). */
 export default function ProfessionsEditor({ options, initial, max, profileApproved, bookNowSlugs, defaultMin, hours }: {
   options: ProfessionOption[]; initial: ProfessionRow[]; max: number; profileApproved: boolean;
@@ -35,7 +35,7 @@ export default function ProfessionsEditor({ options, initial, max, profileApprov
       const response = await fetch("/api/account/professions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ categories: rows.map((r) => ({ slug: r.slug, priceFrom: r.priceFrom.trim(), minMinutes: r.minMinutes })) }),
+        body: JSON.stringify({ categories: rows.map((r) => ({ slug: r.slug, priceFrom: r.priceFrom.trim(), hourlyRate: r.hourlyRate.trim(), minMinutes: r.minMinutes })) }),
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok || result.ok === false) {
@@ -74,12 +74,19 @@ export default function ProfessionsEditor({ options, initial, max, profileApprov
                   <button type="button" disabled={rows.length === 1} onClick={() => setRows((list) => list.filter((_, j) => j !== i))} aria-label={t("professionsEditor.remove", { name: o?.label ?? row.slug })} className="h-11 rounded-full border border-line px-3 text-sm disabled:opacity-30">{t("professionsEditor.removeShort")}</button>
                 </div>
               </div>
-              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <div className="mt-3 grid gap-3 sm:grid-cols-3">
               <label className="block text-sm font-semibold">
                 {t("professionsEditor.priceFrom")}
                 <input inputMode="decimal" value={row.priceFrom} onChange={(e) => update(i, { priceFrom: e.target.value })} placeholder={t("professionsEditor.askForPricePlaceholder")}
                   className={`${inputClass} mt-1`} aria-label={t("professionsEditor.priceFromFor", { name: o?.label ?? row.slug })} />
                 <span className="mt-1 block text-xs font-normal text-muted">{t("professionsEditor.priceHint")}</span>
+              </label>
+              <label className="block text-sm font-semibold">
+                {t("professionsEditor.hourlyRate")}
+                <input inputMode="decimal" value={row.hourlyRate} onChange={(e) => update(i, { hourlyRate: e.target.value })} placeholder={t("professionsEditor.hourlyRatePlaceholder")}
+                  className={`${inputClass} mt-1`} aria-label={t("professionsEditor.hourlyRateFor", { name: o?.label ?? row.slug })} data-testid={`rate-${row.slug}`} />
+                <span className="mt-1 block text-xs font-normal text-muted">
+                  {bookNowSlugs.includes(row.slug) ? t("professionsEditor.hourlyRateBookNowHint") : t("professionsEditor.hourlyRateHint")}</span>
               </label>
               <label className="block text-sm font-semibold">
                 {bookNowSlugs.includes(row.slug) ? t("professionsEditor.minimumHours") : t("professionsEditor.minimumHoursOptional")}
@@ -105,7 +112,7 @@ export default function ProfessionsEditor({ options, initial, max, profileApprov
               {left.map((o) => <option key={o.slug} value={o.slug}>{o.label}</option>)}
             </select>
           </label>
-          <button type="button" disabled={!adding} onClick={() => { setRows((list) => [...list, { slug: adding, priceFrom: "", minMinutes: bookNowSlugs.includes(adding) ? defaultMin : "", approved: false }]); setAdding(""); }}
+          <button type="button" disabled={!adding} onClick={() => { setRows((list) => [...list, { slug: adding, priceFrom: "", hourlyRate: "", minMinutes: bookNowSlugs.includes(adding) ? defaultMin : "", approved: false }]); setAdding(""); }}
             className="min-h-11 rounded-full border border-gold px-5 font-semibold disabled:opacity-40">{t("professionsEditor.add")}</button>
         </div>
       )}

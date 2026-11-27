@@ -9,6 +9,7 @@ import { enforceLimit } from "./rate-limit";
 import { hashToken } from "./tokens";
 import { serializable } from "./transaction";
 import { resolveProCategory } from "./pro-categories";
+import { professionRate } from "../pro-categories";
 import { bookingCommission } from "./commissions";
 import { assertAppointmentAvailable } from "./appointments";
 import { containsContactDetails } from "../contact-filter";
@@ -48,59 +49,38 @@ export const bookingSettingsInput = z.object({
   minMinutes: z.coerce.number().int().optional(),
 });
 
-/** Book now on/off for the pro: a switch separate from the hourly rate (switching off keeps the rate).
- * Turning it on needs a Book now profession and an hourly rate (sent here or already saved). */
+/** Book now on/off for the pro: a switch separate from the rates (switching off keeps them).
+ * Turning it on needs a Book now profession with an hourly rate. `hourlyRate` is the legacy single
+ * rate (older clients): it only fills professions that have no rate of their own. */
 export async function saveBookingSettings(actor: Actor, input: unknown) {
   invariant(actor.role === "PRO" && actor.proProfile, "FORBIDDEN", 403, "Nuk keni qasje në këtë veprim.");
   const data = bookingSettingsInput.parse(input);
   const profile = actor.proProfile;
   return serializable(async (tx) => {
-    const rows = await tx.proCategory.findMany({ where: { profileId: profile.id }, select: { categorySlug: true } });
-    const bookNow = (await Promise.all(rows.map((r) => categoryFlow(tx, r.categorySlug)))).some((f) => f.bookNow);
-    invariant(bookNow || !data.enabled, "BOOK_NOW_UNAVAILABLE", 409, "“Rezervo tani” nuk ofrohet në kategorinë tuaj. Klientët ju shkruajnë në bisedë.");
+    const rows = await tx.proCategory.findMany({ where: { profileId: profile.id }, select: { categorySlug: true, hourlyRateCents: true } });
+    const flows = await Promise.all(rows.map((r) => categoryFlow(tx, r.categorySlug)));
+    invariant(flows.some((f) => f.bookNow) || !data.enabled, "BOOK_NOW_UNAVAILABLE", 409, "“Rezervo tani” nuk ofrohet në kategorinë tuaj. Klientët ju shkruajnë në bisedë.");
     // Minimum hours are set per profession in the professions panel. This value is the pro's
     // fallback for professions without their own minimum (kept when not sent; 2 h for a first rate).
     const current = await tx.proProfile.findUniqueOrThrow({ where: { id: profile.id }, select: { bookingMinMinutes: true, hourlyRateCents: true } });
     const fallbackMin = data.minMinutes ?? current.bookingMinMinutes ?? DEFAULT_MIN_MINUTES;
-    const rate = data.hourlyRate ?? current.hourlyRateCents;
-    if (data.hourlyRate !== undefined || data.enabled)
-      invariant(rate && rate >= MIN_RATE_CENTS && rate <= MAX_RATE_CENTS, "RATE", 400,
-        data.hourlyRate === undefined ? "Vendosni më parë tarifën për orë." : `Tarifa për orë duhet të jetë nga ${money(MIN_RATE_CENTS)} deri në ${money(MAX_RATE_CENTS)}.`);
-    if (data.enabled)
+    if (data.hourlyRate !== undefined)
+      invariant(data.hourlyRate >= MIN_RATE_CENTS && data.hourlyRate <= MAX_RATE_CENTS, "RATE", 400,
+        `Tarifa për orë duhet të jetë nga ${money(MIN_RATE_CENTS)} deri në ${money(MAX_RATE_CENTS)}.`);
+    const legacy = data.hourlyRate ?? current.hourlyRateCents;
+    if (data.enabled) {
+      invariant(rows.some((r, i) => flows[i].bookNow && professionRate(r, legacy)), "RATE", 400,
+        "Vendosni tarifën për orë te një profesion me “Rezervo tani”.");
       invariant(validMinMinutes(fallbackMin), "MIN_HOURS", 400, "Zgjidhni minimumin e orëve (nga 0,5 deri në 12 orë).");
+    }
     await tx.proProfile.update({ where: { id: profile.id }, data: {
       bookNowEnabled: data.enabled,
       ...(data.hourlyRate !== undefined ? { hourlyRateCents: data.hourlyRate } : {}),
       ...(data.enabled ? { bookingMinMinutes: fallbackMin } : {}),
     } });
     await tx.auditLog.create({ data: { actorId: actor.id, action: "BOOKING_SETTINGS_UPDATED", target: profile.id,
-      meta: { enabled: data.enabled, hourlyRateCents: rate ?? null, minMinutes: data.enabled ? fallbackMin : null } } });
+      meta: { enabled: data.enabled, legacyRateCents: legacy ?? null, minMinutes: data.enabled ? fallbackMin : null } } });
     return { ok: true, message: data.enabled ? "Tarifa u ruajt. Klientët mund t’ju rezervojnë me “Rezervo tani”." : "“Rezervo tani” u çaktivizua." };
-  });
-}
-
-export const hourlyRateInput = z.object({
-  hourlyRate: z.preprocess((v) => (v === "" || v === null ? undefined : v), euroAmount.optional()),
-});
-/** Profile panel, any pro, any time: one hourly rate for all their professions. Optional; an empty
- * field removes it. No re-review. Book now keeps its own switch (a legacy pro's switch is fixed to
- * what it meant before, so setting a rate never turns Book now on by itself). */
-export async function saveHourlyRate(actor: Actor, input: unknown) {
-  invariant(actor.role === "PRO" && actor.proProfile, "FORBIDDEN", 403, "Nuk keni qasje në këtë veprim.");
-  const data = hourlyRateInput.parse(input);
-  const profile = actor.proProfile;
-  if (data.hourlyRate !== undefined)
-    invariant(data.hourlyRate >= MIN_RATE_CENTS && data.hourlyRate <= MAX_RATE_CENTS, "RATE", 400,
-      `Tarifa për orë duhet të jetë nga ${money(MIN_RATE_CENTS)} deri në ${money(MAX_RATE_CENTS)}.`);
-  return serializable(async (tx) => {
-    const current = await tx.proProfile.findUniqueOrThrow({ where: { id: profile.id }, select: { hourlyRateCents: true, bookNowEnabled: true } });
-    await tx.proProfile.update({ where: { id: profile.id }, data: {
-      hourlyRateCents: data.hourlyRate ?? null,
-      bookNowEnabled: current.bookNowEnabled ?? current.hourlyRateCents !== null,
-    } });
-    await tx.auditLog.create({ data: { actorId: actor.id, action: "HOURLY_RATE_UPDATED", target: profile.id,
-      meta: { from: current.hourlyRateCents, to: data.hourlyRate ?? null } } });
-    return { ok: true, message: data.hourlyRate !== undefined ? "Tarifa për orë u ruajt." : "Tarifa për orë u hoq." };
   });
 }
 
@@ -109,13 +89,13 @@ export function bookNowOn(profile: { hourlyRateCents: number | null; bookNowEnab
   return profile.bookNowEnabled ?? profile.hourlyRateCents !== null;
 }
 
-/** Public: whether a profession of this pro can be booked right now, and on what terms. One hourly
- * rate per pro; the minimum is the profession's own (`row.minMinutes`), else the pro's default. */
+/** Public: whether a profession of this pro can be booked right now, and on what terms: that
+ * profession's hourly rate and minimum hours (else the pro's legacy rate / default minimum). */
 export function bookableTerms(profile: { hourlyRateCents: number | null; bookingMinMinutes: number | null; bookNowEnabled?: boolean | null },
-  flow: { bookNow: boolean }, row?: { minMinutes?: number | null } | null) {
+  flow: { bookNow: boolean }, row?: { minMinutes?: number | null; hourlyRateCents?: number | null } | null) {
   const minMinutes = bookingMinimum(row?.minMinutes, profile.bookingMinMinutes);
-  return flow.bookNow && bookNowOn(profile) && profile.hourlyRateCents && minMinutes
-    ? { rateCents: profile.hourlyRateCents, minMinutes } : null;
+  const rateCents = professionRate(row, profile.hourlyRateCents);
+  return flow.bookNow && bookNowOn(profile) && rateCents && minMinutes ? { rateCents, minMinutes } : null;
 }
 
 /** bookableTerms for one category of a pro, reading that profession's row. */
@@ -123,7 +103,7 @@ export async function bookingTermsFor(tx: Pick<Prisma.TransactionClient, "catego
   profile: { id: string; hourlyRateCents: number | null; bookingMinMinutes: number | null; bookNowEnabled?: boolean | null }, slug: string) {
   const [flow, row] = await Promise.all([
     categoryFlow(tx, slug),
-    tx.proCategory.findFirst({ where: { profileId: profile.id, categorySlug: { in: categorySlugs(slug) } }, select: { minMinutes: true } }),
+    tx.proCategory.findFirst({ where: { profileId: profile.id, categorySlug: { in: categorySlugs(slug) } }, select: { minMinutes: true, hourlyRateCents: true } }),
   ]);
   return bookableTerms(profile, flow, row);
 }

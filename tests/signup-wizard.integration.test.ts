@@ -5,11 +5,11 @@ import { db } from "../lib/server/db";
 import { hashPassword, nextPathFor, SIGNUP_ID_PATH } from "../lib/server/auth";
 import { signup } from "../lib/server/accounts";
 import { submitIdVerification } from "../lib/server/id-verification";
-import { saveProfessions, resolveProCategory } from "../lib/server/pro-categories";
+import { saveProfessions, resolveProCategory, professionsInput } from "../lib/server/pro-categories";
 import { adminCommand } from "../lib/server/admin";
 import { createInquiry } from "../lib/server/marketplace";
 import { searchPros, publicProfile } from "../lib/server/catalog";
-import { createBooking, saveBookingSettings, saveHourlyRate, bookingTermsFor } from "../lib/server/bookings";
+import { createBooking, saveBookingSettings, bookingTermsFor } from "../lib/server/bookings";
 
 const database = new URL(process.env.DATABASE_URL || "");
 assert(process.env.CI && ["localhost", "127.0.0.1"].includes(database.hostname) && database.pathname === "/zgjoi_test", "Refuse non-disposable database");
@@ -92,50 +92,63 @@ test("sign-up wizard: ID is a required step, pros pick several professions, no p
     await adminCommand(admin, { action: "PRO_APPROVE", id: pro.proProfile!.id, reason: "Synthetic new profession checked" });
     assert((await searchPros({ kategoria: "kopshtar" })).pros.some((x) => x.id === pro.proProfile!.id));
 
-    // After approval the pro can still change everything at any time: order, prices and minimum hours.
-    // Approval is kept, nothing goes back to pending, and Book now enforces each profession's minimum.
+    // Backward compatibility: a pro with only the old single rate stays bookable at that rate.
     const proActor = await db.user.findUniqueOrThrow({ where: { id: p.id }, include: { proProfile: true } });
     await saveBookingSettings(proActor, { enabled: true, hourlyRate: "12" });
-    const profileRow = await db.proProfile.findUniqueOrThrow({ where: { id: pro.proProfile!.id } });
-    assert.equal(profileRow.bookingMinMinutes, 120, "a first Book now rate gets the 2 h default minimum");
-    await saveProfessions(pro, { categories: [{ slug: "dado", priceFrom: "9", minMinutes: "180" }, { slug: "pastrim", priceFrom: "18", minMinutes: "60" }, { slug: "kopshtar", minMinutes: "" }] });
+    let row = await db.proProfile.findUniqueOrThrow({ where: { id: pro.proProfile!.id } });
+    assert.equal(row.bookingMinMinutes, 120, "a first Book now rate gets the 2 h default minimum");
+    assert.equal((await bookingTermsFor(db, row, "pastrim"))?.rateCents, 1200);
+
+    // After approval the pro can change everything at any time, per profession: order, minimum price,
+    // hourly rate and minimum hours. Approval is kept; the old single rate is retired once they save.
+    await saveProfessions(pro, { categories: [
+      { slug: "dado", priceFrom: "9", hourlyRate: "10", minMinutes: "180" },
+      { slug: "pastrim", priceFrom: "18", hourlyRate: "15", minMinutes: "60" },
+      { slug: "kopshtar", hourlyRate: "11,50", minMinutes: "" }] });
     const after = await db.proProfile.findUniqueOrThrow({ where: { id: pro.proProfile!.id }, include: { categories: { orderBy: { position: "asc" } } } });
     assert.equal(after.verification, "APPROVED");
-    assert.deepEqual(after.categories.map((r) => [r.categorySlug, r.priceFromCents, r.minMinutes, Boolean(r.approvedAt)]),
-      [["dado", 900, 180, true], ["pastrim", 1800, 60, true], ["kopshtar", null, null, true]]);
-    assert.equal(after.categorySlug, "dado", "the first profession becomes the main one");
-    assert.equal((await bookingTermsFor(db, after, "dado"))?.minMinutes, 180);
-    assert.equal((await bookingTermsFor(db, after, "pastrim"))?.minMinutes, 60);
-    assert.equal((await publicProfile(pro.proProfile!.slug))?.categories.find((r) => r.categorySlug === "dado")?.minMinutes, 180);
+    assert.deepEqual(after.categories.map((r) => [r.categorySlug, r.priceFromCents, r.hourlyRateCents, r.minMinutes, Boolean(r.approvedAt)]),
+      [["dado", 900, 1000, 180, true], ["pastrim", 1800, 1500, 60, true], ["kopshtar", null, 1150, null, true]]);
+    assert.deepEqual([after.categorySlug, after.hourlyRateCents, after.bookNowEnabled], ["dado", null, true], "main = first; legacy rate retired; Book now kept");
+    assert.deepEqual(await bookingTermsFor(db, after, "dado"), { rateCents: 1000, minMinutes: 180 });
+    assert.deepEqual(await bookingTermsFor(db, after, "pastrim"), { rateCents: 1500, minMinutes: 60 });
+    assert.equal(await bookingTermsFor(db, after, "kopshtar"), null, "a rate alone does not make a chat-only profession bookable");
+    const shown = (await publicProfile(pro.proProfile!.slug))?.categories.find((r) => r.categorySlug === "dado");
+    assert.deepEqual([shown?.minMinutes, shown?.hourlyRateCents, shown?.priceFromCents], [180, 1000, 900]);
     const startsAt = new Date(Date.now() + 3 * 86_400_000).toISOString();
     const book = (categorySlug: string, minutes: number) => createBooking(client, { profileId: pro.proProfile!.id, categorySlug, clientKey: randomUUID(),
       startsAt, minutes, detail: "Pastrim i plotë i banesës me dy dhoma.", city: "Prishtinë" });
     await assert.rejects(book("dado", 120), code("HOURS"), "below this profession's 3 h minimum");
     await assert.rejects(book("pastrim", 30), code("HOURS"));
-    const ok = await book("pastrim", 60);
-    assert.equal((await db.booking.findFirstOrThrow({ where: { requestId: ok.id } })).minMinutes, 60);
+    const ok = await book("pastrim", 120);
+    const booked = await db.booking.findFirstOrThrow({ where: { requestId: ok.id } });
+    assert.deepEqual([booked.hourlyRateCents, booked.minMinutes, booked.totalCents], [1500, 60, 3000], "the booked profession's rate × hours");
 
-    // One hourly rate per pro, for every pro, changeable any time; Book now is a separate switch.
-    await saveHourlyRate(proActor, { hourlyRate: "14" });
-    let rated = await db.proProfile.findUniqueOrThrow({ where: { id: pro.proProfile!.id } });
-    assert.deepEqual([rated.hourlyRateCents, rated.verification, rated.bookNowEnabled], [1400, "APPROVED", true], "changing the rate keeps approval and Book now");
+    // Search cards: the searched profession's rate, else the lowest.
+    const card = async (kategoria?: string) => (await searchPros(kategoria ? { kategoria } : {})).pros.find((x) => x.id === after.id)?.displayRateCents;
+    assert.equal(await card("pastrim"), 1500);
+    assert.equal(await card("kopshtar"), 1150);
+    assert.equal(await card(), 1000);
+
+    // Book now switch is separate: off keeps every rate; a profession without a rate is not bookable.
     await saveBookingSettings(proActor, { enabled: false });
-    rated = await db.proProfile.findUniqueOrThrow({ where: { id: pro.proProfile!.id } });
-    assert.deepEqual([rated.hourlyRateCents, rated.bookNowEnabled], [1400, false], "switching Book now off keeps the rate");
-    assert.equal(await bookingTermsFor(db, rated, "pastrim"), null);
-    assert.equal((await searchPros({ kategoria: "pastrim" })).pros.find((x) => x.id === rated.id)?.hourlyRateCents, 1400, "the rate shows in search");
+    assert.equal(await bookingTermsFor(db, await db.proProfile.findUniqueOrThrow({ where: { id: after.id } }), "pastrim"), null);
+    assert.equal((await db.proCategory.findFirstOrThrow({ where: { profileId: after.id, categorySlug: "pastrim" } })).hourlyRateCents, 1500);
     await saveBookingSettings(proActor, { enabled: true });
-    assert.equal((await bookingTermsFor(db, await db.proProfile.findUniqueOrThrow({ where: { id: rated.id } }), "pastrim"))?.rateCents, 1400);
-    // A pro whose professions have no Book now can still set (and remove) an hourly rate; it never turns Book now on.
-    const gardener = await db.user.findUniqueOrThrow({ where: { id: legacy.id }, include: { proProfile: true } });
-    await saveProfessions(gardener, { categories: [{ slug: "kopshtar" }] });
-    await saveHourlyRate(gardener, { hourlyRate: "11,50" });
-    const g = await db.proProfile.findUniqueOrThrow({ where: { id: gardener.proProfile!.id } });
-    assert.deepEqual([g.hourlyRateCents, g.bookNowEnabled], [1150, false]);
-    await assert.rejects(saveBookingSettings(gardener, { enabled: true }), code("BOOK_NOW_UNAVAILABLE"));
-    await assert.rejects(saveHourlyRate(gardener, { hourlyRate: "0,50" }), code("RATE"));
-    await saveHourlyRate(gardener, { hourlyRate: "" });
-    assert.equal((await db.proProfile.findUniqueOrThrow({ where: { id: g.id } })).hourlyRateCents, null);
+    await saveProfessions(pro, { categories: [{ slug: "dado", priceFrom: "9", minMinutes: "180" }, { slug: "pastrim", hourlyRate: "16", minMinutes: "60" }, { slug: "kopshtar" }] });
+    row = await db.proProfile.findUniqueOrThrow({ where: { id: after.id } });
+    assert.equal(await bookingTermsFor(db, row, "dado"), null, "no rate on this profession: chat only");
+    assert.equal((await bookingTermsFor(db, row, "pastrim"))?.rateCents, 1600);
+    assert.equal(professionsInput.safeParse({ categories: [{ slug: "pastrim", hourlyRate: "0,50" }] }).success, false);
+
+    // Turning Book now on needs a Book now profession with its own rate.
+    const other = await db.user.findUniqueOrThrow({ where: { id: legacy.id }, include: { proProfile: true } });
+    await saveProfessions(other, { categories: [{ slug: "kopshtar", hourlyRate: "12" }] });
+    await assert.rejects(saveBookingSettings(other, { enabled: true }), code("BOOK_NOW_UNAVAILABLE"));
+    await saveProfessions(other, { categories: [{ slug: "elektricist" }, { slug: "kopshtar", hourlyRate: "12" }] });
+    await assert.rejects(saveBookingSettings(other, { enabled: true }), code("RATE"));
+    await saveProfessions(other, { categories: [{ slug: "elektricist", hourlyRate: "20" }, { slug: "kopshtar", hourlyRate: "12" }] });
+    await saveBookingSettings(other, { enabled: true });
 
     // Existing accounts (created before the wizard) are not pulled into it.
     const old = await db.user.create({ data: { email: `wizard-old-${randomUUID()}@ci.zgjoi.invalid`, passwordHash: "x", name: "Old", role: "CLIENT" } });
