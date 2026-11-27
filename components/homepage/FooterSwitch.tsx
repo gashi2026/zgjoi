@@ -1,6 +1,6 @@
 "use client";
 
-import { usePathname } from "next/navigation";
+import { useBarePathname as usePathname } from "@/lib/i18n/client";
 import ReferenceFooter from "./Footer";
 
 export default function FooterSwitch({ enabled, children }: {

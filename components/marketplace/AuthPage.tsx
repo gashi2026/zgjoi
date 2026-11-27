@@ -1,6 +1,7 @@
-import Link from "next/link";
+import Link from "@/components/i18n/Link";
 import ApiForm, { type Field } from "./ApiForm";
-export default function AuthPage({
+import { getT } from "@/lib/i18n/server";
+export default async function AuthPage({
   title,
   text,
   endpoint,
@@ -17,6 +18,7 @@ export default function AuthPage({
   label: string;
   fragmentToken?: boolean;
 }) {
+  const t = await getT();
   return (
     <div className="mx-auto max-w-xl px-4 py-12">
       <div className="rounded-2xl border border-line bg-white p-6 shadow-soft">
@@ -32,10 +34,10 @@ export default function AuthPage({
           />
         </div>
         <div className="mt-6 flex flex-wrap gap-4 text-sm text-gold-dark">
-          <Link href="/hyr">Hyr</Link>
-          <Link href="/regjistrohu">Llogari klienti</Link>
-          <Link href="/regjistrohu-profesionist">Bëhu profesionist</Link>
-          <Link href="/harrova-fjalekalimin">Harrova fjalëkalimin</Link>
+          <Link href="/hyr">{t("authPage.log")}</Link>
+          <Link href="/regjistrohu">{t("authPage.customerAccount")}</Link>
+          <Link href="/regjistrohu-profesionist">{t("authPage.becomePro")}</Link>
+          <Link href="/harrova-fjalekalimin">{t("authPage.forgotPassword")}</Link>
         </div>
       </div>
     </div>

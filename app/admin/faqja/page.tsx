@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation";
+import { localRedirect } from "@/lib/i18n/redirect";
 
-export default function FaqjaRedirect() {
-  redirect("/admin/kategorite");
+export default async function FaqjaRedirect() {
+  await localRedirect("/admin/kategorite");
 }

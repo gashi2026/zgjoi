@@ -1,15 +1,17 @@
-import Link from "next/link";
+import Link from "@/components/i18n/Link";
 import { pageGuard } from "@/lib/server/guard";
 import { db } from "@/lib/server/db";
 import { dateTime } from "@/lib/format";
 import Frame, { Panel } from "@/components/marketplace/Frame";
 import Thread from "@/components/marketplace/Thread";
 import ApiForm from "@/components/marketplace/ApiForm";
+import { getT } from "@/lib/i18n/server";
 export default async function Page({
   searchParams,
 }: {
   searchParams: Promise<{ ticket?: string; page?: string }>;
 }) {
+  const t = await getT();
   const actor = await pageGuard("ADMIN", "SUPPORT");
   const params = await searchParams,
     page = Math.min(
@@ -29,27 +31,27 @@ export default async function Page({
       })
     : null;
   return (
-    <Frame actor={actor} title="Mbështetja">
+    <Frame actor={actor} title={t("admin.support")}>
       <div className="grid gap-6 xl:grid-cols-2">
         <Panel>
-          <h2 className="mb-3 font-bold">Bisedat</h2>
-          {!tickets.length && <p>Nuk ka biseda ende.</p>}
-          {tickets.map((t) => (
+          <h2 className="mb-3 font-bold">{t("admin.chats")}</h2>
+          {!tickets.length && <p>{t("admin.noChatsYet")}</p>}
+          {tickets.map((tk) => (
             <Link
-              key={t.id}
-              href={`?ticket=${t.id}&page=${page}`}
+              key={tk.id}
+              href={`?ticket=${tk.id}&page=${page}`}
               className="block border-b border-line py-4"
             >
-              <p className="font-semibold">{t.subject}</p>
+              <p className="font-semibold">{tk.subject}</p>
               <p className="text-xs text-muted">
-                {t.state} · {dateTime(t.updatedAt)}
+                {tk.state} · {dateTime(tk.updatedAt, t.locale)}
               </p>
             </Link>
           ))}
           <nav className="mt-3 flex gap-4">
-            {page > 1 && <Link href={`?page=${page - 1}`}>← Më parë</Link>}
+            {page > 1 && <Link href={`?page=${page - 1}`}>{t("admin.previous")}</Link>}
             {tickets.length === 30 && (
-              <Link href={`?page=${page + 1}`}>Tjetër →</Link>
+              <Link href={`?page=${page + 1}`}>{t("admin.next")}</Link>
             )}
           </nav>
         </Panel>
@@ -66,8 +68,8 @@ export default async function Page({
                 }}
                 label={
                   selected.state === "RESOLVED"
-                    ? "Rihap bisedën"
-                    : "Shëno si të zgjidhur"
+                    ? t("admin.reopenChat")
+                    : t("admin.markResolved")
                 }
               />
             </div>

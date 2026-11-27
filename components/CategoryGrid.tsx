@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/i18n/Link";
 import CategoryIcon from "./CategoryIcon";
 
 export default function CategoryGrid({ categories }: { categories: { slug: string; name: string; icon: string }[] }) {

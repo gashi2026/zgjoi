@@ -1,12 +1,14 @@
 import { daysAgo } from "@/lib/server/time";
-import Link from "next/link";
+import Link from "@/components/i18n/Link";
 import { pageGuard } from "@/lib/server/guard";
 import { db } from "@/lib/server/db";
 import Frame, { Panel } from "@/components/marketplace/Frame";
 import { money } from "@/lib/format";
 import { paymentsReady } from "@/lib/server/payments";
 import { bookingFunnel } from "@/lib/server/metrics";
+import { getT } from "@/lib/i18n/server";
 export default async function Page() {
+  const t = await getT();
   const actor = await pageGuard("ADMIN");
   const since = daysAgo(30);
   const [
@@ -66,22 +68,21 @@ export default async function Page() {
   ]);
   const idPending = await db.idVerification.count({ where: { status: "PENDING" } });
   return (
-    <Frame actor={actor} title="Administrimi i Zgjoi">
+    <Frame actor={actor} title={t("admin.zgjoiAdmin")}>
       {idPending > 0 && (
         <Link href="/admin/verifikimi" className="block rounded-2xl border border-gold/50 bg-honey p-4 font-semibold">
-          🪪 {idPending} {idPending === 1 ? "dokument identifikimi pret" : "dokumente identifikimi presin"} shqyrtimin tuaj →
-        </Link>
+          🪪 {idPending} {idPending === 1 ? "dokument identifikimi pret" : "dokumente identifikimi presin"} {" "}{t("admin.review")}</Link>
       )}
       <div className="grid gap-4 sm:grid-cols-3">
         {[
-          ["Llogari", users],
-          ["Profesionistë të miratuar", pros],
-          ["Kërkesa", requests],
-          ["Punë të përfunduara", completed],
-          ["Pagesa të mbajtura", money(held._sum.amount ?? 0)],
+          [t("admin.accounts"), users],
+          [t("admin.approvedPros"), pros],
+          [t("admin.requests"), requests],
+          [t("admin.completedJobs"), completed],
+          [t("admin.paymentsHeld"), money(held._sum.amount ?? 0, t.locale)],
           [
-            "Komision nga transfere",
-            money(released._sum.commissionAmount ?? 0),
+            t("admin.commissionFromTransfers"),
+            money(released._sum.commissionAmount ?? 0, t.locale),
           ],
         ].map(([label, value]) => (
           <Panel key={label}>
@@ -91,66 +92,59 @@ export default async function Page() {
         ))}
       </div>
       <Panel>
-        <h2 className="mb-3 text-lg font-bold">Ecuria e kërkesave të 30 ditëve të fundit</h2>
-        <p className="mb-4 text-sm text-muted">I njëjti grup kërkesash, sipas datës së krijimit. Çdo kërkesë numërohet vetëm një herë në secilin hap, pavarësisht sa oferta ose veprime ka. Këto janë të dhëna të këtij mjedisi.</p>
+        <h2 className="mb-3 text-lg font-bold">{t("admin.requestFunnelLast30")}</h2>
+        <p className="mb-4 text-sm text-muted">{t("admin.sameGroupRequestsCreation")}</p>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
-            <thead><tr className="border-b border-line"><th className="py-3">Hapi i arritur</th><th className="py-3">Kërkesa</th><th className="py-3">Nga të gjitha</th></tr></thead>
+            <thead><tr className="border-b border-line"><th className="py-3">{t("admin.stepReached")}</th><th className="py-3">{t("admin.requests")}</th><th className="py-3">{t("admin.all")}</th></tr></thead>
             <tbody>{[
-              ["Kërkesë private", funnel.inquiries], ["Të paktën një ofertë zyrtare", funnel.offered],
-              ["Ofertë e pranuar", funnel.accepted], ["Pagesë e konfirmuar ndonjëherë", funnel.funded],
-              ["Përfundim i konfirmuar nga klienti", funnel.completed],
+              [t("admin.privateRequest"), funnel.inquiries], [t("admin.leastOneFormalOffer"), funnel.offered],
+              [t("admin.offerAccepted"), funnel.accepted], [t("admin.paymentEverConfirmed"), funnel.funded],
+              [t("admin.completionConfirmedCustomer"), funnel.completed],
             ].map(([label, count]) => <tr key={label} className="border-b border-line"><th className="py-3 font-normal">{label}</th><td>{count}</td><td>{funnel.inquiries ? `${Math.round(Number(count) / funnel.inquiries * 100)}%` : "—"}</td></tr>)}</tbody>
           </table>
         </div>
-        <p className="mt-3 text-xs text-muted">Hapat janë historikë: rimbursimi ose anulimi i mëvonshëm nuk e fshin një hap të arritur. Kjo tabelë nuk është raport i të ardhurave ose bilanc i fondeve.</p>
-        {!funnel.coherent && <p role="alert" className="mt-3 text-sm text-red-800">Numrat kërkojnë kontroll të integritetit para interpretimit.</p>}
+        <p className="mt-3 text-xs text-muted">{t("admin.stepsHistoricalLaterRefund")}</p>
+        {!funnel.coherent && <p role="alert" className="mt-3 text-sm text-red-800">{t("admin.theseNumbersNeedIntegrity")}</p>}
       </Panel>
       <Panel>
         <Link href="/admin/perdoruesit" className="mr-5 text-gold-dark">
-          {pending} profile në shqyrtim
-        </Link>
+          {t("admin.profilesUnderReview", { pending: pending })}</Link>
         <Link href="/admin/mbeshtetja" className="text-gold-dark">
-          {tickets} biseda të hapura
-        </Link>
+          {t("admin.openChats", { tickets: tickets })}</Link>
       </Panel>
       <Panel>
         <h2 className="mb-3 text-lg font-bold">
-          Veprimet në 30 ditët e fundit
-        </h2>
+          {t("admin.activityLast30Days")}</h2>
         <p className="mb-3 text-sm text-muted">
-          Numër ngjarjesh të regjistruara; këto nuk janë norma konvertimi ose
-          vizitorë unikë.
-        </p>
+          {t("admin.countRecordedEventsThese")}</p>
         {events.map((e) => (
           <p key={e.action}>
             {e.action}: {e._count}
           </p>
         ))}
-        {!events.length && <p>Nuk ka ngjarje të regjistruara ende.</p>}
+        {!events.length && <p>{t("admin.noEventsRecordedYet")}</p>}
       </Panel>
       <Panel>
-        <h2 className="mb-3 text-lg font-bold">Gjendja operative</h2>
-        <p>Pagesat: {paymentsReady() ? "Vetëm provë" : "Të çaktivizuara"}</p>
+        <h2 className="mb-3 text-lg font-bold">{t("admin.operationalStatus")}</h2>
+        <p>{t("admin.payments")}{" "}{paymentsReady() ? t("admin.testOnly") : t("admin.switchedOff")}</p>
         <p>
-          Emaili:{" "}
+          {t("admin.email")}{" "}
           {process.env.EMAIL_DELIVERY_ENABLED === "true" &&
           process.env.RESEND_API_KEY &&
           process.env.EMAIL_FROM
-            ? "Konfiguruar; verifikoni dorëzimin"
-            : "Kërkon konfigurim"}
+            ? t("admin.configuredCheckDelivery")
+            : t("admin.needsSetup")}
         </p>
-        <p>{failedMail} email-e kërkojnë shqyrtim</p>
+        <p>{t("admin.emailsNeedReview", { failedMail: failedMail })}</p>
         <p>
-          Kontrolli periodik:{" "}
+          {t("admin.scheduledJob")}{" "}
           {heartbeat
             ? JSON.stringify(heartbeat.value)
-            : "Nuk ka ekzekutim të regjistruar"}
+            : t("admin.noRunRecorded")}
         </p>
         <p className="mt-2 text-sm text-muted">
-          Ky panel nuk provon funksionimin e bankës, emailit ose ngarkimit të
-          dokumenteve. Kontrollet e plota mbahen në planin e lançimit.
-        </p>
+          {t("admin.panelDoesntProveBanking")}</p>
       </Panel>
     </Frame>
   );

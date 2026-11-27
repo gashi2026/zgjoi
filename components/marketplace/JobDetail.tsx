@@ -19,6 +19,7 @@ import { canOpenDispute, outcomeLabels, DISPUTE_OPEN_DAYS, DISPUTE_RESPONSE_HOUR
 import { serviceCategory } from "@/lib/service-categories";
 import { DEFAULT_CHAT_TIMING } from "@/lib/marketplace-validation";
 import { jobStages, jobStatus, timelineEventLabel } from "@/lib/chat-timeline";
+import { getT } from "@/lib/i18n/server";
 export default async function JobDetail({
   id,
   pro,
@@ -26,6 +27,7 @@ export default async function JobDetail({
   id: string;
   pro: boolean;
 }) {
+  const t = await getT();
   const actor = await pageGuard(pro ? "PRO" : "CLIENT");
   let request;
   try {
@@ -63,8 +65,8 @@ export default async function JobDetail({
     db.recurringSeries.findFirst({ where: { sourceRequestId: id, status: "PROPOSED" }, orderBy: { createdAt: "desc" }, select: seriesSelect }),
   ]) : [null, null];
   const estimate = request.estimate;
-  const counterpart = pro ? request.client.name : (request.selectedPro?.user.name ?? "Profesionisti");
-  const category = serviceCategory(request.categorySlug)?.name ?? request.categorySlug;
+  const counterpart = pro ? request.client.name : (request.selectedPro?.user.name ?? t("jobDetail.pro"));
+  const category = t.tx(serviceCategory(request.categorySlug)?.name ?? request.categorySlug);
   const status = jobStatus(request.state);
   const closed = ["CANCELLED", "COMPLETED"].includes(request.state);
   // "Në progres" has no column of its own; the job-start audit row dates it.
@@ -94,14 +96,14 @@ export default async function JobDetail({
   );
   const side = (mine: boolean) => (mine ? "ml-auto" : "mr-auto");
   const statusLine = (key: string, at: Date | null | undefined): ThreadEvent[] => {
-    const label = timelineEventLabel(key, pro);
+    const label = t.tx(timelineEventLabel(key, pro));
     return at && label
       ? [{
           id: `status-${key}`,
           createdAt: at.toISOString(),
           node: (
             <p role="status" className="mx-auto w-fit max-w-full rounded-full border border-gold/40 bg-white px-4 py-2 text-center text-xs font-semibold">
-              {label} · {dateTime(at)}
+              {label} · {dateTime(at, t.locale)}
             </p>
           ),
         }]
@@ -118,57 +120,56 @@ export default async function JobDetail({
       createdAt: quote.createdAt.toISOString(),
       node: (
         <article
-          aria-label={`Oferta ${quote.revision}`}
+          aria-label={t("jobDetail.offer", { revision: quote.revision })}
           className={`max-w-[92%] rounded-2xl border-2 bg-white p-4 shadow-soft sm:max-w-md ${current || quote.state === "ACCEPTED" ? "border-gold" : "border-line"} ${side(pro)}`}
         >
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-xs font-semibold uppercase tracking-wide text-gold-dark">
-              {reschedule ? "Propozim për orar të ri" : `Ofertë · Versioni ${quote.revision}`}
+              {reschedule ? t("jobDetail.proposedNewTime") : t("jobDetail.offerVersion", { revision: quote.revision })}
             </p>
             <span className="rounded-full bg-honey px-3 py-1 text-xs font-semibold">
-              {expired ? "Skaduar" : stateLabel(quote.state)}
+              {expired ? t("jobDetail.expired") : t.tx(stateLabel(quote.state))}
             </span>
           </div>
-          <p className="mt-2 text-2xl font-bold">{money(quote.amount)}</p>
+          <p className="mt-2 text-2xl font-bold">{money(quote.amount, t.locale)}</p>
           {quote.message && <p className="mt-2 whitespace-pre-wrap text-sm">{quote.message}</p>}
-          {quote.availableAt && <p className="mt-2 text-sm">Orari: {quote.availableAt}</p>}
+          {quote.availableAt && <p className="mt-2 text-sm">{t("jobDetail.schedule", { availableAt: quote.availableAt })}</p>}
           {quote.scheduledAt ? (
             <p className="mt-1 text-sm">
-              Fillimi: {dateTime(quote.scheduledAt)} (ora e Kosovës)
-              {end && <> · Përfundimi i parashikuar: {dateTime(end)}</>}
+              {t("jobDetail.startKosovoTime", { date: dateTime(quote.scheduledAt, t.locale) })}{end && <> {" "}{t("jobDetail.expectedFinish", { date: dateTime(end, t.locale) })}</>}
             </p>
           ) : (
-            <p className="mt-1 text-sm text-muted">Data e punës caktohet në bisedë.</p>
+            <p className="mt-1 text-sm text-muted">{t("jobDetail.jobDateAgreedChat")}</p>
           )}
-          {reschedule && <p className="mt-2 text-sm font-semibold">Çmimi dhe puna mbeten të njëjta.</p>}
+          {reschedule && <p className="mt-2 text-sm font-semibold">{t("jobDetail.priceJobStaySame")}</p>}
           {quote.expiresAt && quote.state === "SENT" && (
-            <p className="mt-1 text-xs text-muted">Vlen deri: {dateTime(quote.expiresAt)}</p>
+            <p className="mt-1 text-xs text-muted">{t("jobDetail.validUntil", { date: dateTime(quote.expiresAt, t.locale) })}</p>
           )}
           {!pro && current && request.state === "QUOTED" && (
             <div className="mt-4 flex flex-wrap gap-3">
               <ApiForm
                 endpoint="/api/offers/accept"
                 values={{ quoteId: quote.id, expectedVersion: request.version }}
-                label="Puneso"
-                confirmation={`Punësoni ${counterpart} për ${money(quote.amount)}? Puna kalon në statusin “Pranuar”. Pagesa rregullohet në hapin tjetër.`}
+                label={t("jobDetail.hire")}
+                confirmation={t("jobDetail.hireJobMovesAccepted", { counterpart: counterpart, amount: money(quote.amount, t.locale) })}
               />
-              {jobAction("DECLINE", "Refuzo ofertën", undefined, quote.id)}
+              {jobAction("DECLINE", t("jobDetail.declineOffer"), undefined, quote.id)}
             </div>
           )}
           {pro && current && request.state === "QUOTED" && (
-            <div className="mt-4">{jobAction("WITHDRAW", "Tërhiq ofertën", "Tërhiqni këtë ofertë?", quote.id)}</div>
+            <div className="mt-4">{jobAction("WITHDRAW", t("jobDetail.withdrawOffer"), t("jobDetail.withdrawOffer2"), quote.id)}</div>
           )}
           {request.state === "BOOKED" && request.unpaidEditable && current && (
             <div className="mt-4 flex flex-wrap gap-3">
               {(pro ? ["WITHDRAW"] : ["ACCEPT", "DECLINE"]).map(action => (
                 <ApiForm key={action} endpoint={`/api/requests/${id}/reschedule`}
                   values={{ action, quoteId: quote.id, expectedVersion: request.version }}
-                  label={action === "ACCEPT" ? "Prano orarin e ri" : action === "DECLINE" ? "Mbaj orarin e mëparshëm" : "Tërhiq propozimin"}
-                  confirmation={action === "ACCEPT" && quote.scheduledAt ? `Ndryshoni rezervimin në ${dateTime(quote.scheduledAt)}? Çmimi mbetet ${money(quote.amount)}.` : undefined} />
+                  label={action === "ACCEPT" ? t("jobDetail.acceptNewTime") : action === "DECLINE" ? t("jobDetail.keepPreviousTime") : t("jobDetail.withdrawProposal")}
+                  confirmation={action === "ACCEPT" && quote.scheduledAt ? t("jobDetail.moveBookingPriceStays", { date: dateTime(quote.scheduledAt, t.locale), amount: money(quote.amount, t.locale) }) : undefined} />
               ))}
             </div>
           )}
-          <time className="mt-2 block text-xs text-muted">{dateTime(quote.createdAt)}</time>
+          <time className="mt-2 block text-xs text-muted">{dateTime(quote.createdAt, t.locale)}</time>
         </article>
       ),
     };
@@ -179,15 +180,13 @@ export default async function JobDetail({
       createdAt: request.createdAt.toISOString(),
       node: (
         <div className={`max-w-[92%] rounded-xl p-3 ${pro ? "mr-auto bg-white" : "ml-auto bg-honey"}`}>
-          <p className="text-xs font-semibold text-gold-dark">Përshkrimi i punës</p>
+          <p className="text-xs font-semibold text-gold-dark">{t("jobDetail.jobDescription")}</p>
           <p className="mt-1 whitespace-pre-wrap break-words text-sm">{request.detail}</p>
-          {request.timing !== DEFAULT_CHAT_TIMING && <p className="mt-2 text-xs text-muted">Koha e kërkuar: {request.timing}</p>}
+          {request.timing !== DEFAULT_CHAT_TIMING && <p className="mt-2 text-xs text-muted">{t("jobDetail.requestedTiming", { timing: request.timing })}</p>}
           {recurrence && <p className="mt-2 text-xs">
-            Vizitë e përsëritur: {recurrenceLabels[recurrence.cadence]} · {dateTime(new Date(recurrence.scheduledAt))} (ora e Kosovës).
-            Çdo vizitë kërkon ofertë dhe pranim të veçantë. Nuk ka tarifim automatik të kartës.
-          </p>}
-          {request.address && <p className="mt-2 text-xs">Adresa: {request.address}</p>}
-          <time className="mt-1 block text-xs text-muted">{dateTime(request.createdAt)}</time>
+            {t("jobDetail.recurringVisitKosovoTime", { value: recurrenceLabels[recurrence.cadence], date: dateTime(new Date(recurrence.scheduledAt), t.locale) })}</p>}
+          {request.address && <p className="mt-2 text-xs">{t("jobDetail.address", { address: request.address })}</p>}
+          <time className="mt-1 block text-xs text-muted">{dateTime(request.createdAt, t.locale)}</time>
         </div>
       ),
     },
@@ -195,35 +194,35 @@ export default async function JobDetail({
     ...(estimate ? [{
       id: `estimate-${estimate.id}`, createdAt: estimate.createdAt.toISOString(),
       node: (
-        <article aria-label="Vizita e vlerësimit" className={`max-w-[92%] rounded-2xl border-2 border-gold bg-white p-4 shadow-soft sm:max-w-md ${pro ? "mr-auto" : "ml-auto"}`}>
+        <article aria-label={t("jobDetail.estimateVisit")} className={`max-w-[92%] rounded-2xl border-2 border-gold bg-white p-4 shadow-soft sm:max-w-md ${pro ? "mr-auto" : "ml-auto"}`}>
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-xs font-semibold uppercase tracking-wide text-gold-dark">Vizitë vlerësimi</p>
-            <span className="rounded-full bg-honey px-3 py-1 text-xs font-semibold">{estimateStateLabels[estimate.state] ?? estimate.state}</span>
+            <p className="text-xs font-semibold uppercase tracking-wide text-gold-dark">{t("jobDetail.estimateVisit2")}</p>
+            <span className="rounded-full bg-honey px-3 py-1 text-xs font-semibold">{t.tx(estimateStateLabels[estimate.state]) ?? estimate.state}</span>
           </div>
-          <p className="mt-2 text-2xl font-bold">{money(estimate.amountCents)}</p>
-          {estimate.visitAt && <p className="mt-1 text-sm">Vizita e kërkuar: {dateTime(estimate.visitAt)} (ora e Kosovës)</p>}
+          <p className="mt-2 text-2xl font-bold">{money(estimate.amountCents, t.locale)}</p>
+          {estimate.visitAt && <p className="mt-1 text-sm">{t("jobDetail.requestedVisitKosovoTime", { date: dateTime(estimate.visitAt, t.locale) })}</p>}
           <p className="mt-1 text-sm">
             {estimate.state === "PENDING" && (pro
-              ? "Pagesa është në pritje. Zgjoi ju njofton kur klienti ta paguajë; atëherë shfaqet adresa."
-              : "Paguhet paraprakisht. Gjatë beta-s pagesa nuk bëhet online: ekipi i Zgjoi e konfirmon.")}
+              ? t("jobDetail.paymentPendingZgjoiWill")
+              : t("jobDetail.paidUpfrontDuringBeta"))}
             {estimate.state === "PAID" && (pro
-              ? `E paguar. Nëse klienti ju punëson (me “Rezervo tani” ose me ofertë në bisedë), ${money(estimate.amountCents)} i zbriten klientit nga totali; komisioni llogaritet mbi çmimin e plotë. Nëse nuk ju punëson, ju merrni ${money(estimate.proShareCents ?? ESTIMATE_PRO_SHARE_CENTS)} për vizitën (${money(estimate.platformShareCents ?? ESTIMATE_PLATFORM_SHARE_CENTS)} Zgjoi).`
-              : `E paguar. Nëse e punësoni këtë profesionist, ${money(estimate.amountCents)} zbriten plotësisht nga puna. Përndryshe nuk kthehet (${money(estimate.proShareCents ?? ESTIMATE_PRO_SHARE_CENTS)} profesionisti, ${money(estimate.platformShareCents ?? ESTIMATE_PLATFORM_SHARE_CENTS)} Zgjoi).`)}
-            {estimate.state === "CREDITED" && `${money(estimate.amountCents)} u zbritën nga puna me këtë profesionist.`}
-            {estimate.state === "CANCELLED" && "Kërkesa për vlerësim u anulua."}
-            {estimate.state === "REFUNDED" && "Vlerësimi u rimbursua."}
+              ? t("jobDetail.paidIfCustomerHires", { amount: money(estimate.amountCents, t.locale), amount2: money(estimate.proShareCents ?? ESTIMATE_PRO_SHARE_CENTS, t.locale), amount3: money(estimate.platformShareCents ?? ESTIMATE_PLATFORM_SHARE_CENTS, t.locale) })
+              : t("jobDetail.paidIfHirePro", { amount: money(estimate.amountCents, t.locale), amount2: money(estimate.proShareCents ?? ESTIMATE_PRO_SHARE_CENTS, t.locale), amount3: money(estimate.platformShareCents ?? ESTIMATE_PLATFORM_SHARE_CENTS, t.locale) }))}
+            {estimate.state === "CREDITED" && t("jobDetail.wasDeductedFromJob", { amount: money(estimate.amountCents, t.locale) })}
+            {estimate.state === "CANCELLED" && t("jobDetail.estimateRequestWasCancelled")}
+            {estimate.state === "REFUNDED" && t("jobDetail.estimateWasRefunded")}
           </p>
           {!pro && estimate.state === "PENDING" && (
-            <div className="mt-3"><ApiForm endpoint={`/api/estimates/${estimate.id}`} values={{ action: "CANCEL" }} label="Anulo kërkesën"
-              confirmation="Anuloni kërkesën për vlerësim? Biseda mbetet e hapur." /></div>
+            <div className="mt-3"><ApiForm endpoint={`/api/estimates/${estimate.id}`} values={{ action: "CANCEL" }} label={t("jobDetail.cancelRequest")}
+              confirmation={t("jobDetail.cancelEstimateRequestChat")} /></div>
           )}
-          <time className="mt-2 block text-xs text-muted">{dateTime(estimate.createdAt)}</time>
+          <time className="mt-2 block text-xs text-muted">{dateTime(estimate.createdAt, t.locale)}</time>
         </article>
       ),
     }] : []),
     // A Book now job shows its booking card instead of a quote card.
     ...(request.booking
-      ? bookingEvents(request.booking, { pro, requestId: id, active: ["BOOKED", "IN_PROGRESS"].includes(request.state) })
+      ? bookingEvents(request.booking, { pro, requestId: id, active: ["BOOKED", "IN_PROGRESS"].includes(request.state), t })
       : request.quotes.map(quoteCard)),
     ...statusLine("OFFER_ACCEPTED", request.acceptedQuote?.acceptedAt),
     ...statusLine(request.payment?.provider === "offline" ? "PAYMENT_MARKED_PAID_OFFLINE" : "PAYMENT_HELD", request.payment?.heldAt),
@@ -239,11 +238,11 @@ export default async function JobDetail({
           node: (
             <p role="status" className="mx-auto w-fit max-w-full rounded-full border border-gold/40 bg-white px-4 py-2 text-center text-xs font-semibold">
               {[
-                `Vendimi i administratës: ${outcomeLabels[request.payment.dispute.outcome as DisputeOutcome] ?? request.payment.dispute.outcome}`,
-                request.payment.dispute.refundCents > 0 ? `rimbursim ${money(request.payment.dispute.refundCents)}` : "",
-                request.payment.dispute.customerCreditCents > 0 ? `kredi ${money(request.payment.dispute.customerCreditCents)}` : "",
-                request.payment.dispute.finalPriceCents ? `çmimi përfundimtar ${money(request.payment.dispute.finalPriceCents)}` : "",
-                dateTime(request.payment.dispute.resolvedAt),
+                t("jobDetail.adminDecision", { value: outcomeLabels[request.payment.dispute.outcome as DisputeOutcome] ?? request.payment.dispute.outcome }),
+                request.payment.dispute.refundCents > 0 ? `rimbursim ${money(request.payment.dispute.refundCents, t.locale)}` : "",
+                request.payment.dispute.customerCreditCents > 0 ? `kredi ${money(request.payment.dispute.customerCreditCents, t.locale)}` : "",
+                request.payment.dispute.finalPriceCents ? t("jobDetail.finalPrice", { amount: money(request.payment.dispute.finalPriceCents, t.locale) }) : "",
+                dateTime(request.payment.dispute.resolvedAt, t.locale),
               ].filter(Boolean).join(" · ")}
             </p>
           ),
@@ -254,15 +253,15 @@ export default async function JobDetail({
   return (
     <Frame
       actor={actor}
-      title={`Biseda me ${counterpart}`}
-      subtitle={`${category} · ${request.city} · ${request.title}`}
+      title={t("jobDetail.chat", { counterpart: counterpart })}
+      subtitle={`${category} · ${request.city} · ${t.tx(request.title)}`}
     >
       <Panel>
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-lg font-bold">Statusi i punës</h2>
-          <ol aria-label="Statusi i punës" className="flex flex-wrap gap-2">
+          <h2 className="text-lg font-bold">{t("jobDetail.jobStatus")}</h2>
+          <ol aria-label={t("jobDetail.jobStatus")} className="flex flex-wrap gap-2">
             {status.cancelled ? (
-              <li className="rounded-full bg-red-50 px-3 py-1 text-xs font-semibold text-red-800" aria-current="step">Anuluar</li>
+              <li className="rounded-full bg-red-50 px-3 py-1 text-xs font-semibold text-red-800" aria-current="step">{t("jobDetail.cancelled")}</li>
             ) : (
               jobStages.map((stage, index) => (
                 <li
@@ -273,7 +272,7 @@ export default async function JobDetail({
                   <svg aria-hidden viewBox="0 0 24 24" className="h-3.5 w-3.5">
                     <path d="M12 2 21 7v10l-9 5-9-5V7z" className={index <= status.reached ? "fill-gold" : "fill-none stroke-current"} strokeWidth="2" />
                   </svg>
-                  {stage.label}
+                  {t.tx(stage.label)}
                 </li>
               ))
             )}
@@ -282,15 +281,14 @@ export default async function JobDetail({
         {status.reached < 0 && !status.cancelled && (
           <p className="mt-3 text-sm text-muted">
             {pro
-              ? "Bisedoni me klientin dhe dërgoni një ofertë me çmim kur të jeni gati. Klienti ju punëson me butonin “Puneso”."
-              : "Bisedoni me profesionistin. Kur ai dërgon ofertën në bisedë, shtypni “Puneso” për ta punësuar."}
+              ? t("jobDetail.chatCustomerSendPriced")
+              : t("jobDetail.chatProWhenThey")}
           </p>
         )}
-        {status.disputed && <p className="mt-3 text-sm">Puna është në shqyrtim nga administrata e Zgjoi.</p>}
+        {status.disputed && <p className="mt-3 text-sm">{t("jobDetail.jobBeingReviewedZgjoi")}</p>}
         {request.state === "BOOKED" && request.acceptedQuote?.scheduledAt && (
           <p className="mt-3 rounded-xl bg-cream p-3 text-sm">
-            Orari i konfirmuar: {dateTime(request.acceptedQuote.scheduledAt)} (ora e Kosovës).
-            {latest && " Ky orar mbetet i rezervuar derisa klienti të pranojë propozimin e ri."}
+            {t("jobDetail.confirmedTimeKosovoTime", { date: dateTime(request.acceptedQuote.scheduledAt, t.locale) })}{latest && t("jobDetail.timeStaysBookedUntil")}
           </p>
         )}
         {request.booking && (
@@ -307,7 +305,7 @@ export default async function JobDetail({
               id={request.conversation.id}
               closed={closed}
               events={events}
-              placeholder={pro ? "Shkruani klientit…" : `Shkruani ${counterpart}…`}
+              placeholder={pro ? t("jobDetail.writeCustomer") : t("jobDetail.writeTo", { name: counterpart })}
             />
           </div>
         )}
@@ -315,60 +313,57 @@ export default async function JobDetail({
         {pro && commission && ["OPEN", "QUOTED"].includes(request.state) && (
           <details className="mt-4 rounded-2xl border border-gold bg-white p-4" open={!request.quotes.length}>
             <summary className="cursor-pointer font-semibold">
-              {request.quotes.length ? "Dërgo një ofertë të re" : "Dërgo ofertën me çmim"}
+              {request.quotes.length ? t("jobDetail.sendNewOffer") : t("jobDetail.sendPricedOffer")}
             </summary>
             <p className="my-3 text-sm text-muted">
-              Oferta shfaqet në bisedë si kartë me butonin “Puneso”. Një ofertë e re zëvendëson të mëparshmen.
-              Komisioni aktual i platformës është {commission.bps / 100}% e çmimit total dhe fiksohet kur klienti ju punëson.
-              Pagesat janë ende në provë.
-            </p>
+              {t("jobDetail.offerAppearsChatCard", { value: commission.bps / 100 })}</p>
             <ApiForm
               key={request.version}
               endpoint="/api/offers"
               idempotent
               values={{ requestId: id, expectedVersion: request.version }}
-              label="Dërgo ofertën në bisedë"
+              label={t("jobDetail.sendOfferChat")}
               fields={[
-                { name: "amount", label: "Çmimi total në euro", type: "number", min: 0.01, max: 100000, step: "0.01", required: true },
-                { name: "description", label: "Shënim (opsional)", type: "textarea", maxLength: 4000, hint: "P.sh. çfarë përfshihet në çmim. Pa numra telefoni, email ose lidhje." },
-                { name: "scheduledAt", label: "Data dhe ora e fillimit (opsionale, ora e Kosovës)", type: "datetime-local", kosovoTime: true, hint: "Nëse e caktoni, orari rezervohet kur klienti ju punëson. Ndryshe data caktohet në bisedë." },
-                { name: "duration", label: "Kohëzgjatja në minuta (nëse caktoni datën)", type: "number", min: 1, max: 43200, step: "1", hint: "P.sh. 120 për dy orë." },
-                { name: "expiresInHours", label: "Oferta vlen", type: "select", as: "number", required: true, value: "72",
-                  options: [{ value: "24", label: "24 orë" }, { value: "72", label: "3 ditë" }, { value: "168", label: "7 ditë" }] },
+                { name: "amount", label: t("jobDetail.totalPriceEuros"), type: "number", min: 0.01, max: 100000, step: "0.01", required: true },
+                { name: "description", label: t("jobDetail.noteOptional"), type: "textarea", maxLength: 4000, hint: t("jobDetail.eGWhatPrice") },
+                { name: "scheduledAt", label: t("jobDetail.startDateTimeOptional"), type: "datetime-local", kosovoTime: true, hint: t("jobDetail.ifSetTimeBooked") },
+                { name: "duration", label: t("jobDetail.durationMinutesIfSet"), type: "number", min: 1, max: 43200, step: "1", hint: t("jobDetail.eG120Two") },
+                { name: "expiresInHours", label: t("jobDetail.offerValid"), type: "select", as: "number", required: true, value: "72",
+                  options: [{ value: "24", label: t("jobDetail.n24Hours") }, { value: "72", label: t("jobDetail.n3Days") }, { value: "168", label: t("jobDetail.n7Days") }] },
               ]}
             />
           </details>
         )}
         {pro && request.state === "BOOKED" && request.unpaidEditable && request.acceptedQuote?.scheduledAt && (
           <details className="mt-4">
-            <summary className="cursor-pointer font-semibold">Propozo orar tjetër</summary>
-            <p className="my-3 text-sm text-muted">Klienti duhet ta pranojë ndryshimin. Orari i mëparshëm mbetet i rezervuar; çmimi dhe përshkrimi i punës nuk ndryshojnë. Orari i ri kontrollohet përsëri kur pranohet.</p>
+            <summary className="cursor-pointer font-semibold">{t("jobDetail.proposeAnotherTime")}</summary>
+            <p className="my-3 text-sm text-muted">{t("jobDetail.customerHasAcceptChange")}</p>
             <ApiForm key={`reschedule-${request.version}`} endpoint={`/api/requests/${id}/reschedule`} idempotent
-              values={{ action: "PROPOSE", expectedVersion: request.version }} label="Dërgo propozimin e orarit"
+              values={{ action: "PROPOSE", expectedVersion: request.version }} label={t("jobDetail.sendTimeProposal")}
               fields={[
-                { name: "timing", label: "Përshkrimi i orarit të ri", required: true, minLength: 3, maxLength: 120 },
-                { name: "expiresAt", label: "Propozimi skadon (ora e Kosovës)", type: "datetime-local", kosovoTime: true, required: true, hint: "Brenda 30 ditëve dhe para orarit të ri." },
-                { name: "scheduledAt", label: "Fillimi i ri (ora e Kosovës)", type: "datetime-local", kosovoTime: true, required: true },
+                { name: "timing", label: t("jobDetail.descriptionNewTime"), required: true, minLength: 3, maxLength: 120 },
+                { name: "expiresAt", label: t("jobDetail.proposalExpiresKosovoTime"), type: "datetime-local", kosovoTime: true, required: true, hint: t("jobDetail.within30DaysBefore") },
+                { name: "scheduledAt", label: t("jobDetail.newStartKosovoTime"), type: "datetime-local", kosovoTime: true, required: true },
               ]} />
           </details>
         )}
         {funded && active && !request.payment?.dispute && (
           <div className="mt-4 rounded-2xl bg-cream p-4">
-            <h3 className="mb-3 font-bold">Ecuria e punës</h3>
+            <h3 className="mb-3 font-bold">{t("jobDetail.jobProgress")}</h3>
             {pro ? (
               <div className="flex flex-wrap gap-3">
-                {request.state === "BOOKED" && jobAction("START", "Fillo punën")}
+                {request.state === "BOOKED" && jobAction("START", t("jobDetail.startJob"))}
                 {!request.completionRequestedAt &&
-                  jobAction("REQUEST_COMPLETION", "Kërko konfirmimin e klientit", "Puna ka përfunduar dhe është gati për konfirmim?")}
-                {request.completionRequestedAt && <p>Klientit i është kërkuar të konfirmojë përfundimin.</p>}
+                  jobAction("REQUEST_COMPLETION", t("jobDetail.askCustomerConfirm"), t("jobDetail.jobFinishedReadyConfirm"))}
+                {request.completionRequestedAt && <p>{t("jobDetail.customerHasBeenAsked")}</p>}
               </div>
             ) : (
               <>
-                {request.completionRequestedAt && <p className="mb-3">Profesionisti e ka shënuar punën gati për konfirmim.</p>}
+                {request.completionRequestedAt && <p className="mb-3">{t("jobDetail.proHasMarkedJob")}</p>}
                 {jobAction(
                   "CONFIRM_COMPLETION",
-                  "Konfirmo përfundimin",
-                  "Konfirmoni se puna ka përfunduar sipas marrëveshjes? Ky veprim lejon transferimin e pagesës te profesionisti.",
+                  t("jobDetail.confirmCompletion"),
+                  t("jobDetail.confirmJobWasFinished"),
                 )}
               </>
             )}
@@ -378,60 +373,52 @@ export default async function JobDetail({
       {request.payment && (
         <Panel>
           <h2 className="text-lg font-bold">
-            Pagesa · {stateLabel(request.payment.state)}
-          </h2>
-          <p className="mt-2">Totali: {money(request.payment.amount)}</p>
+            {t("jobDetail.payment", { label: t.tx(stateLabel(request.payment.state)) })}</h2>
+          <p className="mt-2">{t("jobDetail.total", { amount: money(request.payment.amount, t.locale) })}</p>
           {request.payment.estimateCreditCents > 0 && (
             <p className="mt-1 text-sm">
-              Kredi nga vlerësimi i paguar: −{money(Math.min(request.payment.estimateCreditCents, request.payment.amount))} · Për t’u paguar:{" "}
-              {money(Math.max(0, request.payment.amount - request.payment.estimateCreditCents))}
+              {t("jobDetail.paidEstimateCreditPay", { amount: money(Math.min(request.payment.estimateCreditCents, request.payment.amount), t.locale) })}{" "}
+              {money(Math.max(0, request.payment.amount - request.payment.estimateCreditCents), t.locale)}
             </p>
           )}
           {pro && (
             <p className="mt-1 text-sm">
-              Komisioni ({request.payment.commissionBps / 100}%): {money(request.payment.commissionAmount)} · Për ju:{" "}
-              {money(request.payment.proAmount)}
+              {t("jobDetail.commission", { value: request.payment.commissionBps / 100, amount: money(request.payment.commissionAmount, t.locale) })}{" "}
+              {money(request.payment.proAmount, t.locale)}
             </p>
           )}
           {request.payment.state === "PENDING" && request.state === "BOOKED" && (
             <div className="mt-4">
               {latest ? (
-                <p>{pro ? "Në pritje të vendimit të klientit për orarin e ri." : "Pranoni ose refuzoni propozimin e orarit para pagesës."}</p>
+                <p>{pro ? t("jobDetail.waitingCustomerDecideNew") : t("jobDetail.acceptDeclineTimeProposal")}</p>
               ) : pro ? (
                 <p>
-                  Prisni konfirmimin e pagesës para se të filloni punën.
-                  {!paymentsReady() && " Gjatë beta-s, pagesën e konfirmon administrata e Zgjoi dhe ju njoftojmë menjëherë."}
+                  {t("jobDetail.waitPaymentConfirmationBefore")}{!paymentsReady() && t("jobDetail.duringBetaZgjoiTeam")}
                 </p>
               ) : paymentsReady() ? (
                 <>
                   <p className="mb-3 text-sm">
-                    Mjedis prove: përdorni vetëm kartë prove. Konfirmimi shfaqet
-                    pas përpunimit.
-                  </p>
+                    {t("jobDetail.testEnvironmentUseTest")}</p>
                   <ApiForm
                     endpoint="/api/payments/checkout"
                     values={{ requestId: id }}
-                    label="Vazhdo te pagesa e provës"
+                    label={t("jobDetail.continueTestPayment")}
                   />
                 </>
               ) : (
                 <p role="status">
-                  Pagesat online nuk janë ende të disponueshme. Oferta është
-                  ruajtur dhe asnjë pagesë nuk është kryer në platformë. Gjatë
-                  beta-s, pagesa rregullohet me ekipin e Zgjoi; pasi ta
-                  konfirmojmë, profesionisti mund të fillojë punën.
-                </p>
+                  {t("jobDetail.onlinePaymentsArentAvailable")}</p>
               )}
             </div>
           )}
           {request.state === "CANCELLED" && request.payment.state === "EXPIRED" && (
-            <p className="mt-3 text-sm">Rezervimi u anulua para fillimit të pagesës. Asnjë shumë nuk u tarifua.</p>
+            <p className="mt-3 text-sm">{t("jobDetail.bookingWasCancelledBefore")}</p>
           )}
           {funded && (
             <p className="mt-3 text-sm">
               {request.payment.provider === "offline"
-                ? "Pagesa u konfirmua nga administrata e Zgjoi (beta, pagesë jashtë platformës). Pjesa e profesionistit transferohet pas konfirmimit të përfundimit nga klienti."
-                : "Pagesa është konfirmuar. Fondet mund t’i transferohen profesionistit pas konfirmimit të përfundimit nga klienti."}
+                ? t("jobDetail.paymentConfirmedZgjoiTeam")
+                : t("jobDetail.paymentConfirmedFundsCan")}
             </p>
           )}
           {request.payment.dispute && (() => {
@@ -440,25 +427,25 @@ export default async function JobDetail({
             const canRespond = !d.resolvedAt && !mineOpened && !d.response && (!d.respondBy || d.respondBy > new Date());
             return (
               <div className="mt-3 space-y-3 rounded-xl bg-cream p-3">
-                <h3 className="font-bold">Kontesti</h3>
+                <h3 className="font-bold">{t("jobDetail.dispute")}</h3>
                 <div>
-                  <p className="text-xs font-semibold text-gold-dark">Deklarata e {d.openedByRole === "PRO" ? "profesionistit" : "klientit"}{mineOpened ? " (ju)" : ""}</p>
+                  <p className="text-xs font-semibold text-gold-dark">{t("jobDetail.statementFrom")}{" "}{d.openedByRole === "PRO" ? "profesionistit" : "klientit"}{mineOpened ? " (ju)" : ""}</p>
                   <p className="whitespace-pre-wrap text-sm">{d.reason}</p>
                 </div>
                 <div>
-                  <p className="text-xs font-semibold text-gold-dark">Deklarata e {d.openedByRole === "PRO" ? "klientit" : "profesionistit"}{!mineOpened ? " (ju)" : ""}</p>
+                  <p className="text-xs font-semibold text-gold-dark">{t("jobDetail.statementFrom")}{" "}{d.openedByRole === "PRO" ? "klientit" : "profesionistit"}{!mineOpened ? " (ju)" : ""}</p>
                   <p className="whitespace-pre-wrap text-sm">
-                    {d.response ?? (d.respondBy && d.respondBy > new Date() ? `Në pritje deri më ${dateTime(d.respondBy)}.` : "Nuk u shtua brenda afatit.")}
+                    {d.response ?? (d.respondBy && d.respondBy > new Date() ? t("jobDetail.waitingUntil", { date: dateTime(d.respondBy, t.locale) }) : t("jobDetail.notAddedBeforeDeadline"))}
                   </p>
                 </div>
                 {canRespond && (
-                  <ApiForm endpoint="/api/disputes" values={{ action: "RESPOND", requestId: id }} label="Shto deklaratën tuaj"
-                    fields={[{ name: "statement", label: `Përgjigjuni brenda ${DISPUTE_RESPONSE_HOURS} orëve`, type: "textarea", minLength: 20, maxLength: 4000, required: true }]} />
+                  <ApiForm endpoint="/api/disputes" values={{ action: "RESPOND", requestId: id }} label={t("jobDetail.addStatement")}
+                    fields={[{ name: "statement", label: t("jobDetail.replyWithinHours", { DISPUTE_RESPONSE_HOURS: DISPUTE_RESPONSE_HOURS }), type: "textarea", minLength: 20, maxLength: 4000, required: true }]} />
                 )}
                 <p className="text-sm">
                   {d.resolvedAt
-                    ? `${outcomeLabels[d.outcome as DisputeOutcome] ?? d.outcome}${d.resolution ? ` — ${d.resolution}` : ""}`
-                    : "Në shqyrtim nga administrata."}
+                    ? `${t.tx(outcomeLabels[d.outcome as DisputeOutcome]) ?? d.outcome}${d.resolution ? ` — ${d.resolution}` : ""}`
+                    : t("jobDetail.underReviewAdminTeam")}
                 </p>
               </div>
             );
@@ -469,21 +456,18 @@ export default async function JobDetail({
         <Panel>
           <details>
             <summary className="cursor-pointer font-semibold">
-              Raporto një problem me punën
-            </summary>
+              {t("jobDetail.reportProblemJob")}</summary>
             <p className="mt-2 text-sm text-muted">
-              Pala tjetër ka {DISPUTE_RESPONSE_HOURS} orë të shtojë deklaratën e saj; pastaj vendos administrata e Zgjoi
-              (rimbursim, kredi ose pa veprim). Një problem raportohet deri në {DISPUTE_OPEN_DAYS} ditë pas punës.
-            </p>
+              {t("jobDetail.otherPartyHasHours", { DISPUTE_RESPONSE_HOURS: DISPUTE_RESPONSE_HOURS, DISPUTE_OPEN_DAYS: DISPUTE_OPEN_DAYS })}</p>
             <div className="mt-4">
               <ApiForm
                 endpoint="/api/disputes"
                 values={{ requestId: id }}
-                label="Hap kontestin"
+                label={t("jobDetail.openDispute")}
                 fields={[
                   {
                     name: "reason",
-                    label: "Përshkruani problemin",
+                    label: t("jobDetail.describeProblem"),
                     type: "textarea",
                     minLength: 20,
                     maxLength: 4000,
@@ -498,16 +482,16 @@ export default async function JobDetail({
       {!pro && request.state === "COMPLETED" && request.payment &&
         ["HELD", "RELEASED"].includes(request.payment.state) && !request.payment.dispute && (
         <Panel>
-          <h2 className="mb-3 text-lg font-bold">Përsërit shërbimin</h2>
-          <p className="mb-4 text-sm text-muted">Kërkoni vizitën pasuese me të njëjtin profesionist. Komisioni për profesionistin është 5% për vizitën e përsëritur që plotëson kushtet. Profesionisti dërgon ofertën dhe ju e pranoni para pagesës. Asnjë tarifim automatik.</p>
-          <ApiForm endpoint={`/api/requests/${id}/recurrence`} label="Kërko vizitën pasuese"
-            fields={[{ name: "cadence", label: "Shpeshtësia", type: "select", required: true,
+          <h2 className="mb-3 text-lg font-bold">{t("jobDetail.repeatService")}</h2>
+          <p className="mb-4 text-sm text-muted">{t("jobDetail.requestFollowUpVisit")}</p>
+          <ApiForm endpoint={`/api/requests/${id}/recurrence`} label={t("jobDetail.requestFollowUpVisit2")}
+            fields={[{ name: "cadence", label: t("jobDetail.frequency"), type: "select", required: true,
               options: Object.entries(recurrenceLabels).map(([value, label]) => ({ value, label })) }]} />
         </Panel>
       )}
       {!pro && request.state === "COMPLETED" && (
         <Panel>
-          <h2 className="mb-4 text-lg font-bold">Vlerësimi juaj</h2>
+          <h2 className="mb-4 text-lg font-bold">{t("jobDetail.review")}</h2>
           {request.review ? (
             <>
               <p>{request.review.rating}/5</p>
@@ -516,17 +500,15 @@ export default async function JobDetail({
           ) : (
             <>
               <p className="mb-4 text-sm text-muted">
-                Vlerësimi është opsional. Përfundimi i punës është konfirmuar
-                tashmë.
-              </p>
+                {t("jobDetail.reviewsOptionalJobsCompletion")}</p>
               <ApiForm
                 endpoint="/api/reviews"
                 values={{ requestId: id }}
-                label="Publiko vlerësimin"
+                label={t("jobDetail.publishReview")}
                 fields={[
                   {
                     name: "rating",
-                    label: "Vlerësimi",
+                    label: t("jobDetail.rating"),
                     type: "select",
                     as: "number",
                     required: true,
@@ -537,7 +519,7 @@ export default async function JobDetail({
                   },
                   {
                     name: "text",
-                    label: "Përvoja juaj",
+                    label: t("jobDetail.experience"),
                     type: "textarea",
                     minLength: 15,
                     maxLength: 2000,
@@ -553,10 +535,10 @@ export default async function JobDetail({
         <Panel>
           {jobAction(
             "CANCEL",
-            request.state === "BOOKED" ? "Anulo rezervimin pa pagesë" : "Mbyll bisedën",
+            request.state === "BOOKED" ? t("jobDetail.cancelBookingFreeCharge") : t("jobDetail.closeChat"),
             request.state === "BOOKED"
-              ? "Anuloni këtë rezervim pa pagesë? Orari lirohet dhe pala tjetër njoftohet."
-              : "Mbyllni këtë bisedë? Ofertat e hapura tërhiqen dhe pala tjetër njoftohet.",
+              ? t("jobDetail.cancelBookingFreeCharge2")
+              : t("jobDetail.closeChatOpenOffers"),
           )}
         </Panel>
       )}

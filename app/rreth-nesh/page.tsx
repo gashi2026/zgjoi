@@ -1,36 +1,36 @@
+import { msgKey } from "@/lib/i18n/translate";
 import type { Metadata } from "next";
 import { Quote, ShieldCheck, Star, Users, Zap } from "lucide-react";
 import { serviceCategories } from "@/lib/service-categories";
+import { getT, pageMetadata } from "@/lib/i18n/server";
 
-export const metadata: Metadata = {
-  title: "Rreth nesh — Zgjoi",
-  description: "Mësoni më shumë rreth Zgjoi dhe misionit tonë.",
-};
+export const generateMetadata = (): Promise<Metadata> => pageMetadata({ title: "meta.aboutTitle", description: "meta.aboutDescription" });
 
 const values = [
   {
     icon: ShieldCheck,
-    title: "Besueshmëri",
-    body: "Profilet shqyrtohen para publikimit. Synojmë informacion të qartë për shërbimet dhe përvojën.",
+    title: msgKey("about.trust"),
+    body: msgKey("about.profilesReviewedBeforeTheyre"),
   },
   {
     icon: Star,
-    title: "Cilësi",
-    body: "Vlerësimet janë të vërteta — shkruhen vetëm pas përfundimit të konfirmuar nga klienti.",
+    title: msgKey("about.quality"),
+    body: msgKey("about.reviewsGenuineTheyCan"),
   },
   {
     icon: Zap,
-    title: "Shpejtësi",
-    body: "Kontakto drejtpërdrejt një profesionist dhe diskuto detajet në bisedën private.",
+    title: msgKey("about.speed"),
+    body: msgKey("about.contactProDirectlyTalk"),
   },
   {
     icon: Users,
-    title: "Gjithëpërfshirje",
-    body: "Kategori për shërbime të ndryshme, nga riparimet te mësimi privat.",
+    title: msgKey("about.range"),
+    body: msgKey("about.categoriesAllKindsServices"),
   },
 ];
 
-export default function RrethNeshPage() {
+export default async function RrethNeshPage() {
+  const t = await getT();
   return (
     <>
       <div>
@@ -38,13 +38,9 @@ export default function RrethNeshPage() {
         <section className="bg-cream">
           <div className="mx-auto max-w-4xl px-4 py-20 text-center sm:px-6 lg:px-8">
             <h1 className="text-4xl font-extrabold tracking-tight text-ink sm:text-5xl">
-              Rreth Zgjoi
-            </h1>
+              {t("about.aboutZgjoi")}</h1>
             <p className="mx-auto mt-5 max-w-2xl text-lg leading-relaxed text-muted">
-              Zgjoi lidh njerëzit e Kosovës me profesionistë lokalë të
-              shqyrtuar — me biseda private, oferta të qarta dhe punësim brenda
-              platformës. Tani jemi në beta dhe po hapemi gradualisht.
-            </p>
+              {t("about.zgjoiConnectsPeopleKosovo")}</p>
           </div>
         </section>
 
@@ -54,14 +50,9 @@ export default function RrethNeshPage() {
             <div className="rounded-3xl border border-line bg-cream p-8 sm:p-12">
               <Quote size={28} className="text-gold" />
               <p className="mt-4 text-xl font-semibold leading-relaxed text-ink sm:text-2xl">
-                Kosova ka profesionistë të shkëlqyer. Zgjoi i bën të dukshëm.
-              </p>
+                {t("about.kosovoHasExcellentPros")}</p>
               <p className="mt-6 text-base leading-relaxed text-muted">
-                Ideja lindi nga një problem i thjeshtë: gjetja e një
-                elektricisti, hidrauliku apo tutori të besueshëm nuk duhej të
-                ishte punë. Duhet të jetë e lehtë si kërkimi në Google — me
-                çmime transparente, vlerësime të vërteta dhe pagesë të sigurt.
-              </p>
+                {t("about.ideaCameFromSimple")}</p>
             </div>
           </div>
         </section>
@@ -70,22 +61,21 @@ export default function RrethNeshPage() {
         <section className="bg-cream">
           <div className="mx-auto max-w-5xl px-4 py-16 sm:px-6 lg:px-8">
             <h2 className="text-2xl font-extrabold tracking-tight text-ink sm:text-3xl">
-              Në çfarë besojmë
-            </h2>
+              {t("about.whatWeBelieve")}</h2>
             <div className="mt-8 grid gap-6 sm:grid-cols-2">
               {values.map((v) => (
                 <div
-                  key={v.title}
+                  key={t(v.title)}
                   className="rounded-2xl border border-line bg-white p-6 shadow-soft"
                 >
                   <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-honey">
                     <v.icon size={20} className="text-gold-dark" />
                   </span>
                   <h3 className="mt-4 text-base font-extrabold text-ink">
-                    {v.title}
+                    {t(v.title)}
                   </h3>
                   <p className="mt-2 text-sm leading-relaxed text-muted">
-                    {v.body}
+                    {t(v.body)}
                   </p>
                 </div>
               ))}
@@ -97,18 +87,15 @@ export default function RrethNeshPage() {
         <section className="bg-white">
           <div className="mx-auto max-w-5xl px-4 py-16 sm:px-6 lg:px-8">
             <h2 className="text-2xl font-extrabold tracking-tight text-ink sm:text-3xl">
-              Zgjoi sot
-            </h2>
+              {t("about.zgjoiToday")}</h2>
             <p className="mt-2 text-sm text-muted">
-              Jemi në fillim. Nuk publikojmë shifra që nuk i kemi ende; numrat
-              e vërtetë do të shfaqen këtu kur të ketë punë të përfunduara.
-            </p>
+              {t("about.wereJustGettingStarted")}</p>
             <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
               {[
-                { v: String(serviceCategories.length), l: "Kategori shërbimesh" },
-                { v: "Beta", l: "Po hapemi gradualisht në Kosovë" },
-                { v: "1 te 1", l: "Bisedë private me profesionistin që zgjidhni" },
-                { v: "Shqyrtim", l: "Profilet miratohen para publikimit" },
+                { v: String(serviceCategories.length), l: t("about.serviceCategories") },
+                { v: t("about.beta"), l: t("about.openingUpGraduallyAcross") },
+                { v: t("about.n11"), l: t("about.privateChatProChoose") },
+                { v: t("about.review"), l: t("about.profilesApprovedBeforeTheyre") },
               ].map((s) => (
                 <div
                   key={s.l}
@@ -125,23 +112,20 @@ export default function RrethNeshPage() {
         {/* Contact */}
         <section className="bg-cream">
           <div className="mx-auto max-w-4xl px-4 py-16 text-center sm:px-6 lg:px-8">
-            <h2 className="text-2xl font-extrabold text-ink">Na kontaktoni</h2>
+            <h2 className="text-2xl font-extrabold text-ink">{t("about.contactUs")}</h2>
             <p className="mt-3 text-muted">
-              Pyetje, partneritete apo feedback — jemi këtu.
-            </p>
+              {t("about.questionsPartnershipsFeedbackWere")}</p>
             <div className="mt-6 flex flex-wrap justify-center gap-4">
               <a
                 href="mailto:info@zgjoi.com"
                 className="rounded-full bg-gold px-7 py-3 text-sm font-bold text-ink hover:bg-gold-dark"
               >
-                info@zgjoi.com
-              </a>
+                {t("about.infoZgjoiCom")}</a>
               <a
                 href="/kerko"
                 className="rounded-full border border-line bg-white px-7 py-3 text-sm font-semibold text-ink hover:border-gold"
               >
-                Kërko profesionist
-              </a>
+                {t("about.findPro")}</a>
             </div>
           </div>
         </section>

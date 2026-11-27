@@ -1,6 +1,7 @@
 "use client";
 import { useRef, useState } from "react";
 import { donutSegments, type TrustSummary } from "@/lib/trust";
+import { useT } from "@/lib/i18n/client";
 
 const R = 100, r = 72, C = 110;
 const pt = (rad: number, ang: number) => [C + rad * Math.cos(ang), C + rad * Math.sin(ang)];
@@ -14,6 +15,7 @@ function arc(a: number, b: number): string {
 /** Trust history: jobs on time (green), late (gold) and not finished (red),
  * with hover, tap and keyboard-focus tooltips. Mockup: trust-donut-circle.html. */
 export default function TrustDonut({ summary }: { summary: TrustSummary }) {
+  const t = useT();
   const { total, rows } = donutSegments(summary);
   const card = useRef<HTMLDivElement>(null);
   const [tip, setTip] = useState<{ i: number; x: number; y: number } | null>(null);
@@ -36,46 +38,45 @@ export default function TrustDonut({ summary }: { summary: TrustSummary }) {
   const active = tip ? rows.findIndex(row => row.key === segments[tip.i]?.key) : -1;
   const onTimePct = rows[0].pct;
   return (
-    <div ref={card} className="relative mt-5 w-full max-w-sm rounded-3xl border border-line bg-white p-5 shadow-soft" aria-label="Historiku i punëve">
+    <div ref={card} className="relative mt-5 w-full max-w-sm rounded-3xl border border-line bg-white p-5 shadow-soft" aria-label={t("trustDonut.jobHistory")}>
       <div className="flex items-center gap-2.5">
         <span className="grid h-9 w-9 place-items-center rounded-xl bg-honey"><span className="h-3 w-3 rounded-full bg-gold-dark" /></span>
-        <h2 className="flex-1 text-base font-extrabold">Historiku i punëve</h2>
-        <span className="text-xs text-muted">{summary.booked} {summary.booked === 1 ? "punë e rezervuar" : "punë të rezervuara"}</span>
+        <h2 className="flex-1 text-base font-extrabold">{t("trustDonut.jobHistory")}</h2>
+        <span className="text-xs text-muted">{summary.booked} {summary.booked === 1 ? t("trustDonut.jobBooked") : t("trustDonut.jobsBooked")}</span>
       </div>
       <svg viewBox="0 0 220 220" className="mx-auto my-3 block h-48 w-48" role="img"
-        aria-label={total ? `Në kohë ${rows[0].pct}%, me vonesë ${rows[1].pct}%, pa përfunduar ${rows[2].pct}%` : "Ende pa punë të përfunduara"}>
+        aria-label={total ? t("trustDonut.timeLateUnfinished", { pct: rows[0].pct, pct2: rows[1].pct, pct3: rows[2].pct }) : t("trustDonut.noCompletedJobsYet")}>
         {!total && <circle cx={C} cy={C} r={(R + r) / 2} fill="none" stroke="#ECE7DD" strokeWidth={R - r} />}
         {segments.map((seg, i) => (
           <path key={seg.key} d={seg.d} fill={seg.color} stroke="#fff" strokeWidth={segments.length > 1 ? 3 : 0} tabIndex={0}
-            aria-label={`${seg.label}: ${seg.pct}%, ${seg.value} punë`}
+            aria-label={t("trustDonut.jobs", { label: seg.label, pct: seg.pct, value: seg.value })}
             className="cursor-pointer outline-none transition-transform duration-150 hover:scale-[1.06] focus:scale-[1.06]"
             style={{ transformOrigin: "110px 110px" }}
             onMouseMove={e => place(i, e.clientX, e.clientY)} onClick={e => place(i, e.clientX, e.clientY)}
             onMouseLeave={() => setTip(null)} onBlur={() => setTip(null)} onFocus={e => focus(i, seg.mid, e.currentTarget)} />
         ))}
         <text x="110" y="113" textAnchor="middle" fontSize="31" fontWeight="800" fill="#111">{total ? `${onTimePct}%` : "—"}</text>
-        <text x="110" y="135" textAnchor="middle" fontSize="12" fontWeight="600" fill="#E89D00">{total ? "në kohë" : "pa punë ende"}</text>
+        <text x="110" y="135" textAnchor="middle" fontSize="12" fontWeight="600" fill="#E89D00">{total ? t("trustDonut.time") : t("trustDonut.noJobsYet")}</text>
       </svg>
       {tip && segments[tip.i] && (
         <div role="tooltip" className="pointer-events-none absolute z-10 whitespace-nowrap rounded-full border-[1.5px] border-gold bg-white px-2.5 py-1.5 text-xs font-semibold shadow"
           style={{ left: tip.x, top: tip.y }}>
           <span className="mr-1.5 inline-block h-2.5 w-2.5 rounded-full" style={{ background: segments[tip.i].color }} />
-          {segments[tip.i].label} · {segments[tip.i].pct}% · {segments[tip.i].value} punë
-        </div>
+          {t("trustDonut.jobs2", { label: segments[tip.i].label, pct: segments[tip.i].pct, value: segments[tip.i].value })}</div>
       )}
       <ul className="space-y-1.5">
         {rows.map((row, i) => (
           <li key={row.key} className={`flex items-center justify-between rounded-xl border px-3 py-2 text-sm transition ${i === active ? "border-gold bg-honey" : "border-line bg-cream"}`}>
-            <span className="flex items-center"><span className="mr-2.5 inline-block h-3 w-3 rounded-full" style={{ background: row.color }} />{row.label}</span>
+            <span className="flex items-center"><span className="mr-2.5 inline-block h-3 w-3 rounded-full" style={{ background: row.color }} />{t.tx(row.label)}</span>
             <b>{row.value} · {row.pct}%</b>
           </li>
         ))}
       </ul>
       <dl className="mt-3 grid grid-cols-2 gap-2 text-xs">
-        <div className="rounded-xl bg-cream px-3 py-2"><dt className="text-muted">Kontestet</dt><dd className="font-bold">{summary.disputes}</dd></div>
-        <div className="rounded-xl bg-cream px-3 py-2"><dt className="text-muted">Anulime (90 ditë)</dt><dd className="font-bold">{summary.cancellations}</dd></div>
+        <div className="rounded-xl bg-cream px-3 py-2"><dt className="text-muted">{t("trustDonut.disputes")}</dt><dd className="font-bold">{summary.disputes}</dd></div>
+        <div className="rounded-xl bg-cream px-3 py-2"><dt className="text-muted">{t("trustDonut.cancellations90Days")}</dt><dd className="font-bold">{summary.cancellations}</dd></div>
       </dl>
-      <p className="mt-2 text-center text-[11px] text-muted">Vonesë = fillim më shumë se 15 minuta pas orës së rezervuar.</p>
+      <p className="mt-2 text-center text-[11px] text-muted">{t("trustDonut.lateStartingMoreThan")}</p>
     </div>
   );
 }

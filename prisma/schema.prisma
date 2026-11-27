@@ -94,6 +94,8 @@ model User {
   personalNoLast4 String?
   role            Role      @default(CLIENT)
   city            String?
+  /// Preferred site/email language: "sq" or "en". Null = never chosen (Albanian is used).
+  locale          String?
   emailVerified   DateTime?
   suspendedAt     DateTime?
   /// SUPPORT only: the owner can grant/revoke reviewing ID documents. Ignored for other roles.

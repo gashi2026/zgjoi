@@ -1,23 +1,25 @@
 "use client";
 import { useState, type FormEvent } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/lib/i18n/client";
 import { inputClass, buttonClass } from "./ApiForm";
+import { useT } from "@/lib/i18n/client";
 export default function AvailabilityEditor({
   days,
 }: {
   days: { weekday: number; startMin: number; endMin: number }[];
 }) {
+  const t = useT();
   const [pending, setPending] = useState(false),
     [message, setMessage] = useState("");
   const router = useRouter();
   const names = [
-    "E hënë",
-    "E martë",
-    "E mërkurë",
-    "E enjte",
-    "E premte",
-    "E shtunë",
-    "E diel",
+    t("availabilityEditor.monday"),
+    t("availabilityEditor.tuesday"),
+    t("availabilityEditor.wednesday"),
+    t("availabilityEditor.thursday"),
+    t("availabilityEditor.friday"),
+    t("availabilityEditor.saturday"),
+    t("availabilityEditor.sunday"),
   ];
   const clock = (n: number) =>
     `${String(Math.floor(n / 60)).padStart(2, "0")}:${String(n % 60).padStart(2, "0")}`;
@@ -48,12 +50,12 @@ export default function AvailabilityEditor({
         body: JSON.stringify({ days: next }),
       });
       const d = await r.json();
-      if (!r.ok) throw new Error(d.message || "Kontrolloni oraret.");
-      setMessage("Orari u ruajt.");
+      if (!r.ok) throw new Error(d.message || t("availabilityEditor.checkHours"));
+      setMessage(t("availabilityEditor.hoursSaved"));
       router.refresh();
     } catch (e) {
       setMessage(
-        e instanceof Error ? e.message : "Nuk u ruajt; provoni përsëri.",
+        e instanceof Error ? e.message : t("availabilityEditor.notSavedPleaseTry"),
       );
     } finally {
       setPending(false);
@@ -62,10 +64,7 @@ export default function AvailabilityEditor({
   return (
     <form onSubmit={submit} className="space-y-3">
       <p className="text-sm text-muted">
-        Orari javor, sipas orës së Kosovës. Ofertat duhet të përshtaten me këto
-        orare dhe të mos mbivendosen me rezervimet e pranuara. Pa ditë të zgjedhura,
-        orari dakordohet veçmas në çdo ofertë. Ndryshimi nuk anulon rezervime.
-      </p>
+        {t("availabilityEditor.weeklyHoursKosovoTime")}</p>
       {names.map((name, weekday) => {
         const day = days.find((d) => d.weekday === weekday);
         return (
@@ -83,8 +82,7 @@ export default function AvailabilityEditor({
               {name}
             </label>
             <label className="text-xs">
-              Nga
-              <input
+              {t("availabilityEditor.by")}<input
                 name={`start${weekday}`}
                 type="time"
                 defaultValue={clock(day?.startMin ?? 540)}
@@ -93,8 +91,7 @@ export default function AvailabilityEditor({
               />
             </label>
             <label className="text-xs">
-              Deri
-              <input
+              {t("availabilityEditor.to")}<input
                 name={`end${weekday}`}
                 type="time"
                 defaultValue={clock(day?.endMin ?? 1020)}
@@ -107,7 +104,7 @@ export default function AvailabilityEditor({
       })}
       <p role="status">{message}</p>
       <button disabled={pending} className={buttonClass}>
-        {pending ? "Duke ruajtur…" : "Ruaj orarin"}
+        {pending ? t("availabilityEditor.saving") : t("availabilityEditor.saveHours")}
       </button>
     </form>
   );

@@ -1,5 +1,5 @@
+import { localRedirect } from "@/lib/i18n/redirect";
 import "server-only";
-import { redirect } from "next/navigation";
 import { currentUser, accountHome, type Role } from "./auth";
 
 /**
@@ -9,9 +9,9 @@ import { currentUser, accountHome, type Role } from "./auth";
  */
 export async function pageGuard(...roles: Role[]) {
   const user = await currentUser();
-  if (!user) redirect("/hyr");
+  if (!user) return localRedirect("/hyr");
   if (roles.length && !roles.includes(user.role)) {
-    redirect(accountHome(user.role));
+    return localRedirect(accountHome(user.role));
   }
   return user;
 }

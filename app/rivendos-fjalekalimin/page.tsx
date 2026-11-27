@@ -1,15 +1,17 @@
 import AuthPage from "@/components/marketplace/AuthPage";
-export default function Page() {
+import { getT } from "@/lib/i18n/server";
+export default async function Page() {
+  const t = await getT();
   return (
     <AuthPage
-      title="Fjalëkalimi i ri"
+      title={t("auth.newPassword")}
       endpoint="/api/auth/reset"
-      label="Ruaj fjalëkalimin"
+      label={t("auth.savePassword")}
       fragmentToken
       fields={[
         {
           name: "password",
-          label: "Fjalëkalimi i ri",
+          label: t("auth.newPassword"),
           type: "password",
           required: true,
           minLength: 12,

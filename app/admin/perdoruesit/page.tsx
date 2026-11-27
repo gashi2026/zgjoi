@@ -1,14 +1,16 @@
-import Link from "next/link";
+import Link from "@/components/i18n/Link";
 import { pageGuard } from "@/lib/server/guard";
 import { db } from "@/lib/server/db";
 import { activeCategories } from "@/lib/server/catalog";
 import Frame, { Panel } from "@/components/marketplace/Frame";
 import ApiForm, { type Field } from "@/components/marketplace/ApiForm";
+import { getT } from "@/lib/i18n/server";
 export default async function Page({
   searchParams,
 }: {
   searchParams: Promise<{ q?: string; page?: string }>;
 }) {
+  const t = await getT();
   const actor = await pageGuard("ADMIN");
   const params = await searchParams,
     q = (params.q ?? "").trim().slice(0, 100),
@@ -53,13 +55,13 @@ export default async function Page({
     activeCategories(),
   ]);
   const userFields: Field[] = [
-    { name: "name", label: "Emri", required: true, maxLength: 120 },
-    { name: "email", label: "Emaili", type: "email", required: true },
-    { name: "city", label: "Qyteti", required: true, maxLength: 60 },
-    { name: "phone", label: "Telefoni", maxLength: 30 },
+    { name: "name", label: t("admin.name"), required: true, maxLength: 120 },
+    { name: "email", label: t("admin.email2"), type: "email", required: true },
+    { name: "city", label: t("admin.city"), required: true, maxLength: 60 },
+    { name: "phone", label: t("admin.phone"), maxLength: 30 },
     {
       name: "role",
-      label: "Roli",
+      label: t("admin.role"),
       type: "select",
       required: true,
       options: ["CLIENT", "PRO", "SUPPORT", "ADMIN"].map((value) => ({
@@ -69,52 +71,50 @@ export default async function Page({
     },
     {
       name: "password",
-      label: "Fjalëkalimi fillestar",
+      label: t("admin.initialPassword"),
       type: "password",
       required: true,
       minLength: 12,
     },
   ];
   return (
-    <Frame actor={actor} title="Përdoruesit dhe miratimi i profesionistëve">
+    <Frame actor={actor} title={t("admin.usersProApproval")}>
       <Panel>
         <form className="flex gap-3">
           <label className="flex-1 text-sm">
-            Kërko emër ose email
-            <input
+            {t("admin.searchNameEmail")}<input
               name="q"
               defaultValue={q}
               maxLength={100}
               className="block w-full rounded-xl border border-line p-3 text-base"
             />
           </label>
-          <button className="self-end rounded-full bg-gold p-3">Kërko</button>
+          <button className="self-end rounded-full bg-gold p-3">{t("admin.search")}</button>
         </form>
       </Panel>
       <Panel>
         <details>
           <summary className="cursor-pointer font-bold">
-            Krijo llogari nga administrata
-          </summary>
+            {t("admin.createAccountAdmin")}</summary>
           <div className="mt-4">
             <ApiForm
               endpoint="/api/admin/commands"
               values={{ action: "USER_CREATE", phone: "" }}
-              label="Krijo llogarinë"
+              label={t("admin.createAccount")}
               fields={[
                 ...userFields,
                 {
                   name: "categorySlug",
-                  label: "Kategoria (kërkohet për profesionistin)",
+                  label: t("admin.categoryRequiredPros"),
                   type: "select",
                   options: categories.map((c) => ({
                     value: c.slug,
-                    label: c.name,
+                    label: t.tx(c.name),
                   })),
                 },
                 {
                   name: "priceFrom",
-                  label: "Çmimi fillestar në euro (profesionisti)",
+                  label: t("admin.startingPriceEurosPros"),
                   type: "number",
                   min: 0.01,
                   max: 100000,
@@ -130,7 +130,7 @@ export default async function Page({
           <h2 className="text-lg font-bold">{user.name}</h2>
           <p className="text-sm text-muted">
             {user.email} · {user.role} ·{" "}
-            {user.suspendedAt ? "Pezulluar" : "Aktiv"}
+            {user.suspendedAt ? t("admin.suspended") : t("admin.active")}
           </p>
           <div className="mt-4 flex gap-3">
             <ApiForm
@@ -139,12 +139,12 @@ export default async function Page({
                 id: user.id,
                 action: user.suspendedAt ? "USER_RESTORE" : "USER_SUSPEND",
               }}
-              label={user.suspendedAt ? "Riaktivizo" : "Pezullo llogarinë"}
-              confirmation="Ndryshoni qasjen e kësaj llogarie? Historiku ruhet."
+              label={user.suspendedAt ? t("admin.reactivate") : t("admin.suspendAccount")}
+              confirmation={t("admin.changeAccountsAccessIts")}
             />
           </div>
           <details className="mt-4">
-            <summary>Ndrysho llogarinë</summary>
+            <summary>{t("admin.editAccount")}</summary>
             <div className="mt-3">
               <ApiForm
                 endpoint="/api/admin/commands"
@@ -165,10 +165,10 @@ export default async function Page({
                           ] ?? "",
                         ),
                   ...(f.name === "password"
-                    ? { required: false, label: "Fjalëkalimi i ri (opsional)" }
+                    ? { required: false, label: t("admin.newPasswordOptional") }
                     : {}),
                 }))}
-                label="Ruaj llogarinë"
+                label={t("admin.saveAccount")}
               />
             </div>
           </details>
@@ -188,20 +188,19 @@ export default async function Page({
                     rel="noreferrer"
                     className="text-gold-dark"
                   >
-                    Hap dokumentin: {doc.filename ?? doc.kind}
-                  </Link>
+                    {t("admin.openDocument", { value: doc.filename ?? doc.kind })}</Link>
                   <p className="text-xs">
-                    {doc.reviewed ? "Shqyrtuar" : "Në pritje"}
+                    {doc.reviewed ? t("admin.reviewed") : t("admin.pending")}
                   </p>
                   {!doc.reviewed && (
                     <ApiForm
                       endpoint="/api/admin/commands"
                       values={{ action: "DOCUMENT_REVIEW", id: doc.id }}
-                      label="Regjistro shqyrtimin"
+                      label={t("admin.recordReview")}
                       fields={[
                         {
                           name: "reason",
-                          label: "Rezultati i kontrollit",
+                          label: t("admin.checkResult"),
                           required: true,
                           minLength: 5,
                           maxLength: 1000,
@@ -219,13 +218,13 @@ export default async function Page({
                     values={{ id: user.proProfile!.id, action }}
                     label={
                       action === "PRO_APPROVE"
-                        ? "Mirato profesionistin"
-                        : "Kërko rishikim"
+                        ? t("admin.approvePro")
+                        : t("admin.requestChanges")
                     }
                     fields={[
                       {
                         name: "reason",
-                        label: "Kontrollet dhe arsyeja",
+                        label: t("admin.checksReasoning"),
                         type: "textarea",
                         required: true,
                         minLength: 5,
@@ -242,13 +241,11 @@ export default async function Page({
       <nav className="flex gap-4">
         {page > 1 && (
           <Link href={`?q=${encodeURIComponent(q)}&page=${page - 1}`}>
-            ← Më parë
-          </Link>
+            {t("admin.previous")}</Link>
         )}
         {users.length === 30 && (
           <Link href={`?q=${encodeURIComponent(q)}&page=${page + 1}`}>
-            Tjetër →
-          </Link>
+            {t("admin.next")}</Link>
         )}
       </nav>
     </Frame>

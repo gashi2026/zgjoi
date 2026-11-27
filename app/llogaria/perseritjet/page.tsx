@@ -1,11 +1,13 @@
 import { pageGuard } from "@/lib/server/guard";
 import Frame from "@/components/marketplace/Frame";
 import SeriesList from "@/components/marketplace/SeriesList";
+import { getT } from "@/lib/i18n/server";
 export const dynamic = "force-dynamic";
 export default async function Page() {
+  const t = await getT();
   const actor = await pageGuard("CLIENT");
   return (
-    <Frame actor={actor} title="Rezervimet e përsëritura" subtitle="Pastrim, dado, elektricist ose mjeshtër uji në të njëjtën ditë dhe orë, pa e rezervuar çdo herë.">
+    <Frame actor={actor} title={t("account.recurringBookings")} subtitle={t("account.cleaningBabysittingElectricianPlumber")}>
       <SeriesList actor={actor} />
     </Frame>
   );

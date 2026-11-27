@@ -6,6 +6,11 @@ import { invariant } from "./errors";
 import { notificationPreferences } from "./notification-preferences";
 import { hashToken } from "./tokens";
 import { emailRecipientAllowed, maskEmail } from "../email-allowlist";
+import { tFor } from "../i18n/dictionaries";
+import { isLocale, localizePath, type Locale } from "../i18n/config";
+
+/** The recipient's saved language; Albanian when never chosen. */
+export const userLocale = (value: string | null | undefined): Locale => (isLocale(value) ? value : "sq");
 
 type EmailJob = {
   id: string;
@@ -30,17 +35,22 @@ export async function notify(
   if (process.env.JOB_EMAILS_ENABLED === "true" && base && Object.values(accountEmailSetup()).every(Boolean) && (href === "/verifikimi" ||
       /^\/(llogaria|pro)\/(kerkesat\/[a-zA-Z0-9_-]+|paneli|njoftimet)$/.test(href))) {
     const [user, preferences] = await Promise.all([
-      tx.user.findUnique({ where: { id: userId }, select: { email: true, emailVerified: true, suspendedAt: true } }),
+      tx.user.findUnique({ where: { id: userId }, select: { email: true, emailVerified: true, suspendedAt: true, locale: true } }),
       notificationPreferences(tx, userId),
     ]);
     if (user?.emailVerified && !user.suspendedAt && preferences.jobEmail) {
       const key = kind === "MESSAGE"
         ? `job-email:${hashToken(`${userId}:${href}:${Math.floor(Date.now() / 300_000)}`)}`
         : `job-email:${notice.id}`;
+      // Notifications are stored in Albanian and translated on display; the email goes out in the recipient's language.
+      const locale = userLocale(user.locale);
+      const t = tFor(locale);
+      const subjectTitle = t.tx(title);
+      const link = localizePath(href, locale);
       await tx.outbox.createMany({ skipDuplicates: true, data: [{ key, kind: "EMAIL", payloadEnc: encrypt(JSON.stringify({
         type: "JOB_NOTICE", userId, notificationId: notice.id, to: user.email,
         expiresAt: new Date(Date.now() + 23 * 3600_000).toISOString(),
-        subject: `${title} — Zgjoi`, text: `${title}.\nHyni në llogarinë tuaj për hollësi: ${base}${href}\nPreferencat e njoftimeve: ${base}/siguria`,
+        subject: `${subjectTitle} — Zgjoi`, text: t("server.notifications.logAccountDetailsNotification", { title: subjectTitle, base, href: link, base2: locale === "en" ? `${base}/en` : base }),
       })) }] });
     }
   }
@@ -79,12 +89,16 @@ export async function queueAccountEmail(
   token: string,
   key: string,
   expiresAt: Date,
+  locale: Locale = "sq",
 ) {
   const base = applicationUrl();
+  const t = tFor(locale);
   if (!base || !/^[a-fA-F0-9]{64}$/.test(process.env.ENCRYPTION_KEY ?? ""))
     return { queued: false };
-  const path =
-    purpose === "EMAIL_VERIFY" ? "/verifiko-emailin" : "/rivendos-fjalekalimin";
+  const path = localizePath(
+    purpose === "EMAIL_VERIFY" ? "/verifiko-emailin" : "/rivendos-fjalekalimin",
+    locale,
+  );
   const job = await tx.outbox.create({
     data: {
       key: `account-email:${key}`,
@@ -94,11 +108,12 @@ export async function queueAccountEmail(
           to,
           tokenId: key,
           expiresAt: expiresAt.toISOString(),
-          subject:
+          subject: t(
             purpose === "EMAIL_VERIFY"
-              ? "Verifikoni emailin tuaj — Zgjoi"
-              : "Rivendosni fjalëkalimin — Zgjoi",
-          text: `Hapni këtë lidhje për të vazhduar: ${base}${path}#token=${token}\nNëse nuk e keni kërkuar këtë veprim, injorojeni këtë email.`,
+              ? "server.notifications.verifyEmailZgjoi"
+              : "server.notifications.resetPasswordZgjoi",
+          ),
+          text: t("server.notifications.openLinkContinueToken", { base, path, token }),
         }),
       ),
     },

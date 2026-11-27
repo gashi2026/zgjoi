@@ -1,4 +1,4 @@
-import { redirect } from "next/navigation";
-export default function Page() {
-  redirect("/admin/pagesat");
+import { localRedirect } from "@/lib/i18n/redirect";
+export default async function Page() {
+  await localRedirect("/admin/pagesat");
 }

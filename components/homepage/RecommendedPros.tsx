@@ -1,34 +1,32 @@
-import Link from "next/link";
+import Link from "@/components/i18n/Link";
 import { ArrowRight } from "lucide-react";
 import Marquee from "../Marquee";
 import HexTile from "../HexTile";
 import CategoryIcon from "./CategoryIcon";
 import { categories } from "@/lib/homepage-reference-data";
+import { getT } from "@/lib/i18n/server";
 
 const TILE = 190;
 
 /* Beta: no sample professionals with invented ratings. The belt invites real
    professionals to join in each approved category instead. */
-export default function RecommendedPros() {
+export default async function RecommendedPros() {
+  const t = await getT();
   return (
     <section className="bg-cream">
       <div className="mx-auto max-w-7xl px-4 pt-16 sm:px-6 lg:px-8">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <h2 className="text-2xl font-extrabold tracking-tight text-ink sm:text-3xl">
-              Bëhu ndër profesionistët e parë
-            </h2>
+              {t("recommendedPros.oneFirstPros")}</h2>
             <p className="mt-2 max-w-xl text-sm text-muted">
-              Po pranojmë profesionistë në këto kategori. Profilet shqyrtohen
-              para se të shfaqen te klientët.
-            </p>
+              {t("recommendedPros.wereAcceptingProsThese")}</p>
           </div>
           <Link
             href="/regjistrohu-profesionist"
             className="group flex items-center gap-1 text-sm font-semibold text-gold-dark"
           >
-            Regjistrohu si profesionist
-            <ArrowRight
+            {t("recommendedPros.signUpPro")}<ArrowRight
               size={16}
               className="transition-transform group-hover:translate-x-0.5"
             />
@@ -44,17 +42,16 @@ export default function RecommendedPros() {
               key={category.slug}
               width={TILE}
               href={`/kerko?kategoria=${category.slug}`}
-              label={`${category.name} — kërko profesionistë`}
+              label={t("recommendedPros.searchPros", { name: category.name })}
             >
               <span className="text-gold-dark">
                 <CategoryIcon name={category.icon} size={26} />
               </span>
               <span className="mt-2 text-[13px] font-extrabold leading-tight text-ink">
-                {category.name}
+                {t.tx(category.name)}
               </span>
               <span className="mt-1 text-[10.5px] text-muted">
-                Po pranojmë profesionistë
-              </span>
+                {t("recommendedPros.wereAcceptingPros")}</span>
             </HexTile>
           ))}
         </Marquee>
