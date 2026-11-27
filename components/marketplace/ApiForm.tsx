@@ -1,5 +1,5 @@
 "use client";
-import { useId, useRef, useState, type FormEvent } from "react";
+import { useId, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { kosovoLocalToIso } from "@/lib/scheduling";
 import { useLocale, useRouter } from "@/lib/i18n/client";
 import { isLocale, localizePath, stripLocale } from "@/lib/i18n/config";
@@ -7,7 +7,7 @@ import { useT } from "@/lib/i18n/client";
 
 export type Field = {
   name: string;
-  label: string;
+  label: ReactNode;
   type?:
     | "text"
     | "email"
@@ -158,6 +158,40 @@ export default function ApiForm({
   return (
     <form onSubmit={submit} className="space-y-4" aria-busy={pending}>
       {fields.map((field) => (
+        field.type === "checkbox" ? (
+        <label
+          key={field.name}
+          className="flex items-start gap-3 text-sm font-normal leading-relaxed text-ink"
+        >
+          <input
+            name={field.name}
+            type="checkbox"
+            defaultChecked={field.checked}
+            required={field.required}
+            className="mt-0.5 h-5 w-5 shrink-0 accent-gold"
+            aria-invalid={Boolean(errors[field.name])}
+            aria-describedby={[field.hint ? `${formId}-${field.name}-hint` : "", errors[field.name] ? `${formId}-${field.name}-errors` : ""].filter(Boolean).join(" ") || undefined}
+          />
+          <span>
+            <span>
+              {field.label}
+              {field.required ? " *" : ""}
+            </span>
+            {field.hint && (
+              <span id={`${formId}-${field.name}-hint`} className="mt-1 block text-sm font-normal text-muted">
+                {field.hint}
+              </span>
+            )}
+            <span id={`${formId}-${field.name}-errors`}>
+            {errors[field.name]?.map((error, i) => (
+              <span key={i} className="mt-1 block text-sm text-red-700">
+                {error}
+              </span>
+            ))}
+            </span>
+          </span>
+        </label>
+        ) : (
         <label
           key={field.name}
           className="block text-sm font-semibold text-ink"
@@ -198,8 +232,7 @@ export default function ApiForm({
             <input
               name={field.name}
               type={field.type ?? "text"}
-              defaultValue={field.type === "checkbox" ? undefined : field.value}
-              defaultChecked={field.type === "checkbox" ? field.checked : undefined}
+              defaultValue={field.value}
               required={field.required}
               min={field.min}
               max={field.max}
@@ -209,11 +242,7 @@ export default function ApiForm({
               }
               step={field.step}
               autoComplete={field.autoComplete}
-              className={
-                field.type === "checkbox"
-                  ? "ml-3 h-5 w-5 align-middle accent-gold"
-                  : `${inputClass} mt-1`
-              }
+              className={`${inputClass} mt-1`}
               aria-invalid={Boolean(errors[field.name])}
               aria-describedby={[field.hint ? `${formId}-${field.name}-hint` : "", errors[field.name] ? `${formId}-${field.name}-errors` : ""].filter(Boolean).join(" ") || undefined}
             />
@@ -231,6 +260,7 @@ export default function ApiForm({
           ))}
           </span>
         </label>
+        )
       ))}
       {message && (
         <p

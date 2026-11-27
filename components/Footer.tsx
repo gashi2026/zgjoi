@@ -24,7 +24,7 @@ export default async function Footer() {
         </nav>
         <nav aria-label={t("footer.information")} className="flex flex-col gap-3 text-sm">
           <Link href="/rreth-nesh">{t("footer.aboutUs")}</Link>
-          <Link href="/kushtet">{t("footer.betaTerms")}</Link>
+          <Link href="/kushtet">{t("footer.termsUse")}</Link>
           <Link href="/privatesia">{t("footer.privacy")}</Link>
           <Link href="/hyr">{t("footer.myAccount")}</Link>
           <p className="text-muted">{t("footer.helpOpenSupportChat")}</p>

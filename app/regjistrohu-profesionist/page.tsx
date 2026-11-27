@@ -1,5 +1,6 @@
 import { idUploadsAvailable } from "@/lib/server/id-verification";
 import AuthPage from "@/components/marketplace/AuthPage";
+import { termsAcceptField } from "@/components/marketplace/termsAcceptField";
 import { activeCategories } from "@/lib/server/catalog";
 import { getT } from "@/lib/i18n/server";
 export const dynamic = "force-dynamic";
@@ -68,12 +69,7 @@ export default async function Page() {
           step: "0.01",
           required: true,
         },
-        {
-          name: "terms",
-          label: t("auth.iAcceptTermsPrivacy"),
-          type: "checkbox",
-          required: true,
-        },
+        termsAcceptField(t),
       ]}
     />
   );
