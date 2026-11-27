@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { buttonClass } from "@/components/marketplace/ApiForm";
-import { ID_MAX_IMAGE_BYTES, ID_MAX_SOURCE_BYTES, ID_MIN_EDGE_PX, ID_TARGET_EDGE_PX, idSideLabels, type IdSide } from "@/lib/id-verification";
+import { ID_MAX_IMAGE_BYTES, ID_MAX_SOURCE_BYTES, ID_MIN_EDGE_PX, ID_TARGET_EDGE_PX, ID_DOCUMENT_TYPES, backRequired, idDocumentTypeLabels, sideLabel, type IdDocumentType, type IdSide } from "@/lib/id-verification";
 
 type Picked = { blob: Blob; url: string; width: number; height: number };
 
@@ -56,9 +56,9 @@ async function convert(file: File): Promise<Picked> {
   throw new Error("Fotoja nuk u përgatit. Provoni një foto tjetër.");
 }
 
-function SideSlot({ side, picked, onPick, busy }: { side: IdSide; picked?: Picked; onPick: (side: IdSide, file: File) => void; busy: boolean }) {
+function SideSlot({ side, type, picked, onPick, onClear, busy }: { side: IdSide; type: IdDocumentType; picked?: Picked; onPick: (side: IdSide, file: File) => void; onClear: (side: IdSide) => void; busy: boolean }) {
   const camera = useRef<HTMLInputElement>(null), gallery = useRef<HTMLInputElement>(null);
-  const label = idSideLabels[side];
+  const label = sideLabel(type, side);
   const change = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = "";
@@ -74,7 +74,9 @@ function SideSlot({ side, picked, onPick, busy }: { side: IdSide; picked?: Picke
         ) : (
           <div className="px-4 text-center text-sm text-muted">
             <div aria-hidden className="hexframe mx-auto mb-2 h-12 w-[42px] bg-gold/30" />
-            {side === "FRONT" ? "Ana me foton dhe emrin tuaj" : "Ana tjetër e dokumentit"}
+            {type === "PASSPORT"
+              ? side === "FRONT" ? "Faqja me foton, emrin dhe numrin e pasaportës" : "Nuk kërkohet; shtojeni vetëm nëse ju kërkojmë"
+              : side === "FRONT" ? "Ana me foton dhe emrin tuaj" : "Ana tjetër e letërnjoftimit"}
           </div>
         )}
       </div>
@@ -86,6 +88,9 @@ function SideSlot({ side, picked, onPick, busy }: { side: IdSide; picked?: Picke
           Nga galeria
         </button>
       </div>
+      {picked && !backRequired(type) && side === "BACK" && (
+        <button type="button" disabled={busy} onClick={() => onClear(side)} className="mt-2 text-sm font-semibold text-gold-dark underline">Hiqe këtë foto</button>
+      )}
       <input ref={camera} type="file" accept="image/*" capture="environment" className="sr-only" tabIndex={-1} aria-label={`${label}: bëj foto`} onChange={change} />
       <input ref={gallery} type="file" accept="image/jpeg,image/png,image/heic,image/heif,.heic,.heif" className="sr-only" tabIndex={-1} aria-label={`${label}: zgjidh nga galeria`} onChange={change} />
     </div>
@@ -98,6 +103,17 @@ export default function IdUploadForm({ resubmit = false }: { resubmit?: boolean 
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ text: string; error: boolean } | null>(null);
   const [consent, setConsent] = useState(false);
+  const [type, setType] = useState<IdDocumentType>("ID_CARD");
+  const needBack = backRequired(type);
+  const ready = !!picked.FRONT && (!needBack || !!picked.BACK);
+  function clear(side: IdSide) {
+    setPicked((prev) => {
+      if (prev[side]) URL.revokeObjectURL(prev[side]!.url);
+      const next = { ...prev };
+      delete next[side];
+      return next;
+    });
+  }
   useEffect(() => () => Object.values(picked).forEach((p) => p && URL.revokeObjectURL(p.url)), [picked]);
 
   async function pick(side: IdSide, file: File) {
@@ -119,14 +135,15 @@ export default function IdUploadForm({ resubmit = false }: { resubmit?: boolean 
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (busy) return;
-    if (!picked.FRONT || !picked.BACK) return setMessage({ text: "Shtoni të dyja anët e dokumentit.", error: true });
+    if (!ready) return setMessage({ text: needBack ? "Shtoni të dyja anët e letërnjoftimit." : "Shtoni faqen me foto të pasaportës.", error: true });
     if (!consent) return setMessage({ text: "Konfirmoni pëlqimin për përpunimin e dokumentit.", error: true });
     setBusy(true);
     setMessage(null);
     try {
       const data = new FormData();
-      data.append("front", new File([picked.FRONT.blob], "front.jpg", { type: "image/jpeg" }));
-      data.append("back", new File([picked.BACK.blob], "back.jpg", { type: "image/jpeg" }));
+      data.append("documentType", type);
+      data.append("front", new File([picked.FRONT!.blob], "front.jpg", { type: "image/jpeg" }));
+      if (picked.BACK) data.append("back", new File([picked.BACK.blob], "back.jpg", { type: "image/jpeg" }));
       const response = await fetch("/api/verifikimi", { method: "POST", body: data });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.message || "Ngarkimi dështoi. Provoni përsëri.");
@@ -142,11 +159,25 @@ export default function IdUploadForm({ resubmit = false }: { resubmit?: boolean 
 
   return (
     <form onSubmit={submit} className="space-y-4" aria-label="Ngarko dokumentin e identifikimit">
+      <fieldset>
+        <legend className="mb-2 font-semibold">Cilin dokument keni?</legend>
+        <div className="grid grid-cols-2 gap-2" data-testid="doc-type">
+          {ID_DOCUMENT_TYPES.map((t) => (
+            <label key={t} className={`flex min-h-14 cursor-pointer flex-col justify-center rounded-xl border-2 px-3 py-2 ${type === t ? "border-gold bg-honey" : "border-line bg-white"}`}>
+              <span className="flex items-center gap-2 font-semibold">
+                <input type="radio" name="documentType" value={t} checked={type === t} onChange={() => setType(t)} className="accent-[#E0A800]" disabled={busy} />
+                {idDocumentTypeLabels[t]}
+              </span>
+              <span className="pl-6 text-xs text-muted">{t === "ID_CARD" ? "Dy foto: para dhe mbrapa" : "Një foto: faqja me foto"}</span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
       <div className="grid gap-3 sm:grid-cols-2">
-        {(["FRONT", "BACK"] as const).map((side) => <SideSlot key={side} side={side} picked={picked[side]} onPick={pick} busy={busy} />)}
+        {(["FRONT", "BACK"] as const).map((side) => <SideSlot key={side} side={side} type={type} picked={picked[side]} onPick={pick} onClear={clear} busy={busy} />)}
       </div>
       <ul className="list-disc space-y-1 pl-5 text-sm text-muted">
-        <li>Letërnjoftim, pasaportë ose patentë shoferi e vlefshme.</li>
+        <li>Pranohet vetëm letërnjoftimi ose pasaporta e vlefshme (jo patentë shoferi).</li>
         <li>Vendoseni dokumentin në sipërfaqe të sheshtë, me dritë të mirë dhe pa reflektim; të katër skajet duhet të duken.</li>
         <li>JPEG, PNG ose HEIC. Fotoja zvogëlohet automatikisht në telefonin tuaj para dërgimit.</li>
       </ul>
@@ -155,7 +186,7 @@ export default function IdUploadForm({ resubmit = false }: { resubmit?: boolean 
         <span>Pajtohem që Zgjoi të përpunojë fotot e dokumentit vetëm për verifikimin e identitetit, sipas shënimit të privatësisë më poshtë.</span>
       </label>
       {message && <p role={message.error ? "alert" : "status"} className={`rounded-xl p-3 text-sm ${message.error ? "bg-red-50 text-red-800" : "bg-emerald-50 text-emerald-900"}`}>{message.text}</p>}
-      <button disabled={busy || !picked.FRONT || !picked.BACK} className={`${buttonClass} w-full sm:w-auto`}>
+      <button disabled={busy || !ready} className={`${buttonClass} w-full sm:w-auto`}>
         {busy ? "Duke përgatitur…" : resubmit ? "Dërgo fotot e reja" : "Dërgo për verifikim"}
       </button>
     </form>

@@ -45,7 +45,7 @@ export default function Page() {
           required: true,
         },
       ]}
-      text={`Zgjidhni një profesionist dhe hapni një bisedë private me të. ${idUploadsAvailable() ? "Pas regjistrimit ju kërkojmë një foto të letërnjoftimit (para dhe mbrapa), që e shqyrtojmë me dorë dhe e ruajmë privatisht; pa të mund të shfletoni, por jo të rezervoni. " : ""}Lexoni kushtet te lidhja në fund të faqes.`}
+      text={`Zgjidhni një profesionist dhe hapni një bisedë private me të. ${idUploadsAvailable() ? "Pas regjistrimit ju kërkojmë letërnjoftimin (para dhe mbrapa) ose pasaportën, që e shqyrtojmë me dorë dhe e ruajmë privatisht. Deri në miratim mund vetëm të shihni profesionistët përreth: pa bisedë, punësim apo rezervim. " : ""}Lexoni kushtet te lidhja në fund të faqes.`}
     />
   );
 }

@@ -1,6 +1,6 @@
 -- Identity verification: production rollout (NOT applied; apply only after the owner approves shipping ID verification to main).
 -- Same additive body as supabase/staging/id-verification.sql. Apply BEFORE the code that reads these tables reaches main.
--- Additive only: two new tables with RLS on; no existing table or row is touched. No Storage bucket is needed (photos are encrypted in Postgres).
+-- Additive only: three new tables with RLS on (IdVerification, IdDocumentImage, IdentityRecord), plus User."canReviewIds" (default false); no existing row is rewritten. No Storage bucket is needed (photos are encrypted in Postgres).
 DO $guard$
 BEGIN
   IF EXISTS (SELECT 1 FROM public."Setting" WHERE key = '_staging_environment') THEN
@@ -66,3 +66,37 @@ GRANT ALL ON TABLE public."IdDocumentImage" TO service_role;
 -- Invariants also hold outside the application code.
 ALTER TABLE public."IdVerification" ADD CONSTRAINT "IdVerification_valid" CHECK (status IN ('PENDING','APPROVED','DECLINED') AND attempts >= 1 AND ((status = 'PENDING') = ("decidedAt" IS NULL)) AND ((status = 'DECLINED') = ("declineReason" IS NOT NULL)) AND ("declineNote" IS NULL OR length("declineNote") <= 500));
 ALTER TABLE public."IdDocumentImage" ADD CONSTRAINT "IdDocumentImage_valid" CHECK (side IN ('FRONT','BACK') AND "mimeType" IN ('image/jpeg','image/png') AND "sizeBytes" BETWEEN 1 AND 2097152 AND octet_length("dataEnc") <= 2097152 + 28);
+
+-- Owner answers (26 Nov 2026): only ID card (letërnjoftim) or passport; the owner grants/revokes ID review per SUPPORT user.
+ALTER TABLE public."IdVerification" ADD COLUMN "documentType" TEXT NOT NULL DEFAULT 'ID_CARD';
+ALTER TABLE public."IdVerification" ADD CONSTRAINT "IdVerification_documentType_valid" CHECK ("documentType" IN ('ID_CARD','PASSPORT'));
+ALTER TABLE public."User" ADD COLUMN "canReviewIds" BOOLEAN NOT NULL DEFAULT false;
+
+-- Owner answer (26 Nov 2026): photos go 30 days after any decision, but a permanent identity record is kept for legal and safety reporting.
+-- Filled by the reviewer from the ID on approval. Date of birth and document number are AES-256-GCM encrypted by the application (ENCRYPTION_KEY).
+-- Never removed by the photo cleanup; a user row with a record cannot be deleted (ON DELETE RESTRICT).
+CREATE TABLE "IdentityRecord" (
+    "id" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "legalName" TEXT NOT NULL,
+    "birthDateEnc" TEXT NOT NULL,
+    "documentType" TEXT NOT NULL,
+    "documentNoEnc" TEXT NOT NULL,
+    "documentNoLast4" TEXT NOT NULL,
+    "issuingCountry" TEXT NOT NULL,
+    "expiresOn" DATE NOT NULL,
+    "verifiedAt" TIMESTAMP(3) NOT NULL,
+    "verifiedById" TEXT NOT NULL,
+    "verificationId" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+    CONSTRAINT "IdentityRecord_pkey" PRIMARY KEY ("id")
+);
+CREATE UNIQUE INDEX "IdentityRecord_userId_key" ON "IdentityRecord"("userId");
+CREATE INDEX "IdentityRecord_legalName_idx" ON "IdentityRecord"("legalName");
+CREATE INDEX "IdentityRecord_documentNoLast4_idx" ON "IdentityRecord"("documentNoLast4");
+ALTER TABLE "IdentityRecord" ADD CONSTRAINT "IdentityRecord_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE public."IdentityRecord" ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public."IdentityRecord" FROM PUBLIC, anon, authenticated;
+GRANT ALL ON TABLE public."IdentityRecord" TO service_role;
+ALTER TABLE public."IdentityRecord" ADD CONSTRAINT "IdentityRecord_valid" CHECK ("documentType" IN ('ID_CARD','PASSPORT') AND length("legalName") BETWEEN 2 AND 120 AND length("issuingCountry") BETWEEN 2 AND 60 AND "documentNoLast4" ~ '^[A-Z0-9]{1,4}$');

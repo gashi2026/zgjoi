@@ -4,6 +4,7 @@ import type { Actor } from "@/lib/server/auth";
 import { initials } from "@/lib/server/catalog";
 import Link from "next/link";
 import { IdNotice } from "@/components/verification/IdNotice";
+import { canReviewIds } from "@/lib/server/id-verification";
 export function Panel({ children }: { children: React.ReactNode }) {
   return (
     <section className="min-w-0 break-words rounded-2xl border border-line bg-white p-4 shadow-soft sm:p-6">
@@ -11,7 +12,7 @@ export function Panel({ children }: { children: React.ReactNode }) {
     </section>
   );
 }
-export default function Frame({
+export default async function Frame({
   actor,
   title,
   children,
@@ -24,6 +25,9 @@ export default function Frame({
   subtitle?: string;
   hideIdNotice?: boolean;
 }) {
+  // SUPPORT sees the ID queue only while the owner has granted it (checked on every render).
+  const supportPages = actor.role === "SUPPORT" && (await canReviewIds(actor))
+    ? ["/admin/mbeshtetja", "/admin/verifikimi"] : ["/admin/mbeshtetja"];
   return (
     <AccountShell
       title={title}
@@ -34,7 +38,7 @@ export default function Frame({
           : actor.role === "CLIENT"
             ? clientNav
             : actor.role === "SUPPORT"
-              ? adminNav.filter((item) => item.href === "/admin/mbeshtetja")
+              ? adminNav.filter((item) => supportPages.includes(item.href))
               : adminNav
       }
       user={{

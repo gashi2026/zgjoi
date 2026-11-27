@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { Actor } from "@/lib/server/auth";
-import { idCheckPending, idStatusFor, idRequiredMessage } from "@/lib/server/id-verification";
+import { CLIENT_BROWSE_ONLY, idCheckPending, idStatusFor, idRequiredMessage } from "@/lib/server/id-verification";
 import type { IdStatus } from "@/lib/id-verification";
 import HexBadge from "./HexBadge";
 
@@ -34,7 +34,7 @@ export async function IdGate({ actor, children }: { actor: Actor; children: Reac
       <div className="min-w-0 flex-1">
         <p className="font-bold">Ky veprim kërkon identitet të verifikuar</p>
         <p className="text-sm">{idRequiredMessage(actor.role, status)}</p>
-        <p className="mt-1 text-xs text-muted">Mund të shfletoni profesionistët dhe profilet pa kufizim.</p>
+        {actor.role === "CLIENT" && <p className="mt-1 text-xs text-muted">{CLIENT_BROWSE_ONLY}</p>}
       </div>
       {status !== "PENDING" && (
         <Link href="/verifikimi" className="inline-flex min-h-11 items-center rounded-full bg-gold px-5 font-semibold text-ink hover:bg-gold-dark">Verifiko identitetin</Link>

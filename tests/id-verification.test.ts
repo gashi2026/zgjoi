@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
-  readImageInfo, isHeic, idPurgeAfter, declineText, needsIdCheck, ID_DECLINE_REASONS,
+  readImageInfo, isHeic, idPurgeAfter, declineText, needsIdCheck, ID_DECLINE_REASONS, asDocumentType, backRequired, sideLabel, ID_DOCUMENT_TYPES,
   ID_RETENTION_DAYS_AFTER_APPROVAL, ID_RETENTION_DAYS_AFTER_DECLINE, ID_MAX_IMAGE_BYTES,
 } from "../lib/id-verification";
 import { encryptBytes, decryptBytes } from "../lib/server/crypto";
@@ -32,11 +32,11 @@ test("real image type and size come from the bytes, not the name or MIME", () =>
   assert.equal(ID_MAX_IMAGE_BYTES, 2 * 1024 * 1024);
 });
 
-test("retention: 90 days after approval, 30 days after decline (constants)", () => {
+test("retention: photos go 30 days after any decision (constants)", () => {
   const at = new Date("2026-11-26T12:00:00Z");
-  assert.equal(ID_RETENTION_DAYS_AFTER_APPROVAL, 90);
+  assert.equal(ID_RETENTION_DAYS_AFTER_APPROVAL, 30);
   assert.equal(ID_RETENTION_DAYS_AFTER_DECLINE, 30);
-  assert.equal(idPurgeAfter("APPROVED", at).toISOString(), "2027-02-24T12:00:00.000Z");
+  assert.equal(idPurgeAfter("APPROVED", at).toISOString(), "2026-12-26T12:00:00.000Z");
   assert.equal(idPurgeAfter("DECLINED", at).toISOString(), "2026-12-26T12:00:00.000Z");
 });
 
@@ -45,6 +45,27 @@ test("decline reasons: Albanian presets plus free text; OTHER shows only the not
   assert.equal(declineText("EXPIRED", "Skadoi në 2025"), `${ID_DECLINE_REASONS.EXPIRED}. Skadoi në 2025`);
   assert.equal(declineText("OTHER", "Fotoja është e një personi tjetër"), "Fotoja është e një personi tjetër");
   assert(Object.values(ID_DECLINE_REASONS).every((t) => t.length > 5));
+});
+
+test("only an ID card (both sides) or a passport (photo page) is accepted; no driving licence anywhere", () => {
+  assert.deepEqual([...ID_DOCUMENT_TYPES], ["ID_CARD", "PASSPORT"]);
+  assert.equal(backRequired("ID_CARD"), true);
+  assert.equal(backRequired("PASSPORT"), false);
+  assert.equal(asDocumentType("PASSPORT"), "PASSPORT");
+  assert.equal(asDocumentType("DRIVING_LICENCE"), "ID_CARD", "unknown types fall back to the strict ID-card rule");
+  assert.equal(sideLabel("PASSPORT", "FRONT"), "Faqja me foto");
+  assert.match(sideLabel("PASSPORT", "BACK"), /opsionale/);
+  for (const p of ["lib/id-verification.ts", "components/verification/IdUploadForm.tsx", "app/verifikimi/page.tsx", "app/regjistrohu/page.tsx", "app/regjistrohu-profesionist/page.tsx", "lib/server/id-verification.ts"])
+    assert(!/patent[ëe] shoferi e vlefshme|letërnjoftim, pasaportë ose patentë/i.test(readFileSync(p, "utf8")), `${p} must not accept a driving licence`);
+});
+
+test("SUPPORT reviews IDs only with a per-person grant from ADMIN; granting is ADMIN-only", () => {
+  const s = readFileSync("lib/server/id-verification.ts", "utf8");
+  assert.match(s, /export async function canReviewIds[\s\S]{0,400}user\.role === "ADMIN" \|\| user\.canReviewIds/);
+  assert.match(s, /export async function setIdReviewPermission[\s\S]{0,300}await requireAdmin\(actor, tx\)/);
+  assert.match(s, /ID_REVIEW_GRANTED/);
+  assert.match(s, /ID_REVIEW_REVOKED/);
+  assert.match(readFileSync("app/api/admin/verifikimi/leja/route.ts", "utf8"), /requireRole\("ADMIN"\)/);
 });
 
 test("only customers and pros need the ID check; staff never do", () => {
@@ -87,7 +108,8 @@ test("enforcement follows the owner's identity-upload switch, so a deploy never 
     process.env.ENCRYPTION_KEY = saved.key;
   }
   assert.match(idRequiredMessage("PRO", "PENDING"), /shqyrtim/);
-  assert.match(idRequiredMessage("CLIENT", undefined), /para dhe mbrapa/);
+  assert.match(idRequiredMessage("CLIENT", undefined), /para dhe mbrapa\) ose pasaportën/);
+  assert.match(idRequiredMessage("CLIENT", "PENDING"), /hapni bisedë/);
   assert.match(idRequiredMessage("CLIENT", "DECLINED"), /refuzua/);
 });
 
@@ -107,7 +129,8 @@ test("every public pro listing and every booking/hiring entry point goes through
   assert.match(src("lib/server/recurring-series.ts"), /action === "CONFIRM" \|\| action === "RESUME"\) await requireIdApproved\(actor\)/);
   // The image route is ADMIN-only and never cacheable; no public or signed storage URL exists.
   const route = src("app/api/admin/verifikimi/[id]/[side]/route.ts");
-  assert.match(route, /requireRole\("ADMIN"\)/);
+  assert.match(route, /requireRole\("ADMIN", "SUPPORT"\)/);
+  assert.match(src("lib/server/id-verification.ts"), /export async function readIdImage[\s\S]{0,300}await requireReviewer\(actor\)/);
   assert.match(route, /private, no-store/);
   assert(!/signedURL|getPublicUrl|public\/zgjoi/.test(src("lib/server/id-verification.ts")));
 });
@@ -126,4 +149,30 @@ test("SQL: additive only, RLS on both tables, staging and production bodies matc
   }
   assert.match(production, /IF EXISTS \(SELECT 1 FROM public."Setting" WHERE key = '_staging_environment'\)/);
   assert.match(staging, /requires the dedicated staging marker/);
+});
+
+test("identity record helpers: real calendar dates, age, normalized document numbers", async () => {
+  const { parseCalendarDate, ageOn, normalizeDocumentNo, ID_MIN_AGE_YEARS } = await import("../lib/id-verification");
+  assert.equal(parseCalendarDate("2026-02-30"), null);
+  assert.equal(parseCalendarDate("26-02-01"), null);
+  assert.equal(parseCalendarDate("2024-02-29")?.toISOString(), "2024-02-29T00:00:00.000Z");
+  const today = parseCalendarDate("2026-11-26")!;
+  assert.equal(ageOn(parseCalendarDate("2008-11-26")!, today), 18);
+  assert.equal(ageOn(parseCalendarDate("2008-11-27")!, today), 17);
+  assert.equal(ID_MIN_AGE_YEARS, 18);
+  assert.equal(normalizeDocumentNo(" 12 345-678a "), "12345678A");
+});
+
+test("identity record SQL: RLS on, browser roles revoked, FK restrict, in both staging and production files", () => {
+  for (const f of ["supabase/staging/id-verification.sql", "supabase/production/20261128_id_verification.sql"]) {
+    const sql = readFileSync(f, "utf8");
+    assert.match(sql, /CREATE TABLE "IdentityRecord"/);
+    assert.match(sql, /ALTER TABLE public\."IdentityRecord" ENABLE ROW LEVEL SECURITY/);
+    assert.match(sql, /REVOKE ALL ON TABLE public\."IdentityRecord" FROM PUBLIC, anon, authenticated/);
+    assert.match(sql, /"IdentityRecord_userId_fkey".*ON DELETE RESTRICT/);
+  }
+  const src = readFileSync("lib/server/id-verification.ts", "utf8");
+  assert.match(src, /birthDateEnc: encrypt\(data\.birthDate\)/);
+  assert.match(src, /documentNoEnc: encrypt\(data\.documentNumber\)/);
+  assert.doesNotMatch(src.slice(src.indexOf("purgeExpiredIdImages")), /identityRecord\.(delete|update)/);
 });

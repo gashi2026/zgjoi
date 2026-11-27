@@ -5,9 +5,12 @@ export type IdStatus = (typeof ID_STATUSES)[number];
 export const ID_SIDES = ["FRONT", "BACK"] as const;
 export type IdSide = (typeof ID_SIDES)[number];
 
-/** Retention: ID photos are deleted automatically this many days after the decision. */
-export const ID_RETENTION_DAYS_AFTER_APPROVAL = 90;
+/** Retention (owner, 26 Nov 2026): ID photos are deleted 30 days after any decision.
+ * The identity record (IdentityRecord) is kept permanently for legal and safety reporting. */
+export const ID_RETENTION_DAYS_AFTER_APPROVAL = 30;
 export const ID_RETENTION_DAYS_AFTER_DECLINE = 30;
+/** Minimum age to hold a verified account (business default; see PR notes). */
+export const ID_MIN_AGE_YEARS = 18;
 
 /** Server limit per side, after the browser has converted the photo to JPEG. */
 export const ID_MAX_IMAGE_BYTES = 2 * 1024 * 1024;
@@ -23,18 +26,33 @@ export const idStatusLabels: Record<IdStatus, string> = {
   DECLINED: "Refuzuar",
 };
 
+/** Accepted documents (owner, 26 Nov 2026): only the Kosovo ID card or a passport. */
+export const ID_DOCUMENT_TYPES = ["ID_CARD", "PASSPORT"] as const;
+export type IdDocumentType = (typeof ID_DOCUMENT_TYPES)[number];
+export const idDocumentTypeLabels: Record<IdDocumentType, string> = {
+  ID_CARD: "Letërnjoftim",
+  PASSPORT: "Pasaportë",
+};
+/** ID card: both sides required. Passport: the photo page is required, a second page is optional. */
+export const backRequired = (type: IdDocumentType) => type === "ID_CARD";
+export const asDocumentType = (v: unknown): IdDocumentType => (v === "PASSPORT" ? "PASSPORT" : "ID_CARD");
+
 export const idSideLabels: Record<IdSide, string> = {
   FRONT: "Ana e përparme",
   BACK: "Ana e pasme",
 };
+export function sideLabel(type: IdDocumentType, side: IdSide) {
+  if (type === "PASSPORT") return side === "FRONT" ? "Faqja me foto" : "Faqja tjetër (opsionale)";
+  return idSideLabels[side];
+}
 
 /** Preset decline reasons the owner picks from; OTHER needs a free-text note. */
 export const ID_DECLINE_REASONS = {
   BLURRY: "Fotoja është e paqartë ose e turbullt",
   CUT_OFF: "Dokumenti nuk shihet i plotë (skajet janë prerë)",
   GLARE: "Drita ose reflektimi fsheh të dhënat",
-  SIDES: "Mungon njëra anë, ose të dyja fotot tregojnë të njëjtën anë",
-  WRONG_DOCUMENT: "Nuk është letërnjoftim, pasaportë ose patentë shoferi e vlefshme",
+  SIDES: "Mungon njëra anë e letërnjoftimit, ose të dyja fotot tregojnë të njëjtën anë",
+  WRONG_DOCUMENT: "Pranohet vetëm letërnjoftimi ose pasaporta e vlefshme",
   EXPIRED: "Dokumenti ka skaduar",
   NAME_MISMATCH: "Emri në dokument nuk përputhet me emrin e llogarisë",
   OTHER: "Arsye tjetër",
@@ -90,3 +108,19 @@ export function readImageInfo(b: Uint8Array): ImageInfo | null {
   }
   return null;
 }
+
+/** Calendar date "YYYY-MM-DD" → UTC Date, or null when it is not a real date. */
+export function parseCalendarDate(value: string) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!m) return null;
+  const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+  return d.getUTCFullYear() === +m[1] && d.getUTCMonth() === +m[2] - 1 && d.getUTCDate() === +m[3] ? d : null;
+}
+export function ageOn(birth: Date, today: Date) {
+  let age = today.getUTCFullYear() - birth.getUTCFullYear();
+  const md = (today.getUTCMonth() - birth.getUTCMonth()) * 100 + (today.getUTCDate() - birth.getUTCDate());
+  if (md < 0) age--;
+  return age;
+}
+/** Document numbers are stored upper-case without spaces or dashes. */
+export const normalizeDocumentNo = (v: string) => v.toUpperCase().replace(/[\s-]/g, "");

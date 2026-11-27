@@ -35,6 +35,6 @@ export async function POST(req: Request) {
       chunks.push(part.value);
     }
     const form = await new Request(req.url, { method: "POST", headers: { "Content-Type": req.headers.get("content-type")! }, body: Buffer.concat(chunks) }).formData();
-    return submitIdVerification(actor, form.get("front"), form.get("back"));
+    return submitIdVerification(actor, form.get("front"), form.get("back"), form.get("documentType"));
   });
 }

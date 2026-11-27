@@ -5,6 +5,7 @@ import { db } from "../lib/server/db";
 import { hashPassword } from "../lib/server/auth";
 import {
   submitIdVerification, adminDecideId, readIdImage, purgeExpiredIdImages, requireIdApproved, adminIdQueue, idCheckPending,
+  setIdReviewPermission, canReviewIds, identityRecordFor, listIdentityRecords,
 } from "../lib/server/id-verification";
 import { createBooking } from "../lib/server/bookings";
 import { requestEstimate } from "../lib/server/estimates";
@@ -26,6 +27,9 @@ const file = (bytes: Buffer, type = "image/png", name = "id.png") => new File([n
 const select = { id: true, email: true, name: true, role: true, city: true, suspendedAt: true, emailVerified: true,
   proProfile: { select: { id: true, slug: true, verification: true } } } as const;
 const actorOf = (id: string) => db.user.findUniqueOrThrow({ where: { id }, select });
+const inYears = (n: number) => { const d = new Date(); d.setUTCFullYear(d.getUTCFullYear() + n); return d.toISOString().slice(0, 10); };
+const rec = (legalName: string, documentType: "ID_CARD" | "PASSPORT" = "ID_CARD", documentNumber = "12 345-678a") =>
+  ({ legalName, birthDate: "1990-04-17", documentType, documentNumber, issuingCountry: "Kosovë", expiresOn: inYears(5) });
 const code = (c: string) => (e: { code?: string }) => e.code === c;
 
 test("ID verification: upload, gating, admin decision, re-upload, private viewing and retention", async () => {
@@ -83,6 +87,8 @@ test("ID verification: upload, gating, admin decision, re-upload, private viewin
     const order = queue.pending.map((v) => v.id);
     assert(order.indexOf(submitted.id) < order.indexOf(proUpload.id), "oldest first");
     await assert.rejects(adminIdQueue(support as never), code("FORBIDDEN"));
+    await assert.rejects(listIdentityRecords(support as never), code("FORBIDDEN"));
+    await assert.rejects(identityRecordFor(client as never, client.id, "VIEW"), code("FORBIDDEN"));
     await assert.rejects(readIdImage(support as never, submitted.id, "FRONT"), code("FORBIDDEN"));
     await assert.rejects(readIdImage(client as never, submitted.id, "FRONT"), code("FORBIDDEN"));
     const viewed = await readIdImage(admin, submitted.id, "FRONT");
@@ -92,9 +98,9 @@ test("ID verification: upload, gating, admin decision, re-upload, private viewin
 
     // Decline needs a preset reason; OTHER needs free text. The user is notified and can re-upload.
     await assert.rejects(adminDecideId(admin, { id: submitted.id, decision: "DECLINE", reason: "OTHER" }), code("REASON"));
-    await assert.rejects(adminDecideId(support as never, { id: submitted.id, decision: "APPROVE" }), code("FORBIDDEN"));
+    await assert.rejects(adminDecideId(support as never, { id: submitted.id, decision: "APPROVE", ...rec("X Y") }), code("FORBIDDEN"));
     await adminDecideId(admin, { id: submitted.id, decision: "DECLINE", reason: "BLURRY", note: "Shkronjat nuk lexohen." });
-    await assert.rejects(adminDecideId(admin, { id: submitted.id, decision: "APPROVE" }), code("ALREADY_DECIDED"));
+    await assert.rejects(adminDecideId(admin, { id: submitted.id, decision: "APPROVE", ...rec("Klient IDV") }), code("ALREADY_DECIDED"));
     let row = await db.idVerification.findUniqueOrThrow({ where: { id: submitted.id } });
     assert.equal(row.status, "DECLINED");
     assert.equal(row.declineReason, "BLURRY");
@@ -113,19 +119,74 @@ test("ID verification: upload, gating, admin decision, re-upload, private viewin
     assert(await db.auditLog.findFirst({ where: { action: "ID_IMAGES_DELETED", target: submitted.id, meta: { path: ["reason"], equals: "REPLACED_AFTER_DECLINE" } } }));
 
     // Approval unlocks booking paths (the next error is ordinary validation, not the ID gate) and shows the pro.
-    await adminDecideId(admin, { id: submitted.id, decision: "APPROVE" });
-    await adminDecideId(admin, { id: proUpload.id, decision: "APPROVE" });
+    // Approval requires the identity record fields, validated: real dates, adult, not expired.
+    await assert.rejects(adminDecideId(admin, { id: submitted.id, decision: "APPROVE" } as never), (e: { name?: string }) => e.name === "ZodError");
+    await assert.rejects(adminDecideId(admin, { id: submitted.id, decision: "APPROVE", ...rec("Klient IDV"), birthDate: "1990-02-30" }), code("BIRTH_DATE"));
+    await assert.rejects(adminDecideId(admin, { id: submitted.id, decision: "APPROVE", ...rec("Klient IDV"), birthDate: inYears(-16) }), code("UNDERAGE"));
+    await assert.rejects(adminDecideId(admin, { id: submitted.id, decision: "APPROVE", ...rec("Klient IDV"), expiresOn: "2020-01-01" }), code("EXPIRED"));
+    assert.equal((await db.idVerification.findUniqueOrThrow({ where: { id: submitted.id } })).status, "PENDING");
+    assert.equal(await db.identityRecord.count({ where: { userId: client.id } }), 0);
+    await adminDecideId(admin, { id: submitted.id, decision: "APPROVE", ...rec("Klient Idv Testi") });
+    await adminDecideId(admin, { id: proUpload.id, decision: "APPROVE", ...rec("Pro Idv Testi", "ID_CARD", "P9988776") });
+    // The record is stored with DOB and document number encrypted (no plaintext in the table or the audit log).
+    const stored = await db.identityRecord.findUniqueOrThrow({ where: { userId: client.id } });
+    assert.equal(stored.legalName, "Klient Idv Testi");
+    assert.equal(stored.documentNoLast4, "678A");
+    assert.equal(stored.verifiedById, admin.id);
+    assert(!stored.documentNoEnc.includes("12345678A") && !stored.birthDateEnc.includes("1990"));
+    const createdAudit = await db.auditLog.findFirstOrThrow({ where: { action: "ID_RECORD_CREATED", target: client.id } });
+    assert(!JSON.stringify(createdAudit.meta).includes("12345678A") && !JSON.stringify(createdAudit.meta).includes("1990-04-17"));
     await assert.rejects(submitIdVerification(client, file(png(900, 600, 9)), file(png(900, 600, 10))), code("ALREADY_APPROVED"));
     await requireIdApproved(await actorOf(client.id));
     await assert.rejects(createBooking(client, {}), (e: { code?: string }) => e.code !== "ID_VERIFICATION_REQUIRED");
     assert((await searchPros({ kategoria: "kopshtar" })).pros.some((p: { id: string }) => p.id === profileId));
     assert(await publicProfile(profileId));
     row = await db.idVerification.findUniqueOrThrow({ where: { id: submitted.id } });
-    assert.equal(Math.round((row.purgeAfter!.getTime() - row.decidedAt!.getTime()) / 86_400_000), 90);
+    assert.equal(Math.round((row.purgeAfter!.getTime() - row.decidedAt!.getTime()) / 86_400_000), 30);
 
-    // Retention: nothing is deleted early; after 90 days the photos go, the decision stays, and the deletion is logged.
-    assert.equal((await purgeExpiredIdImages(new Date(Date.now() + 89 * 86_400_000))).idImagesDeleted, 0);
-    const purged = await purgeExpiredIdImages(new Date(Date.now() + 91 * 86_400_000));
+    // Only ID card or passport. An ID card needs both sides; a passport needs only the photo page.
+    const traveller = await actorOf((await mk("CLIENT", "Pasaporta IDV")).id);
+    await assert.rejects(submitIdVerification(traveller, file(png(1000, 700, 11)), null, "ID_CARD"), code("FILE"));
+    const passport = await submitIdVerification(traveller, file(png(1000, 700, 11)), null, "PASSPORT");
+    const passportRow = await db.idVerification.findUniqueOrThrow({ where: { id: passport.id }, include: { images: true } });
+    assert.equal(passportRow.documentType, "PASSPORT");
+    assert.deepEqual(passportRow.images.map((i) => i.side), ["FRONT"]);
+    assert.equal((await adminIdQueue(admin)).pending.find((v) => v.id === passport.id)?.documentType, "PASSPORT");
+
+    // SUPPORT has no access by default. The owner grants it per person; it works at once and is audited; revoking works at once.
+    assert.equal(await canReviewIds(support), false);
+    await assert.rejects(setIdReviewPermission(support as never, { userId: support.id, grant: true }), code("FORBIDDEN"));
+    await assert.rejects(setIdReviewPermission(admin, { userId: client.id, grant: true }), code("NOT_FOUND"));
+    await setIdReviewPermission(admin, { userId: support.id, grant: true });
+    assert(await db.auditLog.findFirst({ where: { action: "ID_REVIEW_GRANTED", target: support.id, actorId: admin.id } }));
+    assert.equal(await canReviewIds(support), true);
+    assert((await adminIdQueue(support as never)).pending.some((v) => v.id === passport.id));
+    await readIdImage(support as never, passport.id, "FRONT");
+    assert(await db.auditLog.findFirst({ where: { action: "ID_IMAGE_VIEWED", target: passport.id, actorId: support.id, meta: { path: ["byRole"], equals: "SUPPORT" } } }));
+    await adminDecideId(support as never, { id: passport.id, decision: "APPROVE", ...rec("Udhëtar Idv", "PASSPORT", "PA1234567") });
+    assert(await db.auditLog.findFirst({ where: { action: "ID_APPROVED", target: passport.id, actorId: support.id } }));
+    // Granted support can open and export a record; both are audited.
+    const viewedRec = await identityRecordFor(support as never, traveller.id, "VIEW");
+    assert.equal(viewedRec.record?.documentNumber, "PA1234567");
+    assert.equal(viewedRec.record?.birthDate, "1990-04-17");
+    assert.equal(viewedRec.record?.documentType, "PASSPORT");
+    assert(viewedRec.history.some((h) => h.action === "ID_APPROVED") && viewedRec.history.some((h) => h.action === "ID_SUBMITTED"));
+    assert(await db.auditLog.findFirst({ where: { action: "ID_RECORD_VIEWED", target: traveller.id, actorId: support.id } }));
+    await identityRecordFor(admin, traveller.id, "EXPORT");
+    assert(await db.auditLog.findFirst({ where: { action: "ID_RECORD_EXPORTED", target: traveller.id, actorId: admin.id } }));
+    assert((await listIdentityRecords(support as never, "1234567")).some((r) => r.userId === traveller.id));
+    assert((await listIdentityRecords(admin, "udhëtar")).some((r) => r.userId === traveller.id));
+    await setIdReviewPermission(admin, { userId: support.id, grant: false });
+    assert(await db.auditLog.findFirst({ where: { action: "ID_REVIEW_REVOKED", target: support.id, actorId: admin.id } }));
+    await assert.rejects(readIdImage(support as never, passport.id, "FRONT"), code("FORBIDDEN"));
+    await assert.rejects(adminIdQueue(support as never), code("FORBIDDEN"));
+    await assert.rejects(identityRecordFor(support as never, traveller.id, "VIEW"), code("FORBIDDEN"));
+    await assert.rejects(listIdentityRecords(support as never), code("FORBIDDEN"));
+    await assert.rejects(identityRecordFor(client as never, traveller.id, "EXPORT"), code("FORBIDDEN"));
+
+    // Retention: nothing is deleted early; 30 days after the decision the photos go, the decision and the identity record stay.
+    assert.equal((await purgeExpiredIdImages(new Date(Date.now() + 29 * 86_400_000))).idImagesDeleted, 0);
+    const purged = await purgeExpiredIdImages(new Date(Date.now() + 31 * 86_400_000));
     assert(purged.idImagesDeleted >= 4);
     assert.equal(await db.idDocumentImage.count({ where: { verificationId: { in: [submitted.id, proUpload.id] } } }), 0);
     row = await db.idVerification.findUniqueOrThrow({ where: { id: submitted.id } });
@@ -134,6 +195,9 @@ test("ID verification: upload, gating, admin decision, re-upload, private viewin
     assert(await db.auditLog.findFirst({ where: { action: "ID_IMAGES_DELETED", target: submitted.id, actorId: null, meta: { path: ["reason"], equals: "RETENTION" } } }));
     await assert.rejects(readIdImage(admin, submitted.id, "FRONT"), code("NOT_FOUND"));
     await requireIdApproved(await actorOf(client.id));
+    assert.equal(await db.identityRecord.count({ where: { userId: { in: [client.id, traveller.id] } } }), 2);
+    assert.equal((await identityRecordFor(admin, client.id, "VIEW")).record?.documentNumber, "12345678A");
+    await assert.rejects(db.user.delete({ where: { id: client.id } }));
 
     // Switch off: nothing is enforced (a deploy before the owner turns uploads on locks nobody out).
     const fresh = await actorOf((await mk("CLIENT", "Pa ID")).id);

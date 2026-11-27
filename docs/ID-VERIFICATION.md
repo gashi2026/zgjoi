@@ -30,11 +30,27 @@ declines each one at `/admin/verifikimi`. No hired staff and no third-party KYC 
   - ADMIN and SUPPORT are never gated.
 - **Audit** `ID_SUBMITTED`, `ID_APPROVED`, `ID_DECLINED` (reason, note), `ID_IMAGE_VIEWED`,
   `ID_IMAGES_DELETED` (reason `RETENTION`, `REPLACED_AFTER_DECLINE`, `REPLACED_WHILE_PENDING`).
-- **Retention** constants in `lib/id-verification.ts`: photos are deleted
-  `ID_RETENTION_DAYS_AFTER_APPROVAL = 90` days after approval and
-  `ID_RETENTION_DAYS_AFTER_DECLINE = 30` days after the latest decline. The decision and
-  dates stay. Deletion runs in the existing daily cron `/api/cron/recurring` (the plan allows
+- **Retention** (owner, 26 Nov 2026) constants in `lib/id-verification.ts`: photos are
+  deleted 30 days after ANY decision (`ID_RETENTION_DAYS_AFTER_APPROVAL = 30`,
+  `ID_RETENTION_DAYS_AFTER_DECLINE = 30`). The decision, dates and the identity record stay. Deletion runs in the existing daily cron `/api/cron/recurring` (the plan allows
   two crons, both already used) and every deletion is logged.
+
+## Permanent identity record (for authorities)
+- Table `IdentityRecord` (one per user, FK `ON DELETE RESTRICT`, RLS on, service role only).
+- Filled by the reviewer from the document when approving; approval is refused without:
+  legal full name, date of birth, document type (ID card / passport), document number,
+  issuing country, expiry date. Validation: real dates, age ≥ `ID_MIN_AGE_YEARS` (18),
+  document not expired (Kosovo date).
+- Date of birth and document number are AES-256-GCM encrypted with `ENCRYPTION_KEY`
+  (`birthDateEnc`, `documentNoEnc`); only the last 4 characters of the number are kept in
+  clear for searching. Verified date and who verified are stored on the record; decisions,
+  reasons and every attempt come from `IdVerification` + `AuditLog`.
+- Never touched by the photo cleanup.
+- Pages: `/admin/verifikimi/regjistri` (search by name, email, last 4; no decrypted data)
+  and `/admin/verifikimi/regjistri/<userId>` (full record + history). `?eksport=1` opens a
+  printable sheet and the print dialog (Save as PDF) to hand to authorities.
+- Access: ADMIN, or SUPPORT with the per-user grant (checked on every request).
+  Audit: `ID_RECORD_CREATED`, `ID_RECORD_VIEWED`, `ID_RECORD_EXPORTED` (no plaintext in audit).
 
 ## Enforcement switch
 Enforcement and uploads are on only when `DOCUMENT_UPLOADS_ENABLED=true` **and**
@@ -42,7 +58,7 @@ Enforcement and uploads are on only when `DOCUMENT_UPLOADS_ENABLED=true` **and**
 page says uploads are not available yet, so merging this code cannot lock anyone out.
 
 ## What production needs (nothing here has been done)
-1. Apply `supabase/production/20261128_id_verification.sql` (additive: two new tables, RLS on)
+1. Apply `supabase/production/20261128_id_verification.sql` (additive: three new tables, RLS on, plus `User.canReviewIds`)
    **before** this code reaches `main`. Take a backup first, as for previous rollouts.
 2. No Supabase Storage bucket is needed. `ENCRYPTION_KEY` already exists in production and
    must stay the same (rotating it makes stored ID photos unreadable).

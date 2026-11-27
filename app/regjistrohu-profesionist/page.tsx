@@ -10,7 +10,7 @@ export default async function Page() {
       endpoint="/api/auth/register"
       label="Dërgo regjistrimin"
       values={{ role: "PRO" }}
-      text={`Profili juaj shqyrtohet para se të shfaqet në kërkim. ${idUploadsAvailable() ? "Pas regjistrimit ngarkoni foton e letërnjoftimit (para dhe mbrapa); pa miratimin e saj nuk shfaqeni dhe nuk pranoni punë. " : ""}Klientët ju kontaktojnë drejtpërdrejt; ju dërgoni ofertën tuaj.`}
+      text={`Profili juaj shqyrtohet para se të shfaqet në kërkim. ${idUploadsAvailable() ? "Pas regjistrimit ngarkoni letërnjoftimin (para dhe mbrapa) ose pasaportën; pa miratimin e saj nuk shfaqeni dhe nuk pranoni punë. " : ""}Klientët ju kontaktojnë drejtpërdrejt; ju dërgoni ofertën tuaj.`}
       fields={[
         {
           name: "name",

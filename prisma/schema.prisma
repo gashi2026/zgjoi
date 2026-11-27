@@ -96,6 +96,8 @@ model User {
   city            String?
   emailVerified   DateTime?
   suspendedAt     DateTime?
+  /// SUPPORT only: the owner can grant/revoke reviewing ID documents. Ignored for other roles.
+  canReviewIds    Boolean   @default(false)
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
@@ -111,6 +113,7 @@ model User {
   notifications   Notification[]
   favorites       Favorite[]
   idVerification  IdVerification?  @relation("IdVerificationUser")
+  identityRecord  IdentityRecord?  @relation("IdentityRecordUser")
 
   @@index([role])
   @@index([email])
@@ -854,6 +857,8 @@ model IdVerification {
   id              String    @id @default(cuid())
   userId          String    @unique
   status          String    @default("PENDING")
+  /// ID_CARD (front + back) | PASSPORT (photo page; second image optional)
+  documentType    String    @default("ID_CARD")
   submittedAt     DateTime  @default(now())
   attempts        Int       @default(1)
   decidedAt       DateTime?
@@ -887,4 +892,28 @@ model IdDocumentImage {
   verification   IdVerification @relation(fields: [verificationId], references: [id], onDelete: Cascade)
 
   @@unique([verificationId, side])
+}
+
+/// Permanent identity record, filled by the reviewer from the ID when approving. Kept for
+/// legal and safety reporting; never removed by the photo cleanup. DOB and document number
+/// are AES-256-GCM encrypted with ENCRYPTION_KEY.
+model IdentityRecord {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  legalName       String
+  birthDateEnc    String
+  documentType    String // ID_CARD | PASSPORT
+  documentNoEnc   String
+  documentNoLast4 String
+  issuingCountry  String
+  expiresOn       DateTime @db.Date
+  verifiedAt      DateTime
+  verifiedById    String
+  verificationId  String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  user            User     @relation("IdentityRecordUser", fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([legalName])
+  @@index([documentNoLast4])
 }

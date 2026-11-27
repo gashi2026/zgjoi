@@ -151,3 +151,11 @@ html { scroll-padding-top: 5rem; }
 @media (max-width: 640px) { input, select, textarea { font-size: 16px; } }
 .homepage-reference-footer input { font-size: 0.875rem; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; } }
+
+/* Identity record export: print only the record sheet (no site header, footer, nav or chat button). */
+@media print {
+  body:has([data-print-sheet]) * { visibility: hidden; }
+  body:has([data-print-sheet]) [data-print-sheet], body:has([data-print-sheet]) [data-print-sheet] * { visibility: visible; }
+  body:has([data-print-sheet]) [data-print-sheet] { position: absolute; left: 0; top: 0; width: 100%; border: 0; box-shadow: none; padding: 0; }
+  @page { margin: 16mm; }
+}

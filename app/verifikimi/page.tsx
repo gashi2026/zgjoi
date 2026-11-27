@@ -2,9 +2,9 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { pageGuard } from "@/lib/server/guard";
 import { accountHome } from "@/lib/server/auth";
-import { idStatusFor, idUploadsAvailable } from "@/lib/server/id-verification";
+import { CLIENT_BROWSE_ONLY, idStatusFor, idUploadsAvailable } from "@/lib/server/id-verification";
 import { dateTime } from "@/lib/format";
-import { declineText, needsIdCheck } from "@/lib/id-verification";
+import { asDocumentType, declineText, idDocumentTypeLabels, needsIdCheck } from "@/lib/id-verification";
 import Frame, { Panel } from "@/components/marketplace/Frame";
 import IdUploadForm from "@/components/verification/IdUploadForm";
 import PrivacyNote from "@/components/verification/PrivacyNote";
@@ -21,7 +21,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ f
   const unlocks = pro ? "të shfaqeni në kërkim dhe të pranoni punë" : "të rezervoni, të punësoni dhe të kërkoni vlerësime";
   return (
     <Frame actor={actor} hideIdNotice title="Verifikimi i identitetit"
-      subtitle={`Çdo klient dhe profesionist në Zgjoi verifikohet. Pas miratimit mund ${unlocks}.`}>
+      subtitle={`Çdo klient dhe profesionist në Zgjoi verifikohet. Pas miratimit mund ${unlocks}.${!pro && row?.status !== "APPROVED" ? ` ${CLIENT_BROWSE_ONLY}` : ""}`}>
       {fillim && !row && (
         <Panel>
           <p className="font-bold">Llogaria u krijua. Hapi i fundit: verifikoni identitetin.</p>
@@ -50,7 +50,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ f
             <HexBadge>⏳</HexBadge>
             <div>
               <p className="text-lg font-bold">Dokumenti juaj është në shqyrtim</p>
-              <p className="text-sm text-muted">Dërguar më {dateTime(row.submittedAt)}. Zakonisht e shqyrtojmë brenda 24 orëve dhe ju njoftojmë këtu{actor.emailVerified ? " dhe me email" : ""}.</p>
+              <p className="text-sm text-muted">{idDocumentTypeLabels[asDocumentType(row.documentType)]} · dërguar më {dateTime(row.submittedAt)}. Zakonisht e shqyrtojmë brenda 24 orëve dhe ju njoftojmë këtu{actor.emailVerified ? " dhe me email" : ""}.</p>
             </div>
           </div>
           <details className="mt-4 rounded-xl border border-line p-3">
@@ -72,7 +72,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ f
           ) : (
             <h2 className="mb-1 text-lg font-bold">Fotografoni dokumentin tuaj</h2>
           )}
-          <p className="mb-4 text-sm text-muted">Na duhen dy foto: ana e përparme dhe ana e pasme e dokumentit tuaj të identifikimit.</p>
+          <p className="mb-4 text-sm text-muted">Pranohet vetëm letërnjoftimi (dy foto: para dhe mbrapa) ose pasaporta (faqja me foto).</p>
           <IdUploadForm resubmit={row?.status === "DECLINED"} />
         </Panel>
       )}
