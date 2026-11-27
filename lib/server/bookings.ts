@@ -20,6 +20,7 @@ import {
   estimateSplit,
 } from "../book-now";
 import { clientKey, cleanText, entityId, euroAmount } from "../marketplace-validation";
+import { municipalityName } from "../kosovo-municipalities";
 import { money, clockTime } from "../format";
 import { checkCancellationAlert } from "./trust";
 import { createDispute } from "./disputes";
@@ -117,7 +118,7 @@ export const bookNowInput = z.object({
   startsAt: z.string().datetime(),
   minutes: z.coerce.number().int(),
   detail: cleanText(10, 4000),
-  city: cleanText(1, 60),
+  city: municipalityName,
   address: z.string().trim().max(300).optional(),
   repeat: z.enum(["NONE", ...SERIES_CADENCES]).optional(),
 });

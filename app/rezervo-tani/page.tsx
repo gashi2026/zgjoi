@@ -59,7 +59,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ p
               hint: t("bookNow.recurringBookingEachVisit", { GENERATION_HORIZON_DAYS: GENERATION_HORIZON_DAYS, MIN_AHEAD_DAYS: MIN_AHEAD_DAYS }) },
             { name: "detail", label: t("bookNow.whatNeedsDoing"), type: "textarea", required: true, minLength: 10, maxLength: 4000,
               hint: t("bookNow.noPhoneNumbersEmails") },
-            { name: "city", label: t("bookNow.city"), value: actor.city ?? "", required: true, maxLength: 60 },
+            { name: "city", label: t("bookNow.city"), value: actor.city ?? "", required: true, type: "municipality" },
             { name: "address", label: t("bookNow.address"), maxLength: 300, hint: t("bookNow.shownProOncePayment") },
           ]} />
         </IdGate>

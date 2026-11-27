@@ -7,6 +7,8 @@ import { AppError } from "./errors";
 import { serializable } from "./transaction";
 import { opaqueToken, hashToken, validToken } from "./tokens";
 import { readMfa } from "./mfa-state";
+import { liftExpiredSuspension } from "./suspension";
+import { suspensionIsActive } from "../suspension";
 export type Role = "CLIENT" | "PRO" | "ADMIN" | "SUPPORT";
 
 const COOKIE = "zgjoi_session";
@@ -49,9 +51,10 @@ export async function persistSession(userId: string, expectedPasswordHash: strin
     await tx.$queryRaw`SELECT id FROM public."User" WHERE id = ${userId} FOR UPDATE`;
     const user = await tx.user.findUnique({
       where: { id: userId },
-      select: { suspendedAt: true, passwordHash: true, role: true },
+      select: { suspendedAt: true, suspendedUntil: true, deletedAt: true, passwordHash: true, role: true },
     });
-    if (!user || user.suspendedAt || user.passwordHash !== expectedPasswordHash) throw new AuthError("UNAUTHENTICATED");
+    if (user) await liftExpiredSuspension(tx, { id: userId, ...user });
+    if (!user || suspensionIsActive(user) || user.passwordHash !== expectedPasswordHash) throw new AuthError("UNAUTHENTICATED");
     const mfa = await readMfa(tx, userId);
     if (mfa?.enabled && mfa.version !== mfaVersion) throw new AuthError("MFA_REQUIRED");
     const expiresAt = new Date(Date.now() + (["ADMIN", "SUPPORT"].includes(user.role) ? STAFF_SESSION_MS : DAYS * 864e5));
@@ -109,6 +112,8 @@ export const currentUser = cache(async () => {
           role: true,
           city: true,
           suspendedAt: true,
+          suspendedUntil: true,
+          deletedAt: true,
           emailVerified: true,
           signupStep: true,
           proProfile: { select: { id: true, slug: true, verification: true } },
@@ -118,10 +123,13 @@ export const currentUser = cache(async () => {
   });
 
   if (!session || session.expiresAt <= new Date()) return null;
-  if (session.user.suspendedAt) return null;
+  if (session.user.deletedAt) return null;
+  await liftExpiredSuspension(db, session.user);
+  if (suspensionIsActive(session.user)) return null;
   if (["ADMIN", "SUPPORT"].includes(session.user.role) &&
       session.createdAt.getTime() + STAFF_SESSION_MS <= Date.now()) return null;
-  return session.user;
+  const { suspendedUntil: _until, deletedAt: _deleted, ...user } = session.user;
+  return user;
 });
 
 /* --------------------------------------------------------- guard rails */
