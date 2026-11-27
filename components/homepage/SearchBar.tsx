@@ -2,15 +2,16 @@
 
 import { useRouter } from "@/lib/i18n/client";
 import { useId, useState } from "react";
-import { Search, MapPin, type LucideIcon } from "lucide-react";
-import { categories, cities } from "@/lib/homepage-reference-data";
+import { Search, type LucideIcon } from "lucide-react";
+import { categories } from "@/lib/homepage-reference-data";
 import { useT } from "@/lib/i18n/client";
+import MunicipalitySelect from "@/components/marketplace/MunicipalitySelect";
 
 const normalize = (text: string) => text.trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 
-function SearchField({ value, onChange, label, options, icon: Icon, cityField = false }: {
+function SearchField({ value, onChange, label, options, icon: Icon }: {
   value: string; onChange: (value: string) => void; label: string;
-  options: string[]; icon: LucideIcon; cityField?: boolean;
+  options: string[]; icon: LucideIcon;
 }) {
   const id = useId();
   const [open, setOpen] = useState(false);
@@ -22,14 +23,14 @@ function SearchField({ value, onChange, label, options, icon: Icon, cityField = 
   function choose(option: string) { onChange(option); setOpen(false); setActive(-1); }
 
   return (
-    <div className={`relative flex flex-1 items-center gap-2.5 rounded-full px-4 py-3 sm:py-2.5 ${cityField ? "border-t border-line sm:border-0" : ""}`}>
+    <div className="relative flex h-11 flex-1 items-center gap-2.5 rounded-full px-4 sm:h-auto sm:py-2.5">
       <Icon size={18} className="shrink-0 text-muted" aria-hidden="true" />
       <input
         type="text" value={value} placeholder={label} aria-label={label}
         role="combobox" aria-autocomplete="list" aria-expanded={expanded}
         aria-controls={expanded ? id : undefined}
         aria-activedescendant={expanded && active >= 0 ? `${id}-${active}` : undefined}
-        className="w-full bg-transparent text-sm outline-none placeholder:text-muted"
+        className="w-full bg-transparent text-base outline-none placeholder:text-muted"
         autoComplete="off"
         onChange={(event) => { onChange(event.target.value); setOpen(true); setActive(-1); }}
         onFocus={() => setOpen(true)} onBlur={() => { setOpen(false); setActive(-1); }}
@@ -45,12 +46,12 @@ function SearchField({ value, onChange, label, options, icon: Icon, cityField = 
         }}
       />
       {expanded && (
-        <ul id={id} role="listbox" aria-label={label} className="absolute left-0 top-full z-50 mt-1 w-full overflow-hidden rounded-2xl border border-line bg-white shadow-card">
+        <ul id={id} role="listbox" aria-label={label} className="absolute left-0 top-full z-50 mt-1 max-h-[50vh] w-full overflow-y-auto rounded-2xl border border-line bg-white shadow-card">
           {suggestions.map((option, index) => (
             <li key={option} role="presentation">
               <button id={`${id}-${index}`} type="button" role="option" aria-selected={active === index} tabIndex={-1}
                 onPointerDown={(event) => event.preventDefault()} onClick={() => choose(option)}
-                className={`flex w-full items-center gap-2 px-4 py-3 text-left text-sm text-ink hover:bg-cream ${active === index ? "bg-cream" : ""}`}>
+                className={`flex min-h-11 w-full items-center gap-2 px-4 py-2 text-left text-sm text-ink hover:bg-cream ${active === index ? "bg-cream" : ""}`}>
                 <Icon size={14} className="text-muted" />
                 {option}
               </button>
@@ -71,7 +72,7 @@ export default function SearchBar({ initialQuery = "", initialCity = "", compact
   const [city, setCity] = useState(initialCity);
   return (
       <form role="search" aria-label={t("searchBar.searchPros")}
-        className={`flex w-full flex-col gap-2 rounded-2xl border border-line bg-white p-2 shadow-card sm:flex-row sm:items-center sm:rounded-full ${compact ? "" : "sm:p-2"}`}
+        className={`flex w-full flex-col gap-0 rounded-2xl border border-line bg-white p-1.5 shadow-card sm:flex-row sm:items-center sm:gap-0 sm:rounded-full ${compact ? "" : "sm:p-2"}`}
         onSubmit={(event) => {
           event.preventDefault();
           const params = new URLSearchParams();
@@ -81,8 +82,10 @@ export default function SearchBar({ initialQuery = "", initialCity = "", compact
         }}>
         <SearchField value={query} onChange={setQuery} label={t("searchBar.whatServiceDoNeed")} options={categories.map((category) => t.tx(category.name))} icon={Search} />
         <div className="hidden h-7 w-px bg-line sm:block" aria-hidden="true" />
-        <SearchField cityField value={city} onChange={setCity} label={t("searchBar.municipalityCity")} options={cities} icon={MapPin} />
-        <button type="submit" className="w-full rounded-full bg-gold px-7 py-3 text-sm font-semibold text-ink transition-all hover:bg-gold-dark hover:shadow-lift sm:w-auto">{t("searchBar.search")}</button>
+        <div className="border-t border-line sm:border-0 sm:contents">
+          <MunicipalitySelect variant="plain" name="qyteti" value={city} onChange={setCity} />
+        </div>
+        <button type="submit" className="h-11 min-h-11 w-full rounded-full bg-gold px-7 text-base font-semibold text-ink transition-all hover:bg-gold-dark hover:shadow-lift sm:h-auto sm:min-h-0 sm:w-auto sm:py-3">{t("searchBar.search")}</button>
       </form>
   );
 }

@@ -32,6 +32,11 @@ body {
   .service-search-form { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .service-search-form > button { grid-column: 1 / -1; }
 }
+/* Thin divider between the service and city fields; direction follows the grid. */
+.service-search-form .search-city { border-top: 1px solid #ECE7DD; }
+@container service-search (min-width: 24rem) {
+  .service-search-form .search-city { border-top: none; border-left: 1px solid #ECE7DD; }
+}
 .hive-scroll { scrollbar-width: thin; scrollbar-color: #e89d00 #fff3cf; }
 
 ::selection {

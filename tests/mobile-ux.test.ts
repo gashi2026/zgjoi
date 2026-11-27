@@ -218,3 +218,30 @@ test("the chat button and honeycomb source keep the gold hive styling", () => {
   const nav = readFileSync("components/MobileBottomNav.tsx", "utf8");
   assert.match(nav, /data-zg-bottom-nav/);
 });
+
+test("hero and /kerko search bars are compact on mobile, with 16px inputs and an overlay municipality list", () => {
+  const search = readFileSync("components/SearchBar.tsx", "utf8");
+  const homeSearch = readFileSync("components/homepage/SearchBar.tsx", "utf8");
+  const select = readFileSync("components/marketplace/MunicipalitySelect.tsx", "utf8");
+  const kerko = readFileSync("app/kerko/page.tsx", "utf8");
+  const css = readFileSync("app/globals.css", "utf8");
+
+  for (const source of [search, homeSearch]) {
+    assert.match(source, /MunicipalitySelect/);
+    assert.match(source, /variant="plain"/);
+    assert.match(source, /text-base/);
+    assert.match(source, /h-11/);
+    assert.doesNotMatch(source, /text-sm outline-none/);
+    assert.doesNotMatch(source, /min-h-12 rounded-xl bg-gold px-6 py-3/);
+  }
+  assert.match(search, /sm:min-h-12/);
+  assert.match(css, /service-search-form \.search-city/);
+  assert.match(css, /max-width: 35\.999rem|border-top: 1px solid/);
+  assert.match(select, /variant\?: "field" \| "plain"/);
+  assert.match(select, /max-h-\[50vh\]/);
+  assert.match(select, /position: "fixed"|position:"fixed"|fixed z-\[80\]/);
+  assert.match(kerko, /MunicipalitySelect/);
+  assert.match(kerko, /h-11/);
+  assert.match(kerko, /text-base/);
+  assert.doesNotMatch(kerko, /from "@\/lib\/data"/);
+});
