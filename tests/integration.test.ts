@@ -1085,7 +1085,7 @@ test("database-backed private marketplace and authorization journey", async (t) 
     assert.equal(occurrences[1].request.payment?.state, "PENDING");
     assert((await http("/llogaria/perseritjet", cj)).text.includes("Çdo javë"));
     assert((await http("/pro/perseritjet", pjar)).text.includes("Pauzo"));
-    assert((await http(`/llogaria/kerkesat/${occurrences[1].requestId}`, cj)).text.includes("Rezervim i përsëritur"));
+    assert((await http(`/llogaria/kerkesat/${occurrences[1].requestId}`, cj)).text.includes("Abonim"));
     ok(await http(`/api/recurring/${series.id}`, sj, { action: "PAUSE" }), 404);
     ok(await http(`/api/recurring/${series.id}`, cj, { action: "DECLINE" }), 409);
     // Pause: the visit within 24 h stays; the one a week later is cancelled free.
@@ -1125,7 +1125,7 @@ test("database-backed private marketplace and authorization journey", async (t) 
     const proposal = await db.recurringSeries.findUniqueOrThrow({ where: { id: proposed.id } });
     assert.deepEqual([proposal.status, proposal.proposedBy, proposal.sourceRequestId], ["PROPOSED", "PRO", plain.id]);
     assert.equal(proposal.firstStartsAt.getTime() - plainBooking.startsAt.getTime(), 14 * 86400000);
-    assert((await http(`/llogaria/kerkesat/${plain.id}`, cj)).text.includes("Konfirmo përsëritjen"));
+    assert((await http(`/llogaria/kerkesat/${plain.id}`, cj)).text.includes("Konfirmo abonimin"));
     ok(await cron());
     assert.equal(await db.booking.count({ where: { seriesId: proposal.id } }), 0, "a proposal books nothing");
     ok(await http(`/api/recurring/${proposal.id}`, pjar, { action: "CONFIRM" }), 403);
