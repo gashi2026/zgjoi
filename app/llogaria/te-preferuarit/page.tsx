@@ -6,7 +6,9 @@ import { publicProSelect, activeCategories } from "@/lib/server/catalog";
 import Frame, { Panel } from "@/components/marketplace/Frame";
 import CatalogCard from "@/components/marketplace/CatalogCard";
 import ApiForm from "@/components/marketplace/ApiForm";
+import { getT } from "@/lib/i18n/server";
 export default async function Page() {
+  const t = await getT();
   const actor = await pageGuard("CLIENT");
   const categories = await activeCategories();
   const rows = await db.favorite.findMany({
@@ -23,12 +25,10 @@ export default async function Page() {
     select: { id: true, profile: { select: publicProSelect } },
   });
   return (
-    <Frame actor={actor} title="Të preferuarit">
+    <Frame actor={actor} title={t("account.favourites")}>
       {!rows.length && (
         <Panel>
-          Nuk keni ruajtur profesionistë ende. Përdorni butonin në profilin e
-          profesionistit.
-        </Panel>
+          {t("account.haventSavedAnyPros")}</Panel>
       )}
       <div className="grid gap-5 sm:grid-cols-2">
         {rows.map((row) => (
@@ -43,7 +43,7 @@ export default async function Page() {
             <ApiForm
               endpoint="/api/favorites"
               values={{ profileId: row.profile.id, saved: false }}
-              label="Hiq nga lista"
+              label={t("account.removeFromList")}
             />
           </div>
         ))}

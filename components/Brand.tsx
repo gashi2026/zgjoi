@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/i18n/Link";
 
 /* ------------------------------------------------------------------ */
 /*  Honeycomb logo mark — three interlocking outlined hexagons        */
@@ -234,7 +234,7 @@ export function Stars({
   return (
     <span
       className={`inline-flex items-center gap-0.5 ${className}`}
-      aria-label={`${rating} nga 5 yje`}
+      aria-label={`${rating}/5 ★`}
     >
       {[1, 2, 3, 4, 5].map((i) => (
         <svg

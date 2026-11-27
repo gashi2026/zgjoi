@@ -8,6 +8,7 @@ import { requireRole } from "@/lib/server/auth";
 import { invariant } from "@/lib/server/errors";
 import { entityId, cleanText } from "@/lib/marketplace-validation";
 import { categories as baseCategories } from "@/lib/data";
+import { getT } from "@/lib/i18n/server";
 const slugify = (s: string) =>
   s
     .toLowerCase()
@@ -39,11 +40,12 @@ export async function seedCategories() {
   refresh();
 }
 export async function createCategory(fd: FormData) {
+  const t = await getT();
   const actor = await requireRole("ADMIN");
   const name = cleanText(2, 100).parse(fd.get("name")),
     icon = cleanText(1, 80).parse(fd.get("icon") || "sparkles");
   const slug = slugify(String(fd.get("slug") || name));
-  invariant(serviceCategory(slug)?.slug === slug, "CATEGORY", 400, "Vetëm 14 kategoritë e miratuara janë të disponueshme.");
+  invariant(serviceCategory(slug)?.slug === slug, "CATEGORY", 400, t("actions.only14ApprovedCategories"));
   await db.$transaction(async (tx) => {
     const last = await tx.category.aggregate({ _max: { position: true } });
     const category = await tx.category.upsert({
@@ -62,12 +64,13 @@ export async function createCategory(fd: FormData) {
   refresh();
 }
 export async function updateCategory(fd: FormData) {
+  const t = await getT();
   const actor = await requireRole("ADMIN"),
     id = entityId.parse(fd.get("id")),
     name = cleanText(2, 100).parse(fd.get("name")),
     icon = cleanText(1, 80).parse(fd.get("icon") || "sparkles");
   const existing = await db.category.findUniqueOrThrow({ where: { id } });
-  invariant(serviceCategory(existing.slug), "CATEGORY", 400, "Kjo kategori nuk është në listën e miratuar.");
+  invariant(serviceCategory(existing.slug), "CATEGORY", 400, t("actions.categoryIsntApprovedList"));
   await db.$transaction([
     db.category.update({ where: { id }, data: { name, icon } }),
     db.auditLog.create({
@@ -80,8 +83,9 @@ export async function toggleCategory(fd: FormData) {
   const actor = await requireRole("ADMIN"),
     id = entityId.parse(fd.get("id"));
   await db.$transaction(async (tx) => {
+  const t = await getT();
     const c = await tx.category.findUniqueOrThrow({ where: { id } });
-    invariant(serviceCategory(c.slug), "CATEGORY", 400, "Kjo kategori nuk është në listën e miratuar.");
+    invariant(serviceCategory(c.slug), "CATEGORY", 400, t("actions.categoryIsntApprovedList"));
     await tx.category.update({ where: { id }, data: { active: !c.active } });
     await tx.auditLog.create({
       data: {
@@ -107,6 +111,7 @@ export async function deleteCategory(fd: FormData) {
   refresh();
 }
 export async function saveSiteSettings(fd: FormData) {
+  const t = await getT();
   const actor = await requireRole("ADMIN");
   const data = z
     .object({
@@ -122,7 +127,7 @@ export async function saveSiteSettings(fd: FormData) {
             !s ||
             (s.startsWith("/") && !s.startsWith("//")) ||
             /^https:\/\//.test(s),
-          "Përdorni adresë HTTPS ose skedar lokal.",
+          t("actions.useHttpsAddressLocal"),
         ),
     })
     .parse(
@@ -150,6 +155,7 @@ export async function saveSiteSettings(fd: FormData) {
   refresh();
 }
 export async function saveHoneycomb(fd: FormData) {
+  const t = await getT();
   const actor = await requireRole("ADMIN");
   const categories = await activeServiceCategories(),
     map: Record<string, string> = {};
@@ -161,14 +167,14 @@ export async function saveHoneycomb(fd: FormData) {
         /^[\d.,-]{1,20}$/.test(cell),
         "CELL",
         400,
-        "Qeliza nuk është e vlefshme.",
+        t("actions.cellIsntValid"),
       );
       if (slug && slug !== "—") {
         invariant(
           categories.some((c) => c.slug === slug),
           "CATEGORY",
           400,
-          "Kategoria nuk është aktive.",
+          t("actions.categoryIsntActive"),
         );
         map[cell] = slug;
       }
@@ -194,12 +200,13 @@ export async function saveHoneycomb(fd: FormData) {
 /** Per-category hiring paths: flip Book now or the paid estimate for one
  * approved category. Creates the category row when only the code default exists. */
 export async function setHiringFlow(fd: FormData) {
+  const t = await getT();
   const actor = await requireRole("ADMIN");
   const slug = z.string().min(1).max(80).parse(fd.get("slug"));
   const field = z.enum(["bookNowEnabled", "estimateEnabled"]).parse(fd.get("field"));
   const value = z.enum(["true", "false"]).parse(fd.get("value")) === "true";
   const category = serviceCategory(slug);
-  invariant(category, "CATEGORY", 400, "Kjo kategori nuk është në listën e miratuar.");
+  invariant(category, "CATEGORY", 400, t("actions.categoryIsntApprovedList"));
   await db.$transaction(async (tx) => {
     await tx.category.upsert({
       where: { slug: category.slug },

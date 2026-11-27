@@ -1,13 +1,15 @@
 import AuthPage from "@/components/marketplace/AuthPage";
-export default function Page() {
+import { getT } from "@/lib/i18n/server";
+export default async function Page() {
+  const t = await getT();
   return (
     <AuthPage
-      title="Rivendosni fjalëkalimin"
+      title={t("auth.resetPassword")}
       endpoint="/api/auth/forgot"
-      label="Kërko lidhjen"
-      text="Shkruani emailin e llogarisë. Nëse llogaria ekziston, do të regjistrojmë kërkesën tuaj për rivendosje."
+      label={t("auth.sendLink")}
+      text={t("auth.enterAccountEmailIf")}
       fields={[
-        { name: "email", label: "Emaili", type: "email", required: true },
+        { name: "email", label: t("auth.email"), type: "email", required: true },
       ]}
     />
   );

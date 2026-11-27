@@ -1,5 +1,6 @@
-import Link from "next/link";
-import { redirect, notFound } from "next/navigation";
+import { localRedirect } from "@/lib/i18n/redirect";
+import Link from "@/components/i18n/Link";
+import { notFound } from "next/navigation";
 import { pageGuard } from "@/lib/server/guard";
 import { publicProfile } from "@/lib/server/catalog";
 import { db } from "@/lib/server/db";
@@ -7,6 +8,7 @@ import { dateTime, stateLabel } from "@/lib/format";
 import Frame, { Panel } from "@/components/marketplace/Frame";
 import ApiForm from "@/components/marketplace/ApiForm";
 import { IdGate } from "@/components/verification/IdNotice";
+import { getT } from "@/lib/i18n/server";
 /** Chat-then-hire: the customer opens a private chat with one chosen pro and
  * describes the job as the first message. There is no public job posting. */
 export default async function Page({
@@ -14,9 +16,10 @@ export default async function Page({
 }: {
   searchParams: Promise<{ pro?: string }>;
 }) {
+  const t = await getT();
   const actor = await pageGuard("CLIENT");
   const { pro: id } = await searchParams;
-  if (!id) redirect("/kerko");
+  if (!id) return localRedirect("/kerko");
   const pro = await publicProfile(id);
   if (!pro) notFound();
   const open = await db.serviceRequest.findMany({
@@ -32,66 +35,64 @@ export default async function Page({
   return (
     <Frame
       actor={actor}
-      title={`Bisedë me ${pro.user.name}`}
-      subtitle={`Biseda është private: e shihni vetëm ju dhe ${pro.user.name}. Administrata e sheh vetëm kur kërkoni mbështetje.`}
+      title={t("newChat.chat", { name: pro.user.name })}
+      subtitle={t("newChat.chatPrivateOnlyCan", { name: pro.user.name })}
     >
       {open.length > 0 && (
         <Panel>
-          <h2 className="font-bold">Keni tashmë biseda të hapura me {pro.user.name}</h2>
+          <h2 className="font-bold">{t("newChat.alreadyHaveOpenChats", { name: pro.user.name })}</h2>
           <ul className="mt-3 space-y-2">
             {open.map((r) => (
               <li key={r.id}>
                 <Link className="font-semibold text-gold-dark" href={`/llogaria/kerkesat/${r.id}`}>
-                  {r.title} →
+                  {t.tx(r.title)} →
                 </Link>
                 <span className="ml-2 text-xs text-muted">
-                  {stateLabel(r.state)} · {dateTime(r.updatedAt)}
+                  {t.tx(stateLabel(r.state))} · {dateTime(r.updatedAt, t.locale)}
                 </span>
               </li>
             ))}
           </ul>
-          <p className="mt-3 text-sm text-muted">Për një punë tjetër, hapni një bisedë të re më poshtë.</p>
+          <p className="mt-3 text-sm text-muted">{t("newChat.differentJobStartNew")}</p>
         </Panel>
       )}
       <Panel>
-        <h2 className="mb-1 text-lg font-bold">Përshkruani punën</h2>
+        <h2 className="mb-1 text-lg font-bold">{t("newChat.describeJob")}</h2>
         <p className="mb-4 text-sm text-muted">
-          Ky është mesazhi juaj i parë. {pro.user.name} ju përgjigjet në bisedë dhe ju dërgon një ofertë me çmim.
-          Ju e punësoni me butonin “Puneso” vetëm kur jeni dakord.
-        </p>
+          {t("newChat.firstMessageRepliesChat", { name: pro.user.name })}</p>
         <IdGate actor={actor}>
         <ApiForm
           endpoint="/api/requests"
           idempotent
           values={{ profileId: pro.id }}
-          label="Fillo bisedën"
+          label={t("newChat.startChat")}
           fields={[
             {
               name: "detail",
-              label: "Çfarë pune ju nevojitet?",
+              label: t("newChat.whatJobDoNeed"),
               type: "textarea",
               required: true,
               minLength: 20,
               maxLength: 4000,
-              hint: "Mos përfshini numër telefoni, email ose lidhje para rezervimit: mesazhi bllokohet i tëri.",
+              hint: t("newChat.dontIncludePhoneNumber"),
             },
             {
               name: "city",
-              label: "Qyteti",
+              label: t("newChat.city"),
               value: actor.city ?? "",
               required: true,
               maxLength: 60,
             },
             {
               name: "timing",
-              label: "Kur ju nevojitet shërbimi? (opsionale)",
+              label: t("newChat.whenDoNeedOptional"),
               maxLength: 120,
             },
             {
               name: "address",
               label: "Adresa (opsionale)",
               maxLength: 200,
-              hint: "Shfaqet te profesionisti pasi pagesa të konfirmohet.",
+              hint: t("newChat.shownProOncePayment"),
             },
           ]}
         />

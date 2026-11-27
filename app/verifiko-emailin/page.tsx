@@ -1,12 +1,14 @@
 import AuthPage from "@/components/marketplace/AuthPage";
-export default function Page() {
+import { getT } from "@/lib/i18n/server";
+export default async function Page() {
+  const t = await getT();
   return (
     <AuthPage
-      title="Verifikoni emailin"
+      title={t("auth.verifyEmail")}
       endpoint="/api/auth/verify"
-      label="Konfirmo emailin"
+      label={t("auth.confirmEmail")}
       fragmentToken
-      text="Shtypni butonin për të konfirmuar adresën e emailit."
+      text={t("auth.pressButtonConfirmEmail")}
     />
   );
 }

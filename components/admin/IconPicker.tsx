@@ -1,63 +1,66 @@
 "use client";
+import { msgKey } from "@/lib/i18n/translate";
+import type { MessageKey } from "@/lib/i18n/messages/sq";
 
 import { useId, useRef, useState } from "react";
 import { ImagePlus, Loader2 } from "lucide-react";
 import BeltIcon, { CUSTOM_ICON_KEYS } from "@/components/BeltIcons";
+import { useT } from "@/lib/i18n/client";
 
 /* Icons from the shared set, with plain-language labels. */
-const SHARED: { key: string; label: string }[] = [
-  { key: "home", label: "Shtëpi" },
-  { key: "droplets", label: "Ujë / Hidraulik" },
-  { key: "zap", label: "Rrymë" },
-  { key: "sparkles", label: "Pastrim" },
-  { key: "paintbrush", label: "Furçë" },
-  { key: "leaf", label: "Gjeth / Kopsht" },
-  { key: "truck", label: "Kamion" },
-  { key: "wrench", label: "Çelës" },
-  { key: "hammer", label: "Çekiç" },
-  { key: "wind", label: "Klimë" },
-  { key: "shield", label: "Mburojë" },
-  { key: "wifi", label: "Internet" },
-  { key: "bookOpen", label: "Libër / Kurse" },
-  { key: "globe", label: "Glob" },
-  { key: "music", label: "Muzikë" },
-  { key: "code", label: "Programim" },
-  { key: "calculator", label: "Llogaritëse" },
-  { key: "heart", label: "Zemër" },
-  { key: "dumbbell", label: "Fitnes" },
-  { key: "apple", label: "Mollë" },
-  { key: "camera", label: "Kamerë" },
-  { key: "palette", label: "Paletë" },
-  { key: "video", label: "Video" },
-  { key: "car", label: "Veturë" },
-  { key: "scissors", label: "Gërshërë" },
-  { key: "briefcase", label: "Biznes" },
-  { key: "scale", label: "Peshore" },
-  { key: "megaphone", label: "Marketing" },
-  { key: "languages", label: "Përkthim" },
-  { key: "baby", label: "Bebe" },
-  { key: "mail", label: "Postë" },
-  { key: "calendar", label: "Kalendar" },
+const SHARED: { key: string; label: MessageKey }[] = [
+  { key: "home", label: msgKey("iconPicker.home") },
+  { key: "droplets", label: msgKey("iconPicker.waterPlumbing") },
+  { key: "zap", label: msgKey("iconPicker.electricity") },
+  { key: "sparkles", label: msgKey("iconPicker.cleaning") },
+  { key: "paintbrush", label: msgKey("iconPicker.brush") },
+  { key: "leaf", label: msgKey("iconPicker.leafGarden") },
+  { key: "truck", label: msgKey("iconPicker.truck") },
+  { key: "wrench", label: msgKey("iconPicker.wrench") },
+  { key: "hammer", label: msgKey("iconPicker.hammer") },
+  { key: "wind", label: msgKey("iconPicker.airConditioning") },
+  { key: "shield", label: msgKey("iconPicker.shield") },
+  { key: "wifi", label: msgKey("iconPicker.internet") },
+  { key: "bookOpen", label: msgKey("iconPicker.bookCourses") },
+  { key: "globe", label: msgKey("iconPicker.globe") },
+  { key: "music", label: msgKey("iconPicker.music") },
+  { key: "code", label: msgKey("iconPicker.programming") },
+  { key: "calculator", label: msgKey("iconPicker.calculator") },
+  { key: "heart", label: msgKey("iconPicker.heart") },
+  { key: "dumbbell", label: msgKey("iconPicker.fitness") },
+  { key: "apple", label: msgKey("iconPicker.apple") },
+  { key: "camera", label: msgKey("iconPicker.camera") },
+  { key: "palette", label: msgKey("iconPicker.palette") },
+  { key: "video", label: msgKey("iconPicker.video") },
+  { key: "car", label: msgKey("iconPicker.car") },
+  { key: "scissors", label: msgKey("iconPicker.scissors") },
+  { key: "briefcase", label: msgKey("iconPicker.business") },
+  { key: "scale", label: msgKey("iconPicker.scales") },
+  { key: "megaphone", label: msgKey("iconPicker.marketing") },
+  { key: "languages", label: msgKey("iconPicker.translation") },
+  { key: "baby", label: msgKey("iconPicker.baby") },
+  { key: "mail", label: msgKey("iconPicker.mail") },
+  { key: "calendar", label: msgKey("iconPicker.calendar") },
 ];
 
-const CUSTOM_LABELS: Record<string, string> = {
-  alarm: "Sirenë (Alarme)",
-  notary: "Dokument me vulë (Noter)",
-  architect: "Kompas & vizore (Arkitekt)",
-  cutlery: "Pirun & thikë (Ushqime)",
-  chef: "Kapelë kuzhinieri",
-  vet: "Putër me kryq (Veterinar)",
-  welding: "Maskë saldimi",
-  dogheart: "Qen me zemër",
-  towtruck: "Kamion tërheqës",
-  medical: "Kryq mjekësor",
-  nails: "Manikyr",
-  headphones2: "Kufje (DJ)",
-  camcorder: "Kamerë filmimi",
-  pentool: "Pen tool (Dizajn)",
-  dancer: "Valltar",
-  pointe: "Këpucë baleti",
-  carpenter: "Çekiç & dru",
+const CUSTOM_LABELS: Record<string, MessageKey> = {
+  alarm: msgKey("iconPicker.sirenAlarms"),
+  notary: msgKey("iconPicker.stampedDocumentNotary"),
+  architect: msgKey("iconPicker.compassArchitect"),
+  cutlery: msgKey("iconPicker.forkKnifeCatering"),
+  chef: msgKey("iconPicker.chefsHat"),
+  vet: msgKey("iconPicker.pawCrossVet"),
+  welding: msgKey("iconPicker.weldingMask"),
+  dogheart: msgKey("iconPicker.dogHeart"),
+  towtruck: msgKey("iconPicker.towTruck"),
+  medical: msgKey("iconPicker.medicalCross"),
+  nails: msgKey("iconPicker.manicure"),
+  headphones2: msgKey("iconPicker.headphonesDj"),
+  camcorder: msgKey("iconPicker.filmCamera"),
+  pentool: msgKey("iconPicker.penToolDesign"),
+  dancer: msgKey("iconPicker.dancer"),
+  pointe: msgKey("iconPicker.balletShoes"),
+  carpenter: msgKey("iconPicker.hammerWood"),
 };
 
 /* Shrink whatever lands here to a small square PNG, kept as text so it
@@ -100,6 +103,7 @@ export default function IconPicker({
   defaultValue?: string;
   id?: string;
 }) {
+  const t = useT();
   const isOwn = (v: string) => {
     const t = v.trim();
     return t.startsWith("<svg") || /^(https?:\/\/|data:image\/)/i.test(t);
@@ -122,7 +126,7 @@ export default function IconPicker({
   const takeFile = async (file: File | undefined | null) => {
     if (!file) return;
     if (!file.type.startsWith("image/")) {
-      setError("Zgjidh një imazh (PNG, SVG, JPG…).");
+      setError(t("iconPicker.chooseImagePngSvg"));
       return;
     }
     setError("");
@@ -130,7 +134,7 @@ export default function IconPicker({
     try {
       setOwn(await fileToIcon(file));
     } catch {
-      setError("Nuk e lexova dot imazhin — provo një tjetër.");
+      setError(t("iconPicker.couldntReadImageTry"));
     } finally {
       setBusy(false);
     }
@@ -155,8 +159,7 @@ export default function IconPicker({
                 mode === "library" ? "bg-white text-ink shadow-soft" : "text-muted"
               }`}
             >
-              Nga libraria
-            </button>
+              {t("iconPicker.fromLibrary")}</button>
             <button
               type="button"
               onClick={() => setMode("own")}
@@ -164,20 +167,19 @@ export default function IconPicker({
                 mode === "own" ? "bg-white text-ink shadow-soft" : "text-muted"
               }`}
             >
-              Imazhi im
-            </button>
+              {t("iconPicker.myImage")}</button>
           </div>
 
           {mode === "library" ? (
             <select id={id} value={picked} onChange={(e) => setPicked(e.target.value)} className={field}>
-              <optgroup label="Të vizatuara për Zgjoi">
+              <optgroup label={t("iconPicker.drawnZgjoi")}>
                 {CUSTOM_ICON_KEYS.map((k) => (
-                  <option key={k} value={k}>{CUSTOM_LABELS[k] ?? k}</option>
+                  <option key={k} value={k}>{CUSTOM_LABELS[k] ? t(CUSTOM_LABELS[k]) : k}</option>
                 ))}
               </optgroup>
-              <optgroup label="Të përgjithshme">
+              <optgroup label={t("iconPicker.general")}>
                 {SHARED.map((o) => (
-                  <option key={o.key} value={o.key}>{o.label}</option>
+                  <option key={o.key} value={o.key}>{t(o.label)}</option>
                 ))}
               </optgroup>
             </select>
@@ -205,9 +207,9 @@ export default function IconPicker({
                   <ImagePlus size={20} className="text-gold-dark" />
                 )}
                 <span className="text-xs font-bold text-ink">
-                  {own.startsWith("data:") ? "Imazhi u ngarkua" : "Tërhiq imazhin këtu"}
+                  {own.startsWith("data:") ? t("iconPicker.imageUploaded") : t("iconPicker.dragImageHere")}
                 </span>
-                <span className="text-[11px] text-muted">PNG me sfond transparent duket më së miri</span>
+                <span className="text-[11px] text-muted">{t("iconPicker.pngTransparentBackgroundLooks")}</span>
               </label>
 
               <input
@@ -226,7 +228,7 @@ export default function IconPicker({
                 id={id}
                 value={own.startsWith("data:") ? "" : own}
                 onChange={(e) => setOwn(e.target.value)}
-                placeholder="…ose ngjit një link / kod SVG"
+                placeholder={t("iconPicker.pasteLinkSvgCode")}
                 className={`${field} mt-2`}
               />
             </>

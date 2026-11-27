@@ -5,12 +5,14 @@ import MobileHexBelt from "./MobileHexBelt";
 import { activeCategories } from "@/lib/server/catalog";
 import { getHoneycombMap, getSiteSettings } from "@/lib/server/settings";
 import { categories as baseCategories } from "@/lib/data";
+import { getT } from "@/lib/i18n/server";
 
 export default async function Hero() {
-  let title = "Gjej profesionist për\nçdo shërbim.";
-  let accent = "Lehtë.";
+  const t = await getT();
+  let title = t("hero.findProAnyJob");
+  let accent = t("hero.easy");
   let subtitle =
-    "Gjej profesionistë lokalë të shqyrtuar në Kosovë dhe kërko një ofertë private. Tani në beta.";
+    t("hero.findVettedLocalPros");
   let services: Record<string, string> | undefined;
   let catalog: { slug: string; name: string; icon: string }[] | undefined;
 
@@ -20,17 +22,17 @@ export default async function Hero() {
       getHoneycombMap(),
       activeCategories(),
     ]);
-    if (site?.heroTitle) title = site.heroTitle;
-    if (site?.heroAccent) accent = site.heroAccent;
-    if (site?.heroSubtitle) subtitle = site.heroSubtitle;
+    if (site?.heroTitle) title = t.tx(site.heroTitle);
+    if (site?.heroAccent) accent = t.tx(site.heroAccent);
+    if (site?.heroSubtitle) subtitle = t.tx(site.heroSubtitle);
     if (comb && Object.keys(comb).length > 0) services = comb;
-    if (cats.length > 0) catalog = cats.map((c) => ({ slug: c.slug, name: c.name, icon: c.icon }));
+    if (cats.length > 0) catalog = cats.map((c) => ({ slug: c.slug, name: t.tx(c.name), icon: c.icon }));
   } catch {
     /* fall back to defaults */
   }
 
   const beltCats =
-    catalog ?? baseCategories.map((c) => ({ slug: c.slug, name: c.name, icon: c.icon }));
+    catalog ?? baseCategories.map((c) => ({ slug: c.slug, name: t.tx(c.name), icon: c.icon }));
 
   const [line1, line2] = title.includes("\n") ? title.split("\n") : [title, ""];
 

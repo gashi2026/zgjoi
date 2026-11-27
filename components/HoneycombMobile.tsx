@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/i18n/Link";
 import CategoryIcon from "./CategoryIcon";
 import BeeCell from "./BeeCell";
 import CombBee, { type Stop } from "./CombBee";

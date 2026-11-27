@@ -5,6 +5,29 @@ import { ZodError } from "zod";
 import "../zod-sq";
 import { AppError } from "./errors";
 import { databaseFailureDetails } from "./error-diagnostics";
+import { getLocale, translateText } from "../i18n/server";
+import type { Locale } from "../i18n/config";
+
+/**
+ * Server and domain messages are written in Albanian; translate the
+ * user-facing ones (message/error/field errors) at the API boundary.
+ */
+function localizeBody(body: unknown, locale: Locale): unknown {
+  if (locale === "sq" || !body || typeof body !== "object" || Array.isArray(body)) return body;
+  const out: Record<string, unknown> = { ...(body as Record<string, unknown>) };
+  for (const key of ["message", "error"]) {
+    if (typeof out[key] === "string") out[key] = translateText(out[key] as string, locale);
+  }
+  if (out.errors && typeof out.errors === "object" && !Array.isArray(out.errors)) {
+    out.errors = Object.fromEntries(
+      Object.entries(out.errors as Record<string, unknown>).map(([field, list]) => [
+        field,
+        Array.isArray(list) ? list.map((m) => (typeof m === "string" ? translateText(m, locale) : m)) : list,
+      ]),
+    );
+  }
+  return out;
+}
 
 export function sameOrigin(req: Request) {
   const origin = req.headers.get("origin");
@@ -62,8 +85,8 @@ export async function readBody(
   return Buffer.concat(chunks).toString("utf8");
 }
 
-export function json(data: unknown, status = 200) {
-  return NextResponse.json(data, {
+export function json(data: unknown, status = 200, locale?: Locale) {
+  return NextResponse.json(locale ? localizeBody(data, locale) : data, {
     status,
     headers: {
       "Cache-Control": "no-store",
@@ -73,10 +96,11 @@ export function json(data: unknown, status = 200) {
 }
 
 export async function api(req: Request, handler: () => Promise<unknown>) {
+  const locale = await getLocale();
   try {
     if (!["GET", "HEAD"].includes(req.method)) sameOrigin(req);
     const result = await handler();
-    return result instanceof Response ? result : json(result);
+    return result instanceof Response ? result : json(result, 200, locale);
   } catch (error) {
     if (error instanceof AppError)
       return json(
@@ -87,6 +111,7 @@ export async function api(req: Request, handler: () => Promise<unknown>) {
           message: error.message,
         },
         error.status,
+        locale,
       );
     if (error instanceof ZodError)
       return json(
@@ -97,6 +122,7 @@ export async function api(req: Request, handler: () => Promise<unknown>) {
           errors: error.flatten().fieldErrors,
         },
         400,
+        locale,
       );
     const requestId = randomUUID();
     console.error(
@@ -115,6 +141,7 @@ export async function api(req: Request, handler: () => Promise<unknown>) {
         requestId,
       },
       503,
+      locale,
     );
   }
 }

@@ -1,7 +1,9 @@
-import Link from "next/link";
+import Link from "@/components/i18n/Link";
 import { Bee, FlightPath } from "./Brand";
+import { getT } from "@/lib/i18n/server";
 
-export default function CTABanner() {
+export default async function CTABanner() {
+  const t = await getT();
   return (
     <section className="bg-white">
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
@@ -34,11 +36,9 @@ export default function CTABanner() {
           <div className="relative z-10 flex flex-col items-start justify-between gap-8 sm:flex-row sm:items-center">
             <div className="max-w-md">
               <h2 className="text-3xl font-extrabold tracking-tight text-ink">
-                Gati për të filluar?
-              </h2>
+                {t("cTABanner.readyGetStarted")}</h2>
               <p className="mt-3 text-base text-ink/70">
-                Bashkohu me mijëra klientë dhe profesionistë në Zgjoi.
-              </p>
+                {t("cTABanner.joinThousandsCustomersPros")}</p>
             </div>
 
             <div className="flex items-center gap-6">
@@ -50,8 +50,7 @@ export default function CTABanner() {
                 href="/regjistrohu"
                 className="rounded-full bg-ink px-7 py-3.5 text-sm font-semibold text-white transition-all hover:bg-black hover:shadow-lift"
               >
-                Regjistrohu falas
-              </Link>
+                {t("cTABanner.signUpFree")}</Link>
             </div>
           </div>
         </div>

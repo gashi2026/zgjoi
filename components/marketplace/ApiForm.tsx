@@ -1,7 +1,9 @@
 "use client";
 import { useId, useRef, useState, type FormEvent } from "react";
 import { kosovoLocalToIso } from "@/lib/scheduling";
-import { useRouter } from "next/navigation";
+import { useLocale, useRouter } from "@/lib/i18n/client";
+import { isLocale, localizePath, stripLocale } from "@/lib/i18n/config";
+import { useT } from "@/lib/i18n/client";
 
 export type Field = {
   name: string;
@@ -38,7 +40,7 @@ export default function ApiForm({
   endpoint,
   fields = [],
   values = {},
-  label = "Ruaj",
+  label,
   successHref,
   confirmation,
   fragmentToken = false,
@@ -53,12 +55,14 @@ export default function ApiForm({
   fragmentToken?: boolean;
   idempotent?: boolean;
 }) {
+  const t = useT();
   const router = useRouter();
   const formId = useId();
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState("");
   const [errors, setErrors] = useState<Record<string, string[]>>({});
   const [success, setSuccess] = useState(false);
+  const locale = useLocale();
   const key = useRef<string | null>(null);
   const inFlight = useRef(false);
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -108,12 +112,12 @@ export default function ApiForm({
         throw new Error(
           result.message ||
             result.error ||
-            "Veprimi nuk u krye. Provoni përsëri.",
+            t("apiForm.didntWorkPleaseTry"),
         );
       }
       key.current = null;
       setSuccess(true);
-      setMessage(result.message || "Veprimi u krye me sukses.");
+      setMessage(result.message || t("apiForm.done"));
       if (fragmentToken) history.replaceState(null, "", location.pathname);
       if (typeof result.url === "string") {
         const target = new URL(result.url);
@@ -121,11 +125,18 @@ export default function ApiForm({
           target.protocol !== "https:" ||
           target.hostname !== "checkout.stripe.com"
         )
-          throw new Error("Adresa e pagesës nuk është e vlefshme.");
+          throw new Error(t("apiForm.paymentAddressIsntValid"));
         window.location.assign(target.href);
         return;
       }
       const destination = successHref ?? result.redirect;
+      // Signing in can switch to the account's saved language: reload fully in it.
+      if (isLocale(result.locale) && result.locale !== locale) {
+        const target = typeof destination === "string" && destination.startsWith("/") && !destination.startsWith("//")
+          ? destination : location.pathname + location.search;
+        window.location.assign(localizePath(stripLocale(target).pathname, result.locale));
+        return;
+      }
       if (
         typeof destination === "string" &&
         destination.startsWith("/") &&
@@ -137,7 +148,7 @@ export default function ApiForm({
       setMessage(
         error instanceof Error
           ? error.message
-          : "Lidhja dështoi. Formulari juaj është ruajtur këtu; provoni përsëri.",
+          : t("apiForm.connectionFailedFormSaved"),
       );
     } finally {
       inFlight.current = false;
@@ -176,7 +187,7 @@ export default function ApiForm({
               aria-invalid={Boolean(errors[field.name])}
               aria-describedby={[field.hint ? `${formId}-${field.name}-hint` : "", errors[field.name] ? `${formId}-${field.name}-errors` : ""].filter(Boolean).join(" ") || undefined}
             >
-              <option value="">Zgjidhni</option>
+              <option value="">{t("apiForm.choose")}</option>
               {field.options?.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
@@ -230,7 +241,7 @@ export default function ApiForm({
         </p>
       )}
       <button type="submit" disabled={pending} className={buttonClass}>
-        {pending ? "Duke përpunuar…" : label}
+        {pending ? t("apiForm.processing") : label ?? t("apiForm.save")}
       </button>
     </form>
   );

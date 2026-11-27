@@ -1,15 +1,18 @@
 "use client";
+import { msgKey } from "@/lib/i18n/translate";
 
-import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import Link from "@/components/i18n/Link";
+import { useBarePathname as usePathname, useRouter } from "@/lib/i18n/client";
 import { useEffect, useRef, useState } from "react";
 import { LayoutGrid, LogOut, Menu, X } from "lucide-react";
 import { Logo } from "./Brand";
+import LanguageSwitcher from "./i18n/LanguageSwitcher";
+import { useT } from "@/lib/i18n/client";
 
 const links = [
-  { href: "/#si-funksionon", label: "Si funksionon" },
-  { href: "/profesionistet", label: "Për profesionistët" },
-  { href: "/rreth-nesh", label: "Rreth nesh" },
+  { href: "/#si-funksionon", label: msgKey("header.howWorks") },
+  { href: "/profesionistet", label: msgKey("header.pros") },
+  { href: "/rreth-nesh", label: msgKey("header.aboutUs") },
 ];
 
 type Me = { name: string; role: "CLIENT" | "PRO" | "ADMIN" | "SUPPORT" } | null;
@@ -24,6 +27,7 @@ const dashboardFor = (role: string) =>
         : "/llogaria";
 
 export default function Header({ productionHome = false }: { productionHome?: boolean }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const menuButton = useRef<HTMLButtonElement>(null);
   const drawer = useRef<HTMLDivElement>(null);
@@ -102,12 +106,12 @@ export default function Header({ productionHome = false }: { productionHome?: bo
       router.push("/");
       router.refresh();
     } catch {
-      window.alert("Dalja nuk u konfirmua. Provoni përsëri.");
+      window.alert(t("header.loggingOutWasntConfirmed"));
     }
   }
 
   const brand = logoUrl && !referenceHome ? (
-    <Link href="/" aria-label="Zgjoi — kryefaqja">
+    <Link href="/" aria-label={t("common.homeAria")}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src={logoUrl} alt="Zgjoi" className="h-9 w-auto max-w-40 object-contain sm:max-w-48" />
     </Link>
@@ -124,13 +128,12 @@ export default function Header({ productionHome = false }: { productionHome?: bo
         className="flex items-center gap-2 rounded-full bg-gold px-5 py-2.5 text-sm font-semibold text-ink shadow-soft transition-all hover:bg-gold-dark hover:shadow-lift"
       >
         <LayoutGrid size={16} />
-        Paneli im
-      </Link>
+        {t("header.myDashboard")}</Link>
       <button
         type="button"
         onClick={logout}
-        aria-label="Dil nga llogaria"
-        title="Dil"
+        aria-label={t("header.logOutAccount")}
+        title={t("header.logOut")}
         className="flex h-10 w-10 items-center justify-center rounded-full border border-line text-muted transition-colors hover:border-gold hover:text-gold-dark"
       >
         <LogOut size={16} />
@@ -142,20 +145,17 @@ export default function Header({ productionHome = false }: { productionHome?: bo
         href="/regjistrohu-profesionist"
         className="rounded-full border border-gold px-4 py-2 text-sm font-semibold text-gold-dark transition-colors hover:bg-honey"
       >
-        Bëhu profesionist
-      </Link>
+        {t("header.becomePro")}</Link>
       <Link
         href="/hyr"
         className="rounded-full px-4 py-2 text-sm font-semibold text-ink transition-colors hover:bg-cream"
       >
-        Hyr
-      </Link>
+        {t("header.log")}</Link>
       <Link
         href="/regjistrohu"
         className="rounded-full bg-gold px-5 py-2.5 text-sm font-semibold text-ink shadow-soft transition-all hover:bg-gold-dark hover:shadow-lift"
       >
-        Regjistrohu
-      </Link>
+        {t("header.signUp")}</Link>
     </>
   );
 
@@ -167,7 +167,7 @@ export default function Header({ productionHome = false }: { productionHome?: bo
 
           <nav
             className={referenceHome ? "hidden items-center gap-7 lg:flex" : "hidden items-center gap-6 xl:flex"}
-            aria-label="Kryesore"
+            aria-label={t("header.home")}
           >
             {links.map((l) => (
               <Link
@@ -177,24 +177,27 @@ export default function Header({ productionHome = false }: { productionHome?: bo
                   pathname === l.href ? "text-gold-dark" : "text-ink"
                 }`}
               >
-                {l.label}
+                {t(l.label)}
               </Link>
             ))}
           </nav>
 
-          <div className={referenceHome ? "hidden items-center gap-3 lg:flex" : "hidden items-center gap-3 xl:flex"}>{authArea}</div>
+          <div className={referenceHome ? "hidden items-center gap-3 lg:flex" : "hidden items-center gap-3 xl:flex"}><LanguageSwitcher />{authArea}</div>
 
+          <div className={`flex items-center gap-2 ${referenceHome ? "lg:hidden" : "xl:hidden"}`}>
+          <LanguageSwitcher />
           <button
             type="button"
             ref={menuButton}
             onClick={() => setOpen((v) => !v)}
-            className={`flex h-11 w-11 items-center justify-center rounded-full text-ink ${referenceHome ? "lg:hidden" : "xl:hidden"}`}
+            className="flex h-11 w-11 items-center justify-center rounded-full text-ink"
             aria-expanded={open}
             aria-controls="mobile-menu"
-            aria-label={open ? "Mbyll menunë" : "Hap menunë"}
+            aria-label={open ? t("header.closeMenu") : t("header.openMenu")}
           >
             {open ? <X size={24} /> : <Menu size={24} />}
           </button>
+          </div>
         </div>
       </header>
 
@@ -203,14 +206,15 @@ export default function Header({ productionHome = false }: { productionHome?: bo
           64px bar. As a sibling it covers the screen properly. */}
       {open && (
         <div
-          id="mobile-menu" ref={drawer} role="dialog" aria-modal="true" aria-label="Menuja kryesore"
+          id="mobile-menu" ref={drawer} role="dialog" aria-modal="true" aria-label={t("header.mainMenu")}
           className={`fixed inset-0 z-[70] overflow-y-auto bg-white pb-[env(safe-area-inset-bottom)] ${referenceHome ? "lg:hidden" : "xl:hidden"}`}
         >
           <div className="flex h-16 items-center justify-between border-b border-line px-4">
-            <span className="font-bold text-ink">Menuja</span>
-            <button type="button" onClick={() => setOpen(false)} aria-label="Mbyll menunë" className="flex h-11 w-11 items-center justify-center rounded-full hover:bg-cream"><X size={24} /></button>
+            <span className="font-bold text-ink">{t("header.menu")}</span>
+            <LanguageSwitcher className="ml-auto mr-2" />
+            <button type="button" onClick={() => setOpen(false)} aria-label={t("header.closeMenu")} className="flex h-11 w-11 items-center justify-center rounded-full hover:bg-cream"><X size={24} /></button>
           </div>
-          <nav className="flex flex-col gap-1 p-4" aria-label="Mobile">
+          <nav className="flex flex-col gap-1 p-4" aria-label={t("common.mobileNav")}>
             {links.map((l) => (
               <Link
                 key={l.href}
@@ -222,7 +226,7 @@ export default function Header({ productionHome = false }: { productionHome?: bo
                     : "text-ink hover:bg-cream"
                 }`}
               >
-                {l.label}
+                {t(l.label)}
               </Link>
             ))}
             <div className="mt-4 flex flex-col gap-3 border-t border-line pt-4">
@@ -233,15 +237,13 @@ export default function Header({ productionHome = false }: { productionHome?: bo
                     onClick={() => setOpen(false)}
                     className="rounded-full bg-gold px-5 py-3 text-center text-base font-semibold text-ink transition-colors hover:bg-gold-dark"
                   >
-                    Paneli im
-                  </Link>
+                    {t("header.myDashboard")}</Link>
                   <button
                     type="button"
                     onClick={logout}
                     className="rounded-full border border-line px-5 py-3 text-center text-base font-semibold text-ink transition-colors hover:bg-cream"
                   >
-                    Dil nga llogaria
-                  </button>
+                    {t("header.logOutAccount")}</button>
                 </>
               ) : (
                 <>
@@ -250,22 +252,19 @@ export default function Header({ productionHome = false }: { productionHome?: bo
                     onClick={() => setOpen(false)}
                     className="rounded-full border border-gold px-5 py-3 text-center text-base font-semibold text-gold-dark transition-colors hover:bg-honey"
                   >
-                    Bëhu profesionist
-                  </Link>
+                    {t("header.becomePro")}</Link>
                   <Link
                     href="/hyr"
                     onClick={() => setOpen(false)}
                     className="rounded-full border border-line px-5 py-3 text-center text-base font-semibold text-ink transition-colors hover:bg-cream"
                   >
-                    Hyr
-                  </Link>
+                    {t("header.log")}</Link>
                   <Link
                     href="/regjistrohu"
                     onClick={() => setOpen(false)}
                     className="rounded-full bg-gold px-5 py-3 text-center text-base font-semibold text-ink transition-colors hover:bg-gold-dark"
                   >
-                    Regjistrohu
-                  </Link>
+                    {t("header.signUp")}</Link>
                 </>
               )}
             </div>

@@ -1,36 +1,38 @@
+import { msgKey } from "@/lib/i18n/translate";
 import { ShieldCheck, Star, BadgeEuro, Headphones } from "lucide-react";
 import { HexOutline } from "./Brand";
+import { getT } from "@/lib/i18n/server";
 
 const features = [
   {
     icon: ShieldCheck,
-    title: "Profile të shqyrtuara",
-    text: "Profilet profesionale shqyrtohen para se të shfaqen në kërkim.",
+    title: msgKey("whyZgjoi.vettedProfiles"),
+    text: msgKey("whyZgjoi.proProfilesReviewedBefore"),
   },
   {
     icon: Star,
-    title: "Vlerësime dhe komente reale",
-    text: "Vetëm klientët që kanë përfunduar një punë mund të lënë vlerësim.",
+    title: msgKey("whyZgjoi.genuineRatingsReviews"),
+    text: msgKey("whyZgjoi.onlyCustomersWhoHave"),
   },
   {
     icon: BadgeEuro,
-    title: "Çmime të qarta dhe të ndershme",
-    text: "Oferta e profesionistit përfshin çmimin, përshkrimin, orarin dhe afatin e pranimit.",
+    title: msgKey("whyZgjoi.clearFairPrices"),
+    text: msgKey("whyZgjoi.prosOfferIncludesPrice"),
   },
   {
     icon: Headphones,
-    title: "Siguri dhe mbështetje",
-    text: "Përdorni bisedën e mbështetjes për pyetje dhe probleme me bisedën ose punën tuaj.",
+    title: msgKey("whyZgjoi.safetySupport"),
+    text: msgKey("whyZgjoi.useSupportChatQuestions"),
   },
 ];
 
-export default function WhyZgjoi() {
+export default async function WhyZgjoi() {
+  const t = await getT();
   return (
     <section className="bg-white">
       <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
         <h2 className="text-center text-2xl font-extrabold tracking-tight text-ink sm:text-3xl">
-          Pse Zgjoi?
-        </h2>
+          {t("whyZgjoi.whyZgjoi")}</h2>
 
         <div className="mt-10 grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
           {features.map(({ icon: Icon, title, text }) => (
@@ -43,9 +45,9 @@ export default function WhyZgjoi() {
               >
                 <Icon size={28} className="text-gold-dark" strokeWidth={1.8} />
               </HexOutline>
-              <h3 className="mt-4 text-base font-bold text-ink">{title}</h3>
+              <h3 className="mt-4 text-base font-bold text-ink">{t(title)}</h3>
               <p className="mt-2 max-w-[16rem] text-sm leading-relaxed text-muted">
-                {text}
+                {t(text)}
               </p>
             </div>
           ))}

@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/i18n/Link";
 import type { Prisma } from "@prisma/client";
 import { pageGuard } from "@/lib/server/guard";
 import { db } from "@/lib/server/db";
@@ -6,6 +6,7 @@ import { expireDueOffersFor } from "@/lib/server/offer-expiry";
 import { money, stateLabel, dateTime, unreadMessagesLabel, unreadNotificationsLabel } from "@/lib/format";
 import Frame, { Panel } from "./Frame";
 import ApiForm from "./ApiForm";
+import { getT } from "@/lib/i18n/server";
 export default async function Dashboard({
   pro,
   view = "home",
@@ -22,16 +23,17 @@ export default async function Dashboard({
     | "notifications";
   page?: number;
 }) {
+  const t = await getT();
   const actor = await pageGuard(pro ? "PRO" : "CLIENT");
   const base = pro ? "/pro" : "/llogaria";
   const titles = {
-    home: "Paneli im",
-    requests: "Bisedat e mia",
-    offers: "Ofertat e mia",
-    messages: "Bisedat e mia",
-    jobs: "Punët e mia",
-    payments: "Pagesat dhe të ardhurat",
-    notifications: "Njoftimet",
+    home: t("dashboard.myDashboard"),
+    requests: t("dashboard.myChats"),
+    offers: t("dashboard.myOffers"),
+    messages: t("dashboard.myChats"),
+    jobs: t("dashboard.myJobs"),
+    payments: t("dashboard.paymentsEarnings"),
+    notifications: t("dashboard.notifications"),
   };
   if (view === "notifications") {
     const notifications = await db.notification.findMany({
@@ -43,7 +45,7 @@ export default async function Dashboard({
     return (
       <Frame actor={actor} title={titles[view]}>
         <Panel>
-          {!notifications.length && <p>Nuk ka njoftime ende.</p>}
+          {!notifications.length && <p>{t("dashboard.noNotificationsYet")}</p>}
           {notifications.map((n) => (
             <article
               key={n.id}
@@ -54,15 +56,15 @@ export default async function Dashboard({
                   className={n.readAt ? "text-muted" : "font-bold"}
                   href={n.href}
                 >
-                  {n.title}
+                  {t.tx(n.title)}
                 </Link>
-                <p className="text-xs text-muted">{dateTime(n.createdAt)}</p>
+                <p className="text-xs text-muted">{dateTime(n.createdAt, t.locale)}</p>
               </div>
               {!n.readAt && (
                 <ApiForm
                   endpoint="/api/notifications"
                   values={{ ids: [n.id] }}
-                  label="Shëno si të lexuar"
+                  label={t("dashboard.markRead")}
                 />
               )}
             </article>
@@ -91,28 +93,28 @@ export default async function Dashboard({
       <Frame
         actor={actor}
         title={titles[view]}
-        subtitle="Shumat bazohen vetëm në pagesat e regjistruara. Transferimi te ofruesi i pagesave dhe pagesa në bankë janë hapa të veçantë."
+        subtitle={t("dashboard.amountsBasedOnlyRecorded")}
       >
         <Panel>
-          {!payments.length && <p>Nuk keni pagesa të regjistruara ende.</p>}
+          {!payments.length && <p>{t("dashboard.dontHaveAnyRecorded")}</p>}
           {payments.map((p) => (
             <article key={p.id} className="border-b border-line py-4">
               <Link
                 className="font-bold"
                 href={`${base}/kerkesat/${p.requestId}`}
               >
-                {p.request.title}
+                {t.tx(p.request.title)}
               </Link>
               <p className="mt-2">
-                {money(p.amount)} · {stateLabel(p.state)}
+                {money(p.amount, t.locale)} · {t.tx(stateLabel(p.state))}
               </p>
               <p className="text-sm text-muted">
-                Komisioni: {money(p.commissionAmount)} · Pjesa juaj:{" "}
-                {money(p.proAmount)}
+                {t("dashboard.commissionShare", { amount: money(p.commissionAmount, t.locale) })}{" "}
+                {money(p.proAmount, t.locale)}
               </p>
               {p.payouts.map((payout) => (
                 <p key={payout.id} className="text-sm">
-                  {stateLabel(payout.state)}: {money(payout.amount)}
+                  {t.tx(stateLabel(payout.state))}: {money(payout.amount, t.locale)}
                 </p>
               ))}
             </article>
@@ -175,39 +177,35 @@ export default async function Dashboard({
       title={titles[view]}
       subtitle={
         pro
-          ? "Bisedat private me klientët që ju zgjodhën. Dërgoni ofertën në bisedë; klienti ju punëson me “Puneso”."
-          : "Bisedat, ofertat dhe punët tuaja në një vend."
+          ? t("dashboard.privateChatsCustomersWho")
+          : t("dashboard.chatsOffersJobsOne")
       }
     >
       {view === "home" && (
         <Panel>
           <div className="flex flex-wrap justify-between gap-4">
             <p>
-              {count} {count === 1 ? "bisedë" : "biseda"} ·{" "}
+              {count} {count === 1 ? t("dashboard.chat") : "biseda"} ·{" "}
               <Link className="text-gold-dark" href={`${base}/njoftimet`}>
-                {unreadNotificationsLabel(unread)}
+                {t.tx(unreadNotificationsLabel(unread))}
               </Link>
             </p>
             {!pro && (
               <Link className="font-semibold text-gold-dark" href="/kerko">
-                Gjej një profesionist →
-              </Link>
+                {t("dashboard.findPro")}</Link>
             )}
           </div>
           {pro && actor.proProfile?.verification !== "APPROVED" && (
             <p className="mt-3 rounded-xl bg-honey p-3">
-              Profili juaj është në shqyrtim. Përfundoni profilin dhe dokumentet
-              për miratim.
-            </p>
+              {t("dashboard.profileUnderReviewComplete")}</p>
           )}
           {!actor.emailVerified && (
             <div className="mt-4">
               <p className="mb-2 text-sm">
-                Verifikoni emailin për të përgatitur llogarinë tuaj për pagesa.
-              </p>
+                {t("dashboard.verifyEmailGetAccount")}</p>
               <ApiForm
                 endpoint="/api/auth/resend"
-                label="Dërgo emailin e verifikimit"
+                label={t("dashboard.sendVerificationEmail")}
               />
             </div>
           )}
@@ -216,16 +214,15 @@ export default async function Dashboard({
       <Panel>
         {!requests.length && (
           <div>
-            <h2 className="font-bold">Nuk ka biseda në këtë listë ende.</h2>
+            <h2 className="font-bold">{t("dashboard.noChatsListYet")}</h2>
             <p className="mt-2 text-muted">
               {pro
-                ? "Klientët mund t’ju kontaktojnë pasi profili juaj të miratohet."
-                : "Gjeni një profesionist dhe hapni një bisedë nga profili i tij për t’i përshkruar punën."}
+                ? t("dashboard.customersCanContactOnce")
+                : t("dashboard.findProStartChat")}
             </p>
             {!pro && (
               <Link href="/kerko" className="mt-4 inline-block text-gold-dark">
-                Gjej profesionistë
-              </Link>
+                {t("dashboard.findPros")}</Link>
             )}
           </div>
         )}
@@ -236,32 +233,31 @@ export default async function Dashboard({
                 href={`${base}/kerkesat/${r.id}`}
                 className="text-lg font-bold"
               >
-                {r.title}
+                {t.tx(r.title)}
               </Link>
               <span className="rounded-full bg-honey px-3 py-1 text-xs">
-                {stateLabel(r.state)}
+                {t.tx(stateLabel(r.state))}
               </span>
             </div>
             <p className="mt-2 text-sm text-muted">
-              {r.city} · {dateTime(r.updatedAt)}
+              {r.city} · {dateTime(r.updatedAt, t.locale)}
             </p>
             {r.quotes[0] && (
               <p className="mt-1 text-sm">
-                Oferta: {money(r.quotes[0].amount)} ·{" "}
-                {stateLabel(r.quotes[0].state)}
+                {t("dashboard.offer", { amount: money(r.quotes[0].amount, t.locale) })}{" "}
+                {t.tx(stateLabel(r.quotes[0].state))}
               </p>
             )}
             {Boolean(r.conversation?._count.messages) && (
               <p className="mt-1 text-sm font-semibold">
-                {unreadMessagesLabel(r.conversation?._count.messages ?? 0)}
+                {t.tx(unreadMessagesLabel(r.conversation?._count.messages ?? 0))}
               </p>
             )}
             <Link
               href={`${base}/kerkesat/${r.id}`}
               className="mt-3 inline-block text-sm text-gold-dark"
             >
-              Hap bisedën →
-            </Link>
+              {t("dashboard.openChat")}</Link>
           </article>
         ))}
         <Pager page={page} more={count > page * 30} />
@@ -269,11 +265,12 @@ export default async function Dashboard({
     </Frame>
   );
 }
-function Pager({ page, more }: { page: number; more: boolean }) {
+async function Pager({ page, more }: { page: number; more: boolean }) {
+  const t = await getT();
   return (
-    <nav aria-label="Faqet" className="mt-5 flex gap-5">
-      {page > 1 && <Link href={`?page=${page - 1}`}>← Më parë</Link>}
-      {more && <Link href={`?page=${page + 1}`}>Tjetër →</Link>}
+    <nav aria-label={t("dashboard.pages")} className="mt-5 flex gap-5">
+      {page > 1 && <Link href={`?page=${page - 1}`}>{t("dashboard.previous")}</Link>}
+      {more && <Link href={`?page=${page + 1}`}>{t("dashboard.next")}</Link>}
     </nav>
   );
 }

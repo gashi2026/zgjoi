@@ -1,10 +1,11 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/i18n/Link";
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import BeltIcon from "../BeltIcons";
 import { Bee } from "../Brand";
 import { HEX_D, HEX_RATIO as RATIO } from "@/lib/hex";
+import { useT } from "@/lib/i18n/client";
 
 type Cat = { slug: string; name: string; icon: string };
 
@@ -42,6 +43,7 @@ const Cells = memo(function Cells({
   size: number;
   h: number;
 }) {
+  const t = useT();
   return (
     <>
       {cells.map((c) =>
@@ -74,7 +76,7 @@ const Cells = memo(function Cells({
           <Link
             key={c.key}
             href={`/kerko?kategoria=${c.cat!.slug}`}
-            aria-label={`${c.cat!.name} — shiko profesionistët`}
+            aria-label={t("mobileHexBelt.seePros", { name: c.cat!.name })}
             draggable={false}
             className="absolute z-10"
             style={{ left: c.x, top: c.y, width: size, height: h }}
@@ -116,6 +118,7 @@ function GrowCell({
   h: number;
   duration: number;
 }) {
+  const t = useT();
   const ref = useRef<HTMLDivElement>(null);
   const nameRef = useRef<HTMLSpanElement>(null);
 
@@ -189,7 +192,7 @@ function GrowCell({
         className="absolute bottom-full left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md bg-gold px-1.5 py-[1px] text-[9px] font-extrabold tracking-tight text-ink shadow-[0_2px_6px_rgba(232,157,0,0.35)]"
         style={{ marginBottom: -6, opacity: 0 }}
       >
-        {co.name}
+        {t.tx(co.name)}
       </span>
     </div>
   );
@@ -204,6 +207,7 @@ export default function MobileHexBelt({
   size?: number;
   speed?: number;
 }) {
+  const t = useT();
   const trackRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<HTMLDivElement>(null);
   const offset = useRef(0);
@@ -522,7 +526,7 @@ export default function MobileHexBelt({
       onPointerUp={endDrag}
       onPointerCancel={endDrag}
       onClickCapture={onClickCapture}
-      aria-label="Kategoritë e shërbimeve"
+      aria-label={t("mobileHexBelt.serviceCategories")}
     >
       <div
         ref={trackRef}

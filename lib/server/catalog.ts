@@ -7,6 +7,7 @@ import { z } from "zod";
 import { db } from "./db";
 import { invariant } from "./errors";
 import type { Actor } from "./auth";
+import { translateText } from "../i18n/dictionaries";
 
 export const initials = (name: string) =>
   name
@@ -80,7 +81,7 @@ export async function searchPros(input: Record<string, unknown> = {}) {
                   categorySlug: {
                     in: categories
                       .filter((c) =>
-                        `${c.name} ${c.slug}`
+                        `${c.name} ${translateText(c.name, "en")} ${c.slug}`
                           .toLowerCase()
                           .normalize("NFD")
                           .replace(/[\u0300-\u036f]/g, "")

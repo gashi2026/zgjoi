@@ -1,52 +1,56 @@
 "use client";
+import { msgKey } from "@/lib/i18n/translate";
 
-import Link from "next/link";
+import Link from "@/components/i18n/Link";
 import { useState } from "react";
 import { Facebook, Instagram, Linkedin, ArrowRight } from "lucide-react";
 import { Logo } from "../Brand";
+import LanguageSwitcher from "../i18n/LanguageSwitcher";
 import { categories } from "@/lib/homepage-reference-data";
+import { useT } from "@/lib/i18n/client";
 
 const columns: { title: string; items: { label: string; href: string }[] }[] = [
   {
-    title: "Kategoritë",
+    title: msgKey("footer.categories"),
     items: categories.slice(0, 5).map((c) => ({
       label: c.name,
       href: `/kerko?kategoria=${c.slug}`,
     })),
   },
   {
-    title: "Për profesionistët",
+    title: msgKey("footer.pros"),
     items: [
-      { label: "Bëhu profesionist", href: "/profesionistet" },
-      { label: "Kontakto privatisht", href: "/kerko" },
-      { label: "Paneli i profesionistit", href: "/pro/paneli" },
-      { label: "Si funksionon", href: "/si-funksionon" },
-      { label: "Udhëzime", href: "/si-funksionon" },
-      { label: "Gjej profesionist", href: "/kerko" },
+      { label: msgKey("footer.becomePro"), href: "/profesionistet" },
+      { label: msgKey("footer.contactPrivately"), href: "/kerko" },
+      { label: msgKey("footer.proDashboard"), href: "/pro/paneli" },
+      { label: msgKey("footer.howWorks"), href: "/si-funksionon" },
+      { label: msgKey("footer.guides"), href: "/si-funksionon" },
+      { label: msgKey("footer.findPro"), href: "/kerko" },
     ],
   },
   {
-    title: "Mbështetje",
+    title: msgKey("footer.support"),
     items: [
-      { label: "Qendra e ndihmës", href: "/rreth-nesh" },
-      { label: "Siguria", href: "/rreth-nesh" },
-      { label: "Kushtet e përdorimit", href: "/rreth-nesh" },
-      { label: "Politika e privatësisë", href: "/rreth-nesh" },
+      { label: msgKey("footer.helpCentre"), href: "/rreth-nesh" },
+      { label: msgKey("footer.safety"), href: "/rreth-nesh" },
+      { label: msgKey("footer.termsUse"), href: "/rreth-nesh" },
+      { label: msgKey("footer.privacyPolicy"), href: "/rreth-nesh" },
     ],
   },
   {
-    title: "Kompania",
+    title: msgKey("footer.company"),
     items: [
-      { label: "Rreth nesh", href: "/rreth-nesh" },
-      { label: "Kontakti", href: "/rreth-nesh" },
-      { label: "Karriera", href: "/rreth-nesh" },
-      { label: "Llogaria ime", href: "/llogaria" },
-      { label: "Admin", href: "/admin" },
+      { label: msgKey("footer.aboutUs"), href: "/rreth-nesh" },
+      { label: msgKey("footer.contact"), href: "/rreth-nesh" },
+      { label: msgKey("footer.careers"), href: "/rreth-nesh" },
+      { label: msgKey("footer.myAccount"), href: "/llogaria" },
+      { label: msgKey("footer.admin"), href: "/admin" },
     ],
   },
 ];
 
 export default function Footer() {
+  const t = useT();
   const [email, setEmail] = useState("");
   const [state, setState] = useState<"idle" | "error" | "unavailable">("idle");
 
@@ -67,9 +71,7 @@ export default function Footer() {
           <div className="lg:col-span-3">
             <Logo />
             <p className="mt-4 max-w-xs text-sm leading-relaxed text-muted">
-              Zgjoi të lidh me profesionistë lokalë të shqyrtuar në Kosovë.
-              Tani në beta.
-            </p>
+              {t("footer.zgjoiConnectsVettedLocal")}</p>
             <div className="mt-5 flex gap-3">
               {[
                 { icon: Facebook, label: "Facebook" },
@@ -86,13 +88,17 @@ export default function Footer() {
                 </a>
               ))}
             </div>
+            <div className="mt-5 flex items-center gap-2 text-sm text-muted">
+              <span>{t("common.language")}</span>
+              <LanguageSwitcher />
+            </div>
           </div>
 
           {/* Link columns */}
           <div className="grid grid-cols-2 gap-8 sm:grid-cols-4 lg:col-span-6">
             {columns.map((col) => (
               <div key={col.title}>
-                <h3 className="text-sm font-bold text-ink">{col.title}</h3>
+                <h3 className="text-sm font-bold text-ink">{t.any(col.title)}</h3>
                 <ul className="mt-4 space-y-2.5">
                   {col.items.map((item) => (
                     <li key={item.label}>
@@ -100,7 +106,7 @@ export default function Footer() {
                         href={item.href}
                         className="text-sm text-muted transition-colors hover:text-gold-dark"
                       >
-                        {item.label}
+                        {t.any(item.label)}
                       </Link>
                     </li>
                   ))}
@@ -111,10 +117,9 @@ export default function Footer() {
 
           {/* Newsletter */}
           <div className="lg:col-span-3">
-            <h3 className="text-sm font-bold text-ink">Abonohu për lajme</h3>
+            <h3 className="text-sm font-bold text-ink">{t("footer.subscribeNews")}</h3>
             <p className="mt-3 text-sm text-muted">
-              Merr lajmet dhe këshillat më të mira në email.
-            </p>
+              {t("footer.getOurBestNews")}</p>
             <form onSubmit={subscribe} className="mt-4" noValidate>
               <div className="flex overflow-hidden rounded-full border border-line bg-cream focus-within:border-gold">
                 <input
@@ -124,13 +129,13 @@ export default function Footer() {
                     setEmail(e.target.value);
                     setState("idle");
                   }}
-                  placeholder="Email juaj"
-                  aria-label="Email juaj"
+                  placeholder={t("footer.email")}
+                  aria-label={t("footer.email")}
                   className="w-full bg-transparent px-4 py-3 text-sm outline-none placeholder:text-muted"
                 />
                 <button
                   type="submit"
-                  aria-label="Abonohu"
+                  aria-label={t("footer.subscribe")}
                   className="m-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gold text-ink transition-colors hover:bg-gold-dark"
                 >
                   <ArrowRight size={16} />
@@ -138,30 +143,25 @@ export default function Footer() {
               </div>
               {state === "error" && (
                 <p className="mt-2 text-xs text-red-600">
-                  Shkruani një adresë email të vlefshme.
-                </p>
+                  {t("footer.enterValidEmailAddress")}</p>
               )}
               {state === "unavailable" && (
                 <p className="mt-2 text-xs text-gold-dark">
-                  Abonimi për lajme nuk është aktiv ende. Emaili juaj nuk u ruajt.
-                </p>
+                  {t("footer.newsletterIsntActiveYet")}</p>
               )}
             </form>
           </div>
         </div>
 
         <div className="mt-12 flex flex-col items-center justify-between gap-4 border-t border-line pt-6 text-xs text-muted sm:flex-row">
-          <p>© 2026 Zgjoi. Të gjitha të drejtat e rezervuara.</p>
+          <p>{t("footer.n2026ZgjoiAllRights")}</p>
           <div className="flex gap-6">
             <Link href="/rreth-nesh" className="hover:text-gold-dark">
-              Privatësia
-            </Link>
+              {t("footer.privacy")}</Link>
             <Link href="/rreth-nesh" className="hover:text-gold-dark">
-              Kushtet
-            </Link>
+              {t("footer.terms")}</Link>
             <Link href="/rreth-nesh" className="hover:text-gold-dark">
-              Kontakti
-            </Link>
+              {t("footer.contact")}</Link>
           </div>
         </div>
       </div>

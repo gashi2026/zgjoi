@@ -1,39 +1,42 @@
+import { msgKey } from "@/lib/i18n/translate";
 import { Search, Users, CheckCircle2, ThumbsUp } from "lucide-react";
+import { getT } from "@/lib/i18n/server";
 
 const steps = [
   {
     n: 1,
     icon: Search,
-    title: "Kërko",
-    text: "Gjej shërbimin që ju nevojitet në disa sekonda.",
+    title: msgKey("howItWorks.search"),
+    text: msgKey("howItWorks.findServiceNeedSeconds"),
   },
   {
     n: 2,
     icon: Users,
-    title: "Bisedo dhe puneso",
-    text: "Shiko profilet dhe vlerësimet. Hap një bisedë private me profesionistin; ai dërgon ofertën në bisedë dhe ju e punësoni me “Puneso”.",
+    title: msgKey("howItWorks.chatHire"),
+    text: msgKey("howItWorks.seeProfilesReviewsStart"),
   },
   {
     n: 3,
     icon: CheckCircle2,
-    title: "Prano dhe paguaj",
-    text: "Pagesa nis pasi të pranoni ofertën. Transferimi te profesionisti kërkon konfirmimin tuaj të përfundimit. Pagesat online janë ende në përgatitje.",
+    title: msgKey("howItWorks.acceptPay"),
+    text: msgKey("howItWorks.paymentStartsOnceAccept"),
   },
   {
     n: 4,
     icon: ThumbsUp,
-    title: "Konfirmo dhe vlerëso",
-    text: "Konfirmo përfundimin e punës. Më pas, nëse dëshiron, lër një vlerësim për të ndihmuar klientët e tjerë.",
+    title: msgKey("howItWorks.confirmReview"),
+    text: msgKey("howItWorks.confirmJobFinishedThen"),
   },
 ];
 
-export default function HowItWorks({ heading = true }: { heading?: boolean }) {
+export default async function HowItWorks({ heading = true }: { heading?: boolean }) {
+  const t = await getT();
   return (
     <section className="scroll-mt-24 bg-cream" id="si-funksionon">
       <div className="mx-auto max-w-3xl px-4 py-16 sm:px-6 lg:px-8">
         {heading && (
           <h2 className="text-center text-2xl font-extrabold tracking-tight text-ink sm:text-3xl">
-            Si funksionon <span className="text-gold">Zgjoi?</span>
+            {t("howItWorks.howWorks")}{" "}<span className="text-gold">{t("howItWorks.zgjoi")}</span>
           </h2>
         )}
 
@@ -71,9 +74,9 @@ export default function HowItWorks({ heading = true }: { heading?: boolean }) {
                   />
                 </span>
                 <div>
-                  <h3 className="text-base font-bold text-ink">{title}</h3>
+                  <h3 className="text-base font-bold text-ink">{t(title)}</h3>
                   <p className="mt-1 text-sm leading-relaxed text-muted">
-                    {text}
+                    {t(text)}
                   </p>
                 </div>
               </div>

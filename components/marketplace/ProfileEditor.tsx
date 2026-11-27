@@ -5,10 +5,12 @@ import { activeCategories } from "@/lib/server/catalog";
 import Frame, { Panel } from "./Frame";
 import ApiForm, { type Field } from "./ApiForm";
 import UploadDocument from "./UploadDocument";
-import Link from "next/link";
+import Link from "@/components/i18n/Link";
 import { categoryFlow } from "@/lib/server/bookings";
 import { hourOptions, hoursLabel, MINUTE_STEP } from "@/lib/book-now";
+import { getT } from "@/lib/i18n/server";
 export default async function ProfileEditor({ pro }: { pro: boolean }) {
+  const t = await getT();
   const actor = await pageGuard(pro ? "PRO" : "CLIENT");
   const user = await db.user.findUniqueOrThrow({
     where: { id: actor.id },
@@ -33,14 +35,14 @@ export default async function ProfileEditor({ pro }: { pro: boolean }) {
   const fields: Field[] = [
     {
       name: "name",
-      label: "Emri",
+      label: t("profileEditor.name"),
       value: user.name,
       required: true,
       maxLength: 120,
     },
     {
       name: "city",
-      label: "Qyteti",
+      label: t("profileEditor.city"),
       value: user.city ?? "",
       required: true,
       maxLength: 60,
@@ -56,15 +58,15 @@ export default async function ProfileEditor({ pro }: { pro: boolean }) {
     fields.push(
       {
         name: "categorySlug",
-        label: "Kategoria kryesore",
+        label: t("profileEditor.mainCategory"),
         type: "select",
         value: serviceCategory(profile.categorySlug)?.slug ?? "",
         required: true,
-        options: categories.map((c) => ({ value: c.slug, label: c.name })),
+        options: categories.map((c) => ({ value: c.slug, label: t.tx(c.name) })),
       },
       {
         name: "about",
-        label: "Përvoja dhe shërbimet",
+        label: t("profileEditor.experienceServices"),
         type: "textarea",
         value: profile.about,
         required: true,
@@ -73,7 +75,7 @@ export default async function ProfileEditor({ pro }: { pro: boolean }) {
       },
       {
         name: "priceFrom",
-        label: "Çmimi fillestar në euro",
+        label: t("profileEditor.startingPriceEuros"),
         type: "number",
         step: "0.01",
         min: 0.01,
@@ -83,99 +85,89 @@ export default async function ProfileEditor({ pro }: { pro: boolean }) {
       },
       {
         name: "experience",
-        label: "Përvoja",
+        label: t("profileEditor.experience"),
         value: profile.experience ?? "",
         maxLength: 80,
       },
       {
         name: "serviceCities",
-        label: "Qytetet ku punoni",
+        label: t("profileEditor.citiesWork"),
         value: profile.serviceCities.join(", "),
         required: true,
         as: "list",
-        hint: "Ndani qytetet me presje.",
+        hint: t("profileEditor.separateCitiesCommas"),
       },
     );
   return (
     <Frame
       actor={actor}
-      title={pro ? "Profili im profesional" : "Cilësimet e llogarisë"}
+      title={pro ? t("profileEditor.myProfessionalProfile") : t("profileEditor.accountSettings")}
     >
       <Panel>
         <p className="mb-5 text-sm text-muted">
-          Emaili i llogarisë: {user.email}. Për ndryshimin e emailit kontaktoni
-          mbështetjen.
-        </p>
+          {t("profileEditor.accountEmailChangeEmail", { email: user.email })}</p>
         <ApiForm
           endpoint="/api/account"
           values={{ phone: "", ...(pro ? { experience: "" } : {}) }}
           fields={fields}
-          label="Ruaj ndryshimet"
+          label={t("profileEditor.saveChanges")}
         />
         {pro && (
           <p className="mt-4 text-sm text-muted">
-            Ndryshimi i emrit, kategorisë ose përshkrimit e kthen profilin për
-            shqyrtim.
-          </p>
+            {t("profileEditor.changingNameCategoryDescription")}</p>
         )}
       </Panel>
       {pro && profile && flow?.bookNow && (
         <Panel>
-          <h2 className="mb-1 text-lg font-bold">Rezervo tani · tarifa për orë</h2>
+          <h2 className="mb-1 text-lg font-bold">{t("profileEditor.bookNowHourlyRate")}</h2>
           <p className="mb-4 text-sm text-muted">
-            Në kategorinë tuaj klientët mund t’ju rezervojnë direkt me “Rezervo tani”. Ju caktoni tarifën për orë dhe
-            minimumin e orëve; klienti zgjedh sa orë dëshiron (së paku minimumin) dhe totali është tarifa × orët.
-            Pas punës mund të propozoni ndryshim të orëve në bisedë; vlen pasi klienti ta konfirmojë.
-          </p>
+            {t("profileEditor.categoryCustomersCanBook")}</p>
           <ApiForm
             endpoint="/api/account/booking-settings"
-            label="Ruaj tarifën"
+            label={t("profileEditor.saveRate")}
             fields={[
-              { name: "enabled", label: "Prano rezervime me “Rezervo tani”", type: "checkbox", checked: Boolean(profile.hourlyRateCents) },
-              { name: "hourlyRate", label: "Tarifa për orë në euro", type: "number", step: "0.01", min: 1, max: 1000,
+              { name: "enabled", label: t("profileEditor.acceptBookingsBookNow"), type: "checkbox", checked: Boolean(profile.hourlyRateCents) },
+              { name: "hourlyRate", label: t("profileEditor.hourlyRateEuros"), type: "number", step: "0.01", min: 1, max: 1000,
                 value: profile.hourlyRateCents ? profile.hourlyRateCents / 100 : "" },
-              { name: "minMinutes", label: "Minimumi i orëve për rezervim", type: "select", as: "number",
+              { name: "minMinutes", label: t("profileEditor.minimumHoursPerBooking"), type: "select", as: "number",
                 value: String(profile.bookingMinMinutes ?? 120),
-                options: hourOptions(MINUTE_STEP).map((m) => ({ value: String(m), label: hoursLabel(m) })) },
+                options: hourOptions(MINUTE_STEP).map((m) => ({ value: String(m), label: t.tx(hoursLabel(m)) })) },
             ]}
           />
         </Panel>
       )}
       <Panel>
-        <h2 className="mb-4 text-lg font-bold">Siguria e llogarisë</h2>
+        <h2 className="mb-4 text-lg font-bold">{t("profileEditor.accountSecurity")}</h2>
         <ApiForm
           endpoint="/api/account/password"
           fields={[
             {
               name: "currentPassword",
-              label: "Fjalëkalimi aktual",
+              label: t("profileEditor.currentPassword"),
               type: "password",
               required: true,
               autoComplete: "current-password",
             },
             {
               name: "password",
-              label: "Fjalëkalimi i ri",
+              label: t("profileEditor.newPassword"),
               type: "password",
               required: true,
               minLength: 12,
               autoComplete: "new-password",
             },
           ]}
-          label="Ndrysho fjalëkalimin"
+          label={t("profileEditor.changePassword")}
         />
         <p className="mt-3 text-sm text-muted">
-          Do të dilni nga të gjitha pajisjet pas ndryshimit.
-        </p>
+          {t("profileEditor.youllLoggedOutAll")}</p>
       </Panel>
       {pro && profile && (
         <Panel>
-          <h2 className="mb-3 text-lg font-bold">Dokumentet për shqyrtim</h2>
+          <h2 className="mb-3 text-lg font-bold">{t("profileEditor.documentsReview")}</h2>
           <p className="mb-4 text-sm text-muted">
-            Dokumentet janë private dhe mund t’i hapni vetëm ju dhe
-            administrata.
-          </p>
-          {process.env.DOCUMENT_UPLOADS_ENABLED === "true" ? <UploadDocument /> : <p className="text-sm text-muted">Ngarkimi ende nuk është aktiv. Mos dërgoni dokumente identiteti në bisedë ose me email.</p>}
+            {t("profileEditor.documentsPrivateCanOnly")}</p>
+          {process.env.DOCUMENT_UPLOADS_ENABLED === "true" ? <UploadDocument /> : <p className="text-sm text-muted">{t("profileEditor.uploadingIsntActiveYet")}</p>}
           {profile.documents.map((d) => (
             <div className="mt-4 flex flex-wrap gap-3" key={d.id}>
               <Link
@@ -187,7 +179,7 @@ export default async function ProfileEditor({ pro }: { pro: boolean }) {
                 {d.filename ?? d.kind}
               </Link>
               <span className="text-sm">
-                {d.reviewed ? "Shqyrtuar" : "Në pritje"}
+                {d.reviewed ? t("profileEditor.reviewed") : t("profileEditor.pending")}
               </span>
             </div>
           ))}

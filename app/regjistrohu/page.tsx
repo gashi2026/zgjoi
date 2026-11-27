@@ -1,51 +1,53 @@
 import { idUploadsAvailable } from "@/lib/server/id-verification";
 import AuthPage from "@/components/marketplace/AuthPage";
-export default function Page() {
+import { getT } from "@/lib/i18n/server";
+export default async function Page() {
+  const t = await getT();
   return (
     <AuthPage
-      title="Krijoni llogarinë tuaj"
+      title={t("auth.createAccount")}
       endpoint="/api/auth/register"
-      label="Regjistrohu"
+      label={t("auth.signUp")}
       values={{ role: "CLIENT" }}
       fields={[
         {
           name: "name",
-          label: "Emri dhe mbiemri",
+          label: t("auth.fullName"),
           required: true,
           maxLength: 120,
           autoComplete: "name",
         },
         {
           name: "email",
-          label: "Emaili",
+          label: t("auth.email"),
           type: "email",
           required: true,
           autoComplete: "email",
         },
         {
           name: "password",
-          label: "Fjalëkalimi",
+          label: t("auth.password"),
           type: "password",
           required: true,
           minLength: 12,
-          hint: "Të paktën 12 karaktere; deri në 72 byte.",
+          hint: t("auth.least12CharactersUp"),
           autoComplete: "new-password",
         },
         {
           name: "city",
-          label: "Qyteti",
+          label: t("auth.city"),
           required: true,
           maxLength: 60,
           autoComplete: "address-level2",
         },
         {
           name: "terms",
-          label: "Pranoj kushtet dhe politikën e privatësisë",
+          label: t("auth.iAcceptTermsPrivacy"),
           type: "checkbox",
           required: true,
         },
       ]}
-      text={`Zgjidhni një profesionist dhe hapni një bisedë private me të. ${idUploadsAvailable() ? "Pas regjistrimit ju kërkojmë letërnjoftimin (para dhe mbrapa) ose pasaportën, që e shqyrtojmë me dorë dhe e ruajmë privatisht. Deri në miratim mund vetëm të shihni profesionistët përreth: pa bisedë, punësim apo rezervim. " : ""}Lexoni kushtet te lidhja në fund të faqes.`}
+      text={t("auth.chooseProStartPrivate", { value: idUploadsAvailable() ? t("auth.afterSignUpWell") : "" })}
     />
   );
 }
