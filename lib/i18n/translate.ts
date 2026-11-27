@@ -61,7 +61,11 @@ function compile(catalog: Catalog): Compiled {
 
 const SQ_MONEY = /^([−-])?(\d{1,3}(?:\.\d{3})*|\d+)(?:,(\d{1,2}))?\s?€$/;
 /** "1.234,50 €" (sq-XK) → "€1,234.50" (en). */
+const SQ_DECIMAL = /^(\d+),(\d+)$/;
 function reformatValue(value: string, locale: Locale) {
+  // A bare Albanian decimal (e.g. hours "2,5" in "2,5 orë") → "2.5" in English.
+  const d = SQ_DECIMAL.exec(value.trim());
+  if (d) return `${d[1]}.${d[2]}`;
   const m = SQ_MONEY.exec(value.trim());
   if (!m) return null;
   const cents = Number(m[2].replace(/\./g, "")) * 100 + Number((m[3] ?? "0").padEnd(2, "0"));
