@@ -1,7 +1,7 @@
 import Link from "@/components/i18n/Link";
 import { searchPros } from "@/lib/server/catalog";
 import CatalogCard from "@/components/marketplace/CatalogCard";
-import { cities } from "@/lib/data";
+import MunicipalitySelect from "@/components/marketplace/MunicipalitySelect";
 import { getT, pageMetadata } from "@/lib/i18n/server";
 export const dynamic = "force-dynamic";
 export const generateMetadata = () => pageMetadata({ title: "meta.searchTitle", canonical: "/kerko" });
@@ -39,21 +39,21 @@ export default async function Page({
         {t("search.chooseProContactThem")}</p>
       <form
         action="/kerko"
-        className="my-6 grid gap-3 rounded-2xl border border-line bg-cream p-4 sm:grid-cols-2 lg:grid-cols-5"
+        className="my-6 grid gap-2 rounded-2xl border border-line bg-cream p-3 sm:gap-3 sm:p-4 sm:grid-cols-2 lg:grid-cols-5"
       >
         <label className="text-sm">
           {t("search.serviceName")}<input
             name="q"
             defaultValue={params.q}
             maxLength={100}
-            className="mt-1 w-full rounded-xl border border-line p-3 text-base"
+            className="mt-1 h-11 w-full rounded-xl border border-line px-3 text-base sm:h-auto sm:p-3"
           />
         </label>
         <label className="text-sm">
           {t("search.category")}<select
             name="kategoria"
             defaultValue={params.kategoria ?? ""}
-            className="mt-1 w-full rounded-xl border border-line p-3 text-base"
+            className="mt-1 h-11 w-full rounded-xl border border-line px-3 text-base sm:h-auto sm:p-3"
           >
             <option value="">{t("search.all")}</option>
             {result.categories.map((c) => (
@@ -63,30 +63,22 @@ export default async function Page({
             ))}
           </select>
         </label>
-        <label className="text-sm">
-          {t("search.city")}<select
-            name="qyteti"
-            defaultValue={params.qyteti ?? ""}
-            className="mt-1 w-full rounded-xl border border-line p-3 text-base"
-          >
-            <option value="">{t("search.all")}</option>
-            {cities.map((c) => (
-              <option key={c}>{c}</option>
-            ))}
-          </select>
-        </label>
+        <div className="text-sm">
+          <span className="block">{t("search.city")}</span>
+          <MunicipalitySelect name="qyteti" value={params.qyteti ?? ""} compact />
+        </div>
         <label className="text-sm">
           {t("search.sort")}<select
             name="sort"
             defaultValue={params.sort ?? "rating"}
-            className="mt-1 w-full rounded-xl border border-line p-3 text-base"
+            className="mt-1 h-11 w-full rounded-xl border border-line px-3 text-base sm:h-auto sm:p-3"
           >
             <option value="rating">{t("search.topRated")}</option>
             <option value="reviews">{t("search.mostReviews")}</option>
             <option value="price">{t("search.lowestPrice")}</option>
           </select>
         </label>
-        <button className="self-end rounded-full bg-gold p-3 font-semibold">
+        <button className="h-11 self-end rounded-full bg-gold px-3 text-base font-semibold sm:h-auto sm:p-3">
           {t("search.search")}</button>
       </form>
       <p role="status" className="mb-4 text-muted">

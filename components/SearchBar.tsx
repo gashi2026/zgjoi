@@ -2,9 +2,10 @@
 
 import { useRouter } from "@/lib/i18n/client";
 import { useId, useState } from "react";
-import { Search, MapPin, type LucideIcon } from "lucide-react";
-import { categories, cities } from "@/lib/data";
+import { Search, type LucideIcon } from "lucide-react";
+import { categories } from "@/lib/data";
 import { useT } from "@/lib/i18n/client";
+import MunicipalitySelect from "@/components/marketplace/MunicipalitySelect";
 
 const normalize = (text: string) => text.trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 
@@ -22,7 +23,7 @@ function SearchField({ value, onChange, label, options, icon: Icon }: {
   function choose(option: string) { onChange(option); setOpen(false); setActive(-1); }
 
   return (
-    <div className="relative flex min-w-0 items-center gap-2.5 rounded-xl px-3 py-3 focus-within:bg-cream">
+    <div className="relative flex h-11 min-w-0 items-center gap-2.5 px-3 sm:h-auto sm:min-h-12 sm:py-3 focus-within:bg-cream">
       <Icon size={18} className="shrink-0 text-muted" aria-hidden="true" />
       <input
         type="text" value={value} placeholder={label} aria-label={label}
@@ -45,7 +46,7 @@ function SearchField({ value, onChange, label, options, icon: Icon }: {
         }}
       />
       {expanded && (
-        <ul id={id} role="listbox" aria-label={label} className="absolute inset-x-0 top-full z-50 mt-1 max-h-72 overflow-y-auto rounded-xl border border-line bg-white p-1 shadow-card">
+        <ul id={id} role="listbox" aria-label={label} className="absolute inset-x-0 top-full z-50 mt-1 max-h-[50vh] overflow-y-auto rounded-xl border border-line bg-white p-1 shadow-card">
           {suggestions.map((option, index) => (
             <li key={option} role="presentation">
               <button id={`${id}-${index}`} type="button" role="option" aria-selected={active === index} tabIndex={-1}
@@ -71,7 +72,7 @@ export default function SearchBar({ initialQuery = "", initialCity = "", compact
   return (
     <div className="service-search min-w-0 w-full">
       <form role="search" aria-label={t("searchBar.searchPros")}
-        className={`service-search-form grid min-w-0 gap-1 rounded-2xl border border-line bg-white p-2 ${compact ? "" : "shadow-card"}`}
+        className={`service-search-form grid min-w-0 gap-0 rounded-2xl border border-line bg-white p-1.5 sm:gap-1 sm:p-2 ${compact ? "" : "shadow-card"}`}
         onSubmit={(event) => {
           event.preventDefault();
           const params = new URLSearchParams();
@@ -80,8 +81,8 @@ export default function SearchBar({ initialQuery = "", initialCity = "", compact
           router.push(`/kerko${params.size ? `?${params}` : ""}`);
         }}>
         <SearchField value={query} onChange={setQuery} label={t("searchBar.whatServiceDoNeed")} options={categories.map((category) => t.tx(category.name))} icon={Search} />
-        <SearchField value={city} onChange={setCity} label={t("searchBar.municipalityCity")} options={cities} icon={MapPin} />
-        <button type="submit" className="min-h-12 rounded-xl bg-gold px-6 py-3 text-base font-semibold text-ink transition-colors hover:bg-gold-dark">{t("searchBar.search")}</button>
+        <MunicipalitySelect variant="plain" name="qyteti" value={city} onChange={setCity} />
+        <button type="submit" className="h-11 min-h-11 rounded-xl bg-gold px-6 text-base font-semibold text-ink transition-colors hover:bg-gold-dark sm:h-auto sm:min-h-12 sm:py-3">{t("searchBar.search")}</button>
       </form>
     </div>
   );
