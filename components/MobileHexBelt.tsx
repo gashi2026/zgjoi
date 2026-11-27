@@ -5,33 +5,27 @@ import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "rea
 import BeltIcon from "./BeltIcons";
 import { Bee } from "./Brand";
 import { HEX_D, HEX_RATIO as RATIO } from "@/lib/hex";
+import {
+  BOTTOM_ROOM,
+  BOTTOM_ROOM_SHORT,
+  DEFAULT_CELL_SIZE,
+  ROWS_SHORT,
+  ROWS_TALL,
+  TOP_ROOM,
+  TOP_ROOM_SHORT,
+  layoutMobileHexBelt,
+  type HexCat,
+  type PlacedHex,
+} from "@/lib/mobile-hex-layout";
 import { useT } from "@/lib/i18n/client";
 
-type Cat = { slug: string; name: string; icon: string };
-
-type Placed = {
-  key: string;
-  cat: Cat | null;  // null = a bee cell
-  decor?: boolean;  // bees, purely decorative
-  x: number;
-  y: number;
-  row: number;
-  honey: boolean;
-};
+type Cat = HexCat;
+type Placed = PlacedHex;
 
 type Callout = { id: number; name: string; icon: string; x: number; y: number; dir: "up" | "down" };
 
-const ROWS_TALL = 4;
-const ROWS_SHORT = 3;   // phone held sideways — less height to play with
-const TOP_ROOM = 66;
-const BOTTOM_ROOM = 54;
-const TOP_ROOM_SHORT = 46;
-const BOTTOM_ROOM_SHORT = 38;
 const HOLD_MS = 1900;   // swell, hold the name, settle — then the next one
 const MAX_LIVE = 3;
-const LABEL_W = 96;          // a grown cell plus its name
-const GAP_SAME_ROW = 116;    // two swollen cells on one row
-const GAP_ANY = 66;          // different rows are offset vertically too
 
 /* The hexes never change once laid out, so they render in their own
    memoised layer — call-outs coming and going can't make them re-render,
@@ -72,14 +66,31 @@ const Cells = memo(function Cells({
               <Bee size={Math.round(size * 0.46)} />
             </span>
           </div>
+        ) : c.empty || !c.cat ? (
+          <div
+            key={c.key}
+            className="pointer-events-none absolute"
+            style={{ left: c.x, top: c.y, width: size, height: h }}
+            aria-hidden="true"
+          >
+            <svg viewBox="0 0 100 115.47" width={size} height={h}>
+              <path
+                d={HEX_D}
+                fill={c.honey ? "#FFFAEC" : "transparent"}
+                stroke="#F2E9D4"
+                strokeWidth={2}
+                strokeLinejoin="round"
+              />
+            </svg>
+          </div>
         ) : (
           <Link
             key={c.key}
-            href={`/kerko?kategoria=${c.cat!.slug}`}
-            aria-label={t("mobileHexBelt.seePros", { name: c.cat!.name })}
+            href={`/kerko?kategoria=${c.cat.slug}`}
+            aria-label={t("mobileHexBelt.seePros", { name: c.cat.name })}
             draggable={false}
             className="absolute z-10"
-            style={{ left: c.x, top: c.y, width: size, height: h }}
+            style={{ left: c.x, top: c.y, width: size, height: h, minWidth: 44, minHeight: 44 }}
           >
             <svg
               viewBox="0 0 100 115.47"
@@ -97,7 +108,7 @@ const Cells = memo(function Cells({
               />
             </svg>
             <span className="absolute inset-0 flex items-center justify-center text-gold-dark">
-              <BeltIcon name={c.cat!.icon} size={21} />
+              <BeltIcon name={c.cat.icon} size={Math.max(24, Math.round(size * 0.4))} />
             </span>
           </Link>
         )
@@ -184,12 +195,12 @@ function GrowCell({
         <path d={HEX_D} fill="#FFE9A8" stroke="#E89D00" strokeWidth={3} strokeLinejoin="round" />
       </svg>
       <span className="absolute inset-0 flex items-center justify-center text-gold-dark">
-        <BeltIcon name={co.icon} size={21} />
+        <BeltIcon name={co.icon} size={Math.max(24, Math.round(cell * 0.4))} />
       </span>
       {/* the name always rides on top of the icon */}
       <span
         ref={nameRef}
-        className="absolute bottom-full left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md bg-gold px-1.5 py-[1px] text-[9px] font-extrabold tracking-tight text-ink shadow-[0_2px_6px_rgba(232,157,0,0.35)]"
+        className="absolute bottom-full left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md bg-gold px-2 py-0.5 text-[11px] font-extrabold tracking-tight text-ink shadow-[0_2px_6px_rgba(232,157,0,0.35)]"
         style={{ marginBottom: -6, opacity: 0 }}
       >
         {t.tx(co.name)}
@@ -200,7 +211,7 @@ function GrowCell({
 
 export default function MobileHexBelt({
   cats,
-  size = 52,
+  size = DEFAULT_CELL_SIZE,
   speed = 24,
 }: {
   cats: Cat[];
@@ -234,54 +245,16 @@ export default function MobileHexBelt({
   const cell = short ? Math.round(size * 0.86) : size;
 
   const h = cell * RATIO;
-  const dx = cell;
-  const dy = h * 0.75;
 
-  const { cells, groupWidth, beltHeight } = useMemo(() => {
-    /* Bees dotted around the sheet — irregular, never two touching. */
-    const isDecorBee = (col: number, row: number) => {
-      const hash = (col * 73856093) ^ (row * 19349663);
-      const a = Math.abs(hash % 97) / 97;
-      if (a > 0.13) return false;
-      // keep them apart: no bee directly beside another
-      const prevHash = ((col - 1) * 73856093) ^ (row * 19349663);
-      if (Math.abs(prevHash % 97) / 97 <= 0.13) return false;
-      return true;
-    };
+  const { cells, groupWidth, beltHeight } = useMemo(
+    () => layoutMobileHexBelt({ cats, rows: ROWS, size: cell }),
+    [cats, cell, ROWS],
+  );
 
-    /* Grow the sheet until every category fits once alongside the bees,
-       so nothing has to repeat. */
-    let columns = Math.max(8, Math.ceil((cats.length + 1) / ROWS));
-    const slotsFor = (cols: number) => {
-      let bees = 0;
-      for (let col = 0; col < cols; col++) {
-        for (let row = 0; row < ROWS; row++) if (isDecorBee(col, row)) bees++;
-      }
-      return cols * ROWS - bees;
-    };
-    while (slotsFor(columns) < cats.length && columns < cats.length + 8) columns++;
-
-    const list: Placed[] = [];
-    let n = 0;
-    for (let col = 0; col < columns; col++) {
-      for (let row = 0; row < ROWS; row++) {
-        const x = col * dx + (row % 2 === 1 ? dx / 2 : 0);
-        const y = row * dy;
-        const honey = (col * 2 + row) % 3 === 0;
-
-        if (isDecorBee(col, row)) {
-          list.push({ key: `d-${col}-${row}`, cat: null, decor: true, x, y, row, honey });
-        } else {
-          list.push({ key: `c-${col}-${row}`, cat: cats[n++ % cats.length], x, y, row, honey });
-        }
-      }
-    }
-    return {
-      cells: list,
-      groupWidth: columns * dx,
-      beltHeight: (ROWS - 1) * dy + h,
-    };
-  }, [cats, dx, dy, h, ROWS]);
+  /* Spacing for the swelling name-callouts, scaled to the cell size. */
+  const LABEL_W = Math.round(cell * 1.85);
+  const GAP_SAME_ROW = Math.round(cell * 2.23);
+  const GAP_ANY = Math.round(cell * 1.27);
 
   const wrap = (v: number) => {
     let x = v;

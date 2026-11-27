@@ -13,7 +13,7 @@
     "db:seed": "prisma db seed",
     "db:studio": "prisma studio",
     "postinstall": "prisma generate",
-    "test:unit": "node --conditions=react-server --import tsx --test tests/unit.test.ts tests/security.test.ts tests/commission-policy.test.ts tests/contact-filter.test.ts tests/email-allowlist.test.ts tests/beta-qa.test.ts tests/chat-then-hire.test.ts tests/book-now.test.ts tests/disputes-trust.test.ts tests/arrita.test.ts tests/recurring-estimate.test.ts tests/id-verification.test.ts tests/i18n.test.ts tests/signup-wizard.test.ts tests/support-hours.test.ts tests/admin-pro-controls.test.ts && node --import tsx --import ./tests/support/server-only.mjs --test tests/homepage-reference.test.ts",
+    "test:unit": "node --conditions=react-server --import tsx --test tests/unit.test.ts tests/security.test.ts tests/commission-policy.test.ts tests/contact-filter.test.ts tests/email-allowlist.test.ts tests/beta-qa.test.ts tests/chat-then-hire.test.ts tests/book-now.test.ts tests/disputes-trust.test.ts tests/arrita.test.ts tests/recurring-estimate.test.ts tests/id-verification.test.ts tests/i18n.test.ts tests/signup-wizard.test.ts tests/support-hours.test.ts tests/admin-pro-controls.test.ts tests/mobile-ux.test.ts && node --import tsx --import ./tests/support/server-only.mjs --test tests/homepage-reference.test.ts",
     "test:integration": "node scripts/run-integration.mjs"
   },
   "engines": {
