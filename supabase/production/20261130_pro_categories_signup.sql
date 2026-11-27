@@ -2,7 +2,7 @@
 -- NOT applied. Apply only after the owner approves shipping this to main, with a backup first, and BEFORE the code reaches main.
 -- Same body as supabase/staging/pro-categories-signup.sql.
 -- Additive: new table "ProCategory" (RLS on) backfilled from ProProfile."categorySlug"/"priceFrom", new nullable User."signupStep",
--- ProCategory."minMinutes" (minimum hours per profession), and ProProfile."priceFrom" becomes nullable. No existing row is updated or deleted.
+-- ProCategory."minMinutes" (minimum hours per profession), ProProfile."bookNowEnabled" (Book now switch), and ProProfile."priceFrom" becomes nullable. No existing row is updated or deleted.
 DO $guard$
 BEGIN
   IF EXISTS (SELECT 1 FROM public."Setting" WHERE key = '_staging_environment') THEN
@@ -97,3 +97,7 @@ BEGIN
   END IF;
 END
 $m$;
+
+-- 6) One hourly rate per pro for every pro (not only Book now categories), with a separate Book now switch.
+--    Null = legacy row: Book now stays on exactly when a rate is set (today's meaning), so no backfill.
+ALTER TABLE "ProProfile" ADD COLUMN IF NOT EXISTS "bookNowEnabled" BOOLEAN;

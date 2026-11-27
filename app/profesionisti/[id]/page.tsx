@@ -91,6 +91,11 @@ export default async function Page({
             ? t("proProfile.reviews", { value: pro.ratingAvg.toFixed(1), ratingCount: pro.ratingCount })
             : t("proProfile.noReviewsYet")}
         </p>
+        {pro.hourlyRateCents && (many || !terms) ? (
+          <p className="mt-2 inline-flex items-center gap-2 text-sm font-semibold" data-testid="pro-hourly-rate">
+            <svg aria-hidden viewBox="0 0 24 24" className="h-4 w-4"><path d="M12 2 21 7v10l-9 5-9-5V7z" className="fill-gold" /></svg>
+            {t("proProfile.hourlyRate", { amount: money(pro.hourlyRateCents, t.locale) })}</p>
+        ) : null}
         {trust && <TrustDonut summary={trust} />}
         {!many && <p className="mt-2 text-sm text-muted">
           {terms
@@ -151,7 +156,7 @@ export default async function Page({
                 <div>
                   <p className="font-bold">{t.tx(p.category?.name)}</p>
                   <p className="text-sm">{p.priceFromCents ? t("proProfile.priceFrom", { amount: money(p.priceFromCents, t.locale) }) : <span className="text-muted">{t("proProfile.askForPrice")}</span>}
-                    {p.terms ? ` · ${t("proProfile.hr", { amount: money(p.terms.rateCents, t.locale) })}` : ""}</p>
+</p>
                   {(p.terms?.minMinutes ?? p.minMinutes) && (
                     <p className="text-xs text-muted" data-testid={`min-hours-${p.slug}`}>
                       {t("proProfile.minimumHours", { label: t.tx(hoursLabel((p.terms?.minMinutes ?? p.minMinutes)!)) })}</p>

@@ -9,7 +9,7 @@ import { saveProfessions, resolveProCategory } from "../lib/server/pro-categorie
 import { adminCommand } from "../lib/server/admin";
 import { createInquiry } from "../lib/server/marketplace";
 import { searchPros, publicProfile } from "../lib/server/catalog";
-import { createBooking, saveBookingSettings, bookingTermsFor } from "../lib/server/bookings";
+import { createBooking, saveBookingSettings, saveHourlyRate, bookingTermsFor } from "../lib/server/bookings";
 
 const database = new URL(process.env.DATABASE_URL || "");
 assert(process.env.CI && ["localhost", "127.0.0.1"].includes(database.hostname) && database.pathname === "/zgjoi_test", "Refuse non-disposable database");
@@ -114,6 +114,28 @@ test("sign-up wizard: ID is a required step, pros pick several professions, no p
     await assert.rejects(book("pastrim", 30), code("HOURS"));
     const ok = await book("pastrim", 60);
     assert.equal((await db.booking.findFirstOrThrow({ where: { requestId: ok.id } })).minMinutes, 60);
+
+    // One hourly rate per pro, for every pro, changeable any time; Book now is a separate switch.
+    await saveHourlyRate(proActor, { hourlyRate: "14" });
+    let rated = await db.proProfile.findUniqueOrThrow({ where: { id: pro.proProfile!.id } });
+    assert.deepEqual([rated.hourlyRateCents, rated.verification, rated.bookNowEnabled], [1400, "APPROVED", true], "changing the rate keeps approval and Book now");
+    await saveBookingSettings(proActor, { enabled: false });
+    rated = await db.proProfile.findUniqueOrThrow({ where: { id: pro.proProfile!.id } });
+    assert.deepEqual([rated.hourlyRateCents, rated.bookNowEnabled], [1400, false], "switching Book now off keeps the rate");
+    assert.equal(await bookingTermsFor(db, rated, "pastrim"), null);
+    assert.equal((await searchPros({ kategoria: "pastrim" })).pros.find((x) => x.id === rated.id)?.hourlyRateCents, 1400, "the rate shows in search");
+    await saveBookingSettings(proActor, { enabled: true });
+    assert.equal((await bookingTermsFor(db, await db.proProfile.findUniqueOrThrow({ where: { id: rated.id } }), "pastrim"))?.rateCents, 1400);
+    // A pro whose professions have no Book now can still set (and remove) an hourly rate; it never turns Book now on.
+    const gardener = await db.user.findUniqueOrThrow({ where: { id: legacy.id }, include: { proProfile: true } });
+    await saveProfessions(gardener, { categories: [{ slug: "kopshtar" }] });
+    await saveHourlyRate(gardener, { hourlyRate: "11,50" });
+    const g = await db.proProfile.findUniqueOrThrow({ where: { id: gardener.proProfile!.id } });
+    assert.deepEqual([g.hourlyRateCents, g.bookNowEnabled], [1150, false]);
+    await assert.rejects(saveBookingSettings(gardener, { enabled: true }), code("BOOK_NOW_UNAVAILABLE"));
+    await assert.rejects(saveHourlyRate(gardener, { hourlyRate: "0,50" }), code("RATE"));
+    await saveHourlyRate(gardener, { hourlyRate: "" });
+    assert.equal((await db.proProfile.findUniqueOrThrow({ where: { id: g.id } })).hourlyRateCents, null);
 
     // Existing accounts (created before the wizard) are not pulled into it.
     const old = await db.user.create({ data: { email: `wizard-old-${randomUUID()}@ci.zgjoi.invalid`, passwordHash: "x", name: "Old", role: "CLIENT" } });

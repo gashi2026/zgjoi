@@ -26,6 +26,7 @@ export const publicProSelect = {
   categorySlug: true,
   priceFrom: true,
   hourlyRateCents: true,
+  bookNowEnabled: true,
   bookingMinMinutes: true,
   ratingAvg: true,
   ratingCount: true,

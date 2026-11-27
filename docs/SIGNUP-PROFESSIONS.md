@@ -68,3 +68,13 @@ Rollback note: once a pro has signed up without a price, `priceFrom` is NULL; ol
   saved). Existing pros therefore keep today's minimum until they change it — no backfill.
 - Enforced server-side in `createBooking` (`checkHours`), in recurring proposals, and in the duration list on
   `/rezervo-tani` (it starts at the minimum). The hourly rate stays one per pro.
+
+## Hourly rate (one per pro, every pro)
+
+- Owner decision: one hourly rate for all of a pro's professions, available to every pro (not only Book now categories),
+  optional, changeable any time in `/pro/profili` ("Tarifa për orë" panel, `/api/account/hourly-rate`) with no re-review.
+  An empty field removes it. Shown on the public profile and search cards when set.
+- Book now is a separate switch (`ProProfile.bookNowEnabled`, own panel, only for pros with a Book now profession).
+  Switching it off keeps the rate; turning it on needs a rate. Null = legacy row: on when a rate is set (today's meaning),
+  so no backfill. Saving a rate never turns Book now on by itself.
+- Accepted defaults: no price or rate needed for approval; a newly added profession needs its own approval; max 5 professions.

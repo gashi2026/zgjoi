@@ -35,7 +35,8 @@ export default async function CatalogCard({
         {pro.ratingCount
           ? t("catalogCard.reviews", { value: pro.ratingAvg.toFixed(1), ratingCount: pro.ratingCount })
           : t("catalogCard.noReviewsYet")}{" "}
-        {pro.priceFrom ? t("catalogCard.from", { amount: money(pro.priceFrom, t.locale) }) : t("catalogCard.askForPrice")}</p>
+        {pro.priceFrom ? t("catalogCard.from", { amount: money(pro.priceFrom, t.locale) }) : t("catalogCard.askForPrice")}
+        {pro.hourlyRateCents ? ` · ${t("catalogCard.hourlyRate", { amount: money(pro.hourlyRateCents, t.locale) })}` : ""}</p>
       <Link
         href={`/profesionisti/${pro.slug}`}
         className="mt-auto rounded-full border border-gold px-4 py-3 text-center text-sm font-semibold"

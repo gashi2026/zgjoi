@@ -2129,6 +2129,19 @@ export const sq = {
   "proProfile.minimumHours": "Minimumi: {label}",
   "server.proCategories.minimumHoursRange": "Minimumi i orëve duhet të jetë nga 0,5 deri në 12 orë, me hapa gjysmë ore.",
   "proProfile.priceFrom": "Nga {amount}",
+  "profileEditor.hourlyRate": "Tarifa për orë",
+  "profileEditor.hourlyRateIntro": "Një tarifë për orë për të gjitha profesionet tuaja. Është opsionale dhe e ndryshoni kur të doni, pa miratim të ri. Shfaqet në profil dhe në kërkim; me rezervimin direkt klienti paguan tarifën × orët.",
+  "profileEditor.hourlyRateOptional": "Tarifa për orë (€, opsionale)",
+  "profileEditor.hourlyRateHint": "Lëreni bosh për ta hequr. Oferta për një punë mund të ndryshojë në bisedë.",
+  "profileEditor.saveHourlyRate": "Ruaj tarifën për orë",
+  "profileEditor.bookNowTitle": "“Rezervo tani”",
+  "profileEditor.bookNowNeedsRate": "Për “Rezervo tani” vendosni më parë tarifën për orë më lart.",
+  "profileEditor.saveBookNow": "Ruaj",
+  "proProfile.hourlyRate": "Tarifa për orë: {amount}",
+  "catalogCard.hourlyRate": "{amount} / orë",
+  "server.bookings.setHourlyRateFirst": "Vendosni më parë tarifën për orë.",
+  "server.bookings.hourlyRateSaved": "Tarifa për orë u ruajt.",
+  "server.bookings.hourlyRateRemoved": "Tarifa për orë u hoq.",
 } as const;
 
 export type MessageKey = keyof typeof sq;

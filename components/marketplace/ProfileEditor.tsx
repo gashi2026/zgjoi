@@ -8,7 +8,7 @@ import Frame, { Panel } from "./Frame";
 import ApiForm, { type Field } from "./ApiForm";
 import UploadDocument from "./UploadDocument";
 import Link from "@/components/i18n/Link";
-import { categoryFlow } from "@/lib/server/bookings";
+import { bookNowOn, categoryFlow } from "@/lib/server/bookings";
 import { DEFAULT_MIN_MINUTES, hourOptions, hoursLabel, MINUTE_STEP } from "@/lib/book-now";
 import { getT } from "@/lib/i18n/server";
 export default async function ProfileEditor({ pro }: { pro: boolean }) {
@@ -125,20 +125,37 @@ export default async function ProfileEditor({ pro }: { pro: boolean }) {
             hours={hourOptions(MINUTE_STEP).map((m) => ({ value: String(m), label: t.tx(hoursLabel(m)) }))} />
         </section>
       )}
+      {pro && profile && (
+        <Panel>
+          <h2 className="mb-1 text-lg font-bold" id="tarifa">{t("profileEditor.hourlyRate")}</h2>
+          <p className="mb-4 text-sm text-muted">{t("profileEditor.hourlyRateIntro")}</p>
+          <div data-testid="hourly-rate-form">
+            <ApiForm
+              endpoint="/api/account/hourly-rate"
+              label={t("profileEditor.saveHourlyRate")}
+              fields={[
+                { name: "hourlyRate", label: t("profileEditor.hourlyRateOptional"), type: "number", step: "0.01", min: 1, max: 1000,
+                  value: profile.hourlyRateCents ? profile.hourlyRateCents / 100 : "", hint: t("profileEditor.hourlyRateHint") },
+              ]}
+            />
+          </div>
+        </Panel>
+      )}
       {pro && profile && bookNowOffered && (
         <Panel>
-          <h2 className="mb-1 text-lg font-bold">{t("profileEditor.bookNowHourlyRate")}</h2>
+          <h2 className="mb-1 text-lg font-bold">{t("profileEditor.bookNowTitle")}</h2>
           <p className="mb-4 text-sm text-muted">
             {t("profileEditor.categoryCustomersCanBook")} {t("profileEditor.minimumHoursInProfessions")}</p>
-          <ApiForm
-            endpoint="/api/account/booking-settings"
-            label={t("profileEditor.saveRate")}
-            fields={[
-              { name: "enabled", label: t("profileEditor.acceptBookingsBookNow"), type: "checkbox", checked: Boolean(profile.hourlyRateCents) },
-              { name: "hourlyRate", label: t("profileEditor.hourlyRateEuros"), type: "number", step: "0.01", min: 1, max: 1000,
-                value: profile.hourlyRateCents ? profile.hourlyRateCents / 100 : "" },
-            ]}
-          />
+          {!profile.hourlyRateCents && <p className="mb-4 rounded-xl bg-[#FFF9E3] p-3 text-sm" role="status">{t("profileEditor.bookNowNeedsRate")}</p>}
+          <div data-testid="book-now-form">
+            <ApiForm
+              endpoint="/api/account/booking-settings"
+              label={t("profileEditor.saveBookNow")}
+              fields={[
+                { name: "enabled", label: t("profileEditor.acceptBookingsBookNow"), type: "checkbox", checked: bookNowOn(profile) && Boolean(profile.hourlyRateCents) },
+              ]}
+            />
+          </div>
         </Panel>
       )}
       <Panel>

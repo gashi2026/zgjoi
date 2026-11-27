@@ -93,6 +93,7 @@ test("pro categories SQL is additive, backfills the old category, and the produc
     assert.match(sql, /WHEN 'hidraulik' THEN 'mjeshter-i-ujit'/);
     assert.match(sql, /ALTER TABLE "ProCategory" ADD COLUMN IF NOT EXISTS "minMinutes" INTEGER/);
     assert.match(sql, /"minMinutes" BETWEEN 30 AND 720 AND "minMinutes" % 30 = 0/);
+    assert.match(sql, /ALTER TABLE "ProProfile" ADD COLUMN IF NOT EXISTS "bookNowEnabled" BOOLEAN/);
   }
   assert.match(staging, /_staging_environment' AND value->>'kind' = 'staging'/);
   assert.match(production, /This is the production rollout/);
@@ -116,4 +117,13 @@ test("minimum hours: per profession, optional, half-hour steps, falling back to 
   assert.equal(professionsInput.safeParse({ categories: [{ slug: "pastrim", minMinutes: "780" }] }).success, false);
   const editor = readFileSync("components/marketplace/ProfileEditor.tsx", "utf8");
   assert.doesNotMatch(editor, /name: "minMinutes"/, "the minimum lives with each profession, not in the Book now rate form");
+});
+
+test("the hourly rate is one per pro, for every pro, separate from the Book now switch", () => {
+  const editor = readFileSync("components/marketplace/ProfileEditor.tsx", "utf8");
+  const rateForm = editor.slice(editor.indexOf('endpoint="/api/account/hourly-rate"'));
+  assert.ok(editor.indexOf('endpoint="/api/account/hourly-rate"') > 0);
+  assert.ok(editor.lastIndexOf("bookNowOffered &&", editor.indexOf('endpoint="/api/account/hourly-rate"')) < editor.indexOf("{pro && profile && (\n        <Panel>\n          <h2 className=\"mb-1 text-lg font-bold\" id=\"tarifa\""), "the rate form is not behind the Book now check");
+  const bookNowForm = rateForm.slice(rateForm.indexOf('endpoint="/api/account/booking-settings"'));
+  assert.doesNotMatch(bookNowForm.slice(0, bookNowForm.indexOf("</Panel>")), /name: "hourlyRate"/, "the Book now form is only the switch");
 });
