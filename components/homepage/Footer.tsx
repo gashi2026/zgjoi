@@ -33,8 +33,8 @@ const columns: { title: string; items: { label: string; href: string }[] }[] = [
     items: [
       { label: msgKey("footer.helpCentre"), href: "/rreth-nesh" },
       { label: msgKey("footer.safety"), href: "/rreth-nesh" },
-      { label: msgKey("footer.termsUse"), href: "/rreth-nesh" },
-      { label: msgKey("footer.privacyPolicy"), href: "/rreth-nesh" },
+      { label: msgKey("footer.termsUse"), href: "/kushtet" },
+      { label: msgKey("footer.privacyPolicy"), href: "/privatesia" },
     ],
   },
   {
@@ -156,9 +156,9 @@ export default function Footer() {
         <div className="mt-12 flex flex-col items-center justify-between gap-4 border-t border-line pt-6 text-xs text-muted sm:flex-row">
           <p>{t("footer.n2026ZgjoiAllRights")}</p>
           <div className="flex gap-6">
-            <Link href="/rreth-nesh" className="hover:text-gold-dark">
+            <Link href="/privatesia" className="hover:text-gold-dark">
               {t("footer.privacy")}</Link>
-            <Link href="/rreth-nesh" className="hover:text-gold-dark">
+            <Link href="/kushtet" className="hover:text-gold-dark">
               {t("footer.terms")}</Link>
             <Link href="/rreth-nesh" className="hover:text-gold-dark">
               {t("footer.contact")}</Link>

@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { sq } from "../lib/i18n/messages/sq";
 import { en } from "../lib/i18n/messages/en";
+import { legalSq } from "../lib/i18n/messages/legal-sq";
+import { legalEn } from "../lib/i18n/messages/legal-en";
 import { createT, formatMoney, formatDateTime, formatClock, makeTx } from "../lib/i18n/translate";
 import { catalog, translateText } from "../lib/i18n/dictionaries";
 import { localizePath, negotiateLocale, stripLocale } from "../lib/i18n/config";
@@ -101,3 +103,35 @@ test("User.locale SQL is additive, staging-guarded, and the production copy matc
   assert.match(production, /This is the production rollout/);
   assert.match(readFileSync("prisma/schema.prisma", "utf8"), /locale\s+String\?/);
 });
+
+test("legal copy has matching placeholders and is not marked as a draft on the site", () => {
+  const tokens = (s: string) => [...s.matchAll(/\[[^\]]+\]/g)].map((m) => m[0]);
+  const draft = /draft|pending legal review|në pritje të shqyrtimit ligjor/i;
+  for (const key of Object.keys(legalSq) as (keyof typeof legalSq)[]) {
+    assert.equal(legalEn[key] !== undefined, true, `${key} missing from legal-en.ts`);
+    assert.deepEqual(tokens(legalEn[key]), tokens(legalSq[key]), `${key} placeholders differ`);
+    assert.doesNotMatch(legalSq[key], draft);
+    assert.doesNotMatch(legalEn[key], draft);
+  }
+  assert.ok(tokens(legalSq["terms.operatorBody"]).includes("[ADRESA E KOMPANISË]"));
+  assert.ok(tokens(legalSq["terms.operatorBody"]).includes("[EMRI LIGJOR I KOMPANISË]"));
+  assert.ok(tokens(legalSq["terms.operatorBody"]).includes("[NUMRI I REGJISTRIMIT TË BIZNESIT]"));
+  assert.ok(tokens(legalSq["terms.operatorBody"]).includes("[NUMRI FISKAL]"));
+  assert.ok(tokens(legalSq["terms.effectiveDate"]).includes("[DATA E HYRJES NË FUQI]"));
+});
+
+test("footers and sign-up point to the terms and privacy pages", () => {
+  const footer = readFileSync("components/Footer.tsx", "utf8");
+  const home = readFileSync("components/homepage/Footer.tsx", "utf8");
+  const customer = readFileSync("app/regjistrohu/page.tsx", "utf8");
+  const pro = readFileSync("app/regjistrohu-profesionist/page.tsx", "utf8");
+  assert.match(footer, /href="\/kushtet"/);
+  assert.match(footer, /href="\/privatesia"/);
+  assert.match(home, /href: "\/kushtet"/);
+  assert.match(home, /href: "\/privatesia"/);
+  assert.doesNotMatch(home, /footer\.termsUse.*\/rreth-nesh/);
+  assert.doesNotMatch(home, /footer\.privacyPolicy.*\/rreth-nesh/);
+  assert.match(customer, /termsAcceptField\(t\)/);
+  assert.match(pro, /termsAcceptField\(t\)/);
+});
+

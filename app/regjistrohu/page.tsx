@@ -1,5 +1,6 @@
 import { idUploadsAvailable } from "@/lib/server/id-verification";
 import AuthPage from "@/components/marketplace/AuthPage";
+import { termsAcceptField } from "@/components/marketplace/termsAcceptField";
 import { getT } from "@/lib/i18n/server";
 export default async function Page() {
   const t = await getT();
@@ -40,12 +41,7 @@ export default async function Page() {
           maxLength: 60,
           autoComplete: "address-level2",
         },
-        {
-          name: "terms",
-          label: t("auth.iAcceptTermsPrivacy"),
-          type: "checkbox",
-          required: true,
-        },
+        termsAcceptField(t),
       ]}
       text={t("auth.chooseProStartPrivate", { value: idUploadsAvailable() ? t("auth.afterSignUpWell") : "" })}
     />
