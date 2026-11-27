@@ -28,6 +28,7 @@ export default function Thread({
   closed = false,
   events = [],
   placeholder,
+  note,
 }: {
   id?: string;
   support?: boolean;
@@ -35,6 +36,7 @@ export default function Thread({
   closed?: boolean;
   events?: ThreadEvent[];
   placeholder?: string;
+  note?: ReactNode;
 }) {
   const t = useT();
   const [id, setId] = useState(initialId);
@@ -217,6 +219,7 @@ export default function Thread({
         >
           {t("thread.loadOlderMessages")}</button>
       )}
+      {(timeline.length > 0 || !support) && (
       <div
         ref={log}
         role="log"
@@ -228,7 +231,7 @@ export default function Thread({
         }}
         className={`${events.length ? "max-h-[36rem]" : "max-h-96"} space-y-3 overflow-y-auto rounded-xl bg-cream p-3`}
       >
-        {!timeline.length && (
+        {!support && !timeline.length && (
           <p className="text-sm text-muted">
             {ready ? t("thread.noMessagesYet") : t("thread.openingChat")}
           </p>
@@ -250,6 +253,7 @@ export default function Thread({
           ),
         )}
       </div>
+      )}
       {error && (
         <p role="alert" className="text-sm text-red-700">
           {error}
@@ -260,6 +264,7 @@ export default function Thread({
           {t("thread.chatClosedHelpContact")}</p>
       ) : (
         <form onSubmit={send} className="space-y-2">
+          {note && <p className="text-xs text-muted">{note}</p>}
           <label className="block text-sm font-semibold">
             {t("thread.message")}<textarea
               value={body}

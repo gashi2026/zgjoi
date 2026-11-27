@@ -142,9 +142,12 @@ test("home header and support launcher match original styling without replacing 
   assert(support.includes("bg-green-500") || support.includes("bg-gray-400"), "launcher shows online/offline status");
   const open = await render(React.createElement(SupportChat, { productionHome: true, defaultOpen: true }));
   assert(open.includes("Mbështetja Zgjoi"));
-  assert(open.includes("E hënë – e premte, 09:00–17:00 (koha e Kosovës)"));
+  assert(open.includes("Çdo ditë, 09:00–17:00"));
+  assert(!open.includes("koha e Kosovës"));
+  assert(!open.includes("Kosovo time"));
+  assert(!open.includes("Nuk ka mesazhe ende"));
   assert(open.includes("Online") || open.includes("Jashtë orarit"));
-  assert(open.includes("role=\"status\"") || open.includes("Jemi online deri") || open.includes("Kthehemi") || open.includes("Përgjigjemi nga ora"));
+  assert(open.includes("Jemi online deri") || open.includes("Kthehemi") || open.includes("Mesazhi juaj dërgohet gjithsesi"));
 });
 
 test("marketing reference modules never feed API, database, or account routes", () => {

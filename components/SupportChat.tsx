@@ -4,23 +4,33 @@ import { useBarePathname as usePathname } from "@/lib/i18n/client";
 import { Headset, MessageCircle, X } from "lucide-react";
 import Thread from "./marketplace/Thread";
 import { LogoMark } from "./Brand";
-import { formatSupportStatus, OPEN_HOUR, supportStatus, type SupportStatus } from "@/lib/support-hours";
+import { formatSupportStatus, supportStatus, type SupportStatus } from "@/lib/support-hours";
 import { useT } from "@/lib/i18n/client";
 
-export default function SupportChat({ productionHome = false, defaultOpen = false }: { productionHome?: boolean; defaultOpen?: boolean }) {
+export default function SupportChat({
+  productionHome = false,
+  defaultOpen = false,
+  now,
+}: {
+  productionHome?: boolean;
+  defaultOpen?: boolean;
+  /** Fixed instant, used by tests and previews. */
+  now?: Date;
+}) {
   const t = useT();
   const [open, setOpen] = useState(defaultOpen);
   const button = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLElement>(null);
   const path = usePathname();
   const referenceHome = productionHome && (path === "/" || path === "/se-shpejti");
-  const [status, setStatus] = useState<SupportStatus>(() => supportStatus());
+  const [status, setStatus] = useState<SupportStatus>(() => supportStatus(now));
   useEffect(() => {
-    const update = () => setStatus(supportStatus());
+    const update = () => setStatus(supportStatus(now));
     const frame = requestAnimationFrame(update);
+    if (now) return () => cancelAnimationFrame(frame);
     const timer = setInterval(update, 60_000);
     return () => { cancelAnimationFrame(frame); clearInterval(timer); };
-  }, []);
+  }, [now]);
   useEffect(() => {
     if (open) panel.current?.focus();
   }, [open]);
@@ -29,8 +39,6 @@ export default function SupportChat({ productionHome = false, defaultOpen = fals
     button.current?.focus();
   }
   const statusLine = formatSupportStatus(status, t);
-  const hoursLabel = t("supportChat.hoursLabel");
-  const hourParam = { OPEN_HOUR: String(OPEN_HOUR).padStart(2, "0") };
   return (
     <div className={referenceHome ? "fixed bottom-[110px] right-3 z-50 lg:bottom-[30px]" : "fixed bottom-24 right-4 z-50 lg:bottom-6"}>
       {open && (
@@ -57,7 +65,7 @@ export default function SupportChat({ productionHome = false, defaultOpen = fals
                 {status.online ? t("supportChat.online") : t("supportChat.offline")}
               </p>
               <p className="text-xs text-muted">{statusLine}</p>
-              <p className="text-xs text-muted">{hoursLabel}</p>
+              <p className="text-xs text-muted">{t("supportChat.hoursLabel")}</p>
             </div>
             <button
               type="button"
@@ -69,17 +77,15 @@ export default function SupportChat({ productionHome = false, defaultOpen = fals
             </button>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto p-4">
-            {!status.online && (
-              <p
-                role="status"
-                className="mb-3 rounded-xl bg-honey/60 px-3 py-2 text-xs text-ink"
-              >
-                {t("supportChat.offlineBanner", hourParam)}
-              </p>
+            {status.online && (
+              <p className="mb-3 text-xs text-muted">
+                {t("supportChat.writeUsHereMessages")}</p>
             )}
-            <p className="mb-3 text-xs text-muted">
-              {status.online ? t("supportChat.writeUsHereMessages") : t("supportChat.privacyNote")}</p>
-            <Thread key={path} support />
+            <Thread
+              key={path}
+              support
+              note={!status.online ? t("supportChat.offlineNote") : undefined}
+            />
           </div>
         </section>
       )}

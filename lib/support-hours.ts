@@ -1,20 +1,20 @@
 import type { T } from "./i18n/translate";
 /**
- * Live support runs 09:00–17:00, Monday to Friday, Kosovo time.
- * Kosovo uses Europe/Belgrade (CET/CEST) — the same offset year-round rules,
- * so we let Intl handle daylight saving rather than hardcoding +1/+2.
+ * Live support runs 09:00–17:00 every day.
+ * Times are computed in Europe/Belgrade (Kosovo, CET/CEST) so Intl handles
+ * daylight saving rather than hardcoding +1/+2. That zone is not shown in the UI.
  */
 export const SUPPORT_TZ = "Europe/Belgrade";
 export const OPEN_HOUR = 9;
 export const CLOSE_HOUR = 17;
-/** Monday–Friday. Saturday and Sunday are closed. */
-export const OPEN_DAYS = [1, 2, 3, 4, 5];
+/** Every day of the week. */
+export const OPEN_DAYS = [0, 1, 2, 3, 4, 5, 6];
 
 export type SupportReopen = "online" | "today" | "tomorrow" | "weekday";
 
 export type SupportStatus = {
   online: boolean;
-  /** Local time in Kosovo, e.g. "14:32" */
+  /** Local time in Europe/Belgrade, e.g. "14:32" */
   localTime: string;
   /**
    * Albanian sentence describing when we are back. Kept for the support API
@@ -113,4 +113,4 @@ export function formatSupportStatus(status: SupportStatus, t: T): string {
   return t("supportChat.wereBackWhen", { ...hour, when });
 }
 
-export const SUPPORT_HOURS_LABEL = "E hënë – e premte, 09:00–17:00 (koha e Kosovës)";
+export const SUPPORT_HOURS_LABEL = "Çdo ditë, 09:00–17:00";

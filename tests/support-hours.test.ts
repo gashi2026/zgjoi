@@ -41,11 +41,11 @@ function atKosovo(isoLocal: string) {
   throw new Error(`Could not resolve Kosovo time ${isoLocal}`);
 }
 
-test("support hours are 09:00–17:00 Monday to Friday in Europe/Belgrade", () => {
+test("support hours are 09:00–17:00 every day in Europe/Belgrade", () => {
   assert.equal(SUPPORT_TZ, "Europe/Belgrade");
   assert.equal(OPEN_HOUR, 9);
   assert.equal(CLOSE_HOUR, 17);
-  assert.deepEqual(OPEN_DAYS, [1, 2, 3, 4, 5]);
+  assert.deepEqual(OPEN_DAYS, [0, 1, 2, 3, 4, 5, 6]);
 });
 
 test("weekday lunch is online; before 09:00 and from 17:00 is offline", () => {
@@ -72,19 +72,26 @@ test("weekday lunch is online; before 09:00 and from 17:00 is offline", () => {
 
   const closing = supportStatus(atKosovo("2026-11-27T17:00"));
   assert.equal(closing.online, false);
-  assert.equal(closing.reopen, "weekday");
-  assert.equal(closing.nextWeekday, 1);
-  assert.equal(formatSupportStatus(closing, tEn), "We’re back on Monday at 09:00");
-  assert.equal(formatSupportStatus(closing, tSq), "Kthehemi të hënën në ora 09:00");
-  assert.equal(closing.nextOpenLabel, "Kthehemi të hënën në ora 09:00");
+  assert.equal(closing.reopen, "tomorrow");
+  assert.equal(formatSupportStatus(closing, tEn), "We’re back tomorrow at 09:00");
+  assert.equal(formatSupportStatus(closing, tSq), "Kthehemi nesër në ora 09:00");
+  assert.equal(closing.nextOpenLabel, "Kthehemi nesër në ora 09:00");
 });
 
-test("weekends stay offline and point to Monday 09:00", () => {
+test("weekends follow the same 09:00–17:00 hours", () => {
   const saturday = supportStatus(atKosovo("2026-11-28T12:00"));
-  assert.equal(saturday.online, false);
-  assert.equal(saturday.reopen, "weekday");
-  assert.equal(saturday.nextWeekday, 1);
-  assert.equal(formatSupportStatus(saturday, tEn), "We’re back on Monday at 09:00");
+  assert.equal(saturday.online, true);
+  assert.equal(saturday.reopen, "online");
+
+  const saturdayEvening = supportStatus(atKosovo("2026-11-28T17:00"));
+  assert.equal(saturdayEvening.online, false);
+  assert.equal(saturdayEvening.reopen, "tomorrow");
+  assert.equal(formatSupportStatus(saturdayEvening, tEn), "We’re back tomorrow at 09:00");
+
+  const sundayMorning = supportStatus(atKosovo("2026-11-29T08:00"));
+  assert.equal(sundayMorning.online, false);
+  assert.equal(sundayMorning.reopen, "today");
+  assert.equal(formatSupportStatus(sundayMorning, tEn), "We’re back today at 09:00");
 
   const sunday = supportStatus(atKosovo("2026-11-29T18:00"));
   assert.equal(sunday.online, false);
@@ -121,14 +128,20 @@ test("daylight saving is applied via Europe/Belgrade, not a fixed offset", () =>
 
 test("the open chat panel still allows a message while showing hours in both languages", () => {
   const source = readFileSync("components/SupportChat.tsx", "utf8");
-  assert(source.includes("offlineBanner"));
+  assert(!source.includes("offlineBanner"));
+  assert(source.includes("offlineNote"));
   assert(source.includes("hoursLabel"));
   assert(source.includes("formatSupportStatus"));
   assert(source.includes("support"));
   assert(source.includes("LogoMark"));
+  assert(!source.includes("Kosovo time"));
+  assert(!source.includes("koha e Kosovës"));
   // Hours and status are computed on every page, not only the preview homepage.
   assert(!source.includes("if (!referenceHome) return"));
   // The composer stays available; Thread is not gated on online status.
   assert(source.includes("<Thread"));
   assert(!source.includes("closed={"));
+  const thread = readFileSync("components/marketplace/Thread.tsx", "utf8");
+  assert(thread.includes("!support && !timeline.length"));
+  assert(thread.includes("note"));
 });
