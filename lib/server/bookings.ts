@@ -1,4 +1,5 @@
 import "server-only";
+import { proUserWhere, requireIdApproved } from "./id-verification";
 import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { type Actor } from "./auth";
@@ -160,6 +161,7 @@ export async function insertBookNow(tx: Prisma.TransactionClient, b: BookNowInse
 
 export async function createBooking(actor: Actor, input: unknown) {
   invariant(actor.role === "CLIENT", "FORBIDDEN", 403, "Nuk keni qasje në këtë veprim.");
+  await requireIdApproved(actor);
   const data = bookNowInput.parse(input);
   noContact(`${data.detail}`);
   const startsAt = new Date(data.startsAt), now = new Date();
@@ -170,7 +172,7 @@ export async function createBooking(actor: Actor, input: unknown) {
   return serializable(async (tx) => {
     const previous = await tx.booking.findUnique({ where: { creationKey } });
     if (previous) return { ok: true, id: previous.requestId, seriesId: previous.seriesId, redirect: `/llogaria/kerkesat/${previous.requestId}` };
-    const profile = await tx.proProfile.findFirst({ where: { id: data.profileId, verification: "APPROVED", user: { suspendedAt: null, role: "PRO" } },
+    const profile = await tx.proProfile.findFirst({ where: { id: data.profileId, verification: "APPROVED", user: proUserWhere() },
       include: { user: { select: { id: true } } } });
     invariant(profile && profile.userId !== actor.id, "PRO_UNAVAILABLE", 409, "Ky profesionist nuk pranon rezervime për momentin.");
     const category = await requireActiveCategory(profile.categorySlug, tx);

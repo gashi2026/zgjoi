@@ -1,10 +1,11 @@
+import { proUserWhere } from "@/lib/server/id-verification";
 import { db } from "@/lib/server/db";
 export default async function Stats() {
   const [pros, jobs, reviews] = await Promise.all([
     db.proProfile.count({
       where: {
         verification: "APPROVED",
-        user: { role: "PRO", suspendedAt: null },
+        user: proUserWhere(),
       },
     }),
     db.serviceRequest.count({

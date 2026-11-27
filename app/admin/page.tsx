@@ -64,8 +64,14 @@ export default async function Page() {
     db.outbox.count({ where: { state: "FAILED", OR: [{ lastError: null }, { lastError: { not: "MESSAGE_SUPPRESSED" } }] } }),
     bookingFunnel(since),
   ]);
+  const idPending = await db.idVerification.count({ where: { status: "PENDING" } });
   return (
     <Frame actor={actor} title="Administrimi i Zgjoi">
+      {idPending > 0 && (
+        <Link href="/admin/verifikimi" className="block rounded-2xl border border-gold/50 bg-honey p-4 font-semibold">
+          🪪 {idPending} {idPending === 1 ? "dokument identifikimi pret" : "dokumente identifikimi presin"} shqyrtimin tuaj →
+        </Link>
+      )}
       <div className="grid gap-4 sm:grid-cols-3">
         {[
           ["Llogari", users],

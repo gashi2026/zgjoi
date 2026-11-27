@@ -3,6 +3,7 @@ import { bookingCommission } from "./commissions";
 import { readRecurrence } from "../recurring-bookings";
 import { eligibleRecurringBooking } from "./recurring";
 import "server-only";
+import { proUserWhere, requireIdApproved } from "./id-verification";
 import { Prisma, type ServiceRequest } from "@prisma/client";
 import { db } from "./db";
 import { type Actor } from "./auth";
@@ -67,6 +68,7 @@ function role(actor: Actor, expected: "CLIENT" | "PRO") {
 
 export async function createInquiry(actor: Actor, input: unknown) {
   role(actor, "CLIENT");
+  await requireIdApproved(actor);
   const data = inquiryInput.parse(input);
   assertNoContact(`${data.title}\n${data.detail}`);
   await enforceLimit(`inquiry:${actor.id}`, 15, 60 * 60_000);
@@ -85,7 +87,7 @@ export async function createInquiry(actor: Actor, input: unknown) {
       where: {
         id: data.profileId,
         verification: "APPROVED",
-        user: { suspendedAt: null, role: "PRO" },
+        user: proUserWhere(),
       },
     });
     invariant(
@@ -135,6 +137,7 @@ export async function createInquiry(actor: Actor, input: unknown) {
 
 export async function createOffer(actor: Actor, input: unknown) {
   role(actor, "PRO");
+  await requireIdApproved(actor);
   const data = offerInput.parse(input);
   assertNoContact(`${data.description}\n${data.timing}`);
   const now = new Date(),
@@ -244,6 +247,7 @@ export async function createOffer(actor: Actor, input: unknown) {
 
 export async function acceptOffer(actor: Actor, input: unknown) {
   role(actor, "CLIENT");
+  await requireIdApproved(actor);
   const data = acceptanceInput.parse(input);
   return serializable(async (tx) => {
     const quote = await tx.quote.findUnique({

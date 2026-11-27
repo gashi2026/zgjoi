@@ -6,6 +6,7 @@ import { db } from "@/lib/server/db";
 import { dateTime, stateLabel } from "@/lib/format";
 import Frame, { Panel } from "@/components/marketplace/Frame";
 import ApiForm from "@/components/marketplace/ApiForm";
+import { IdGate } from "@/components/verification/IdNotice";
 /** Chat-then-hire: the customer opens a private chat with one chosen pro and
  * describes the job as the first message. There is no public job posting. */
 export default async function Page({
@@ -58,6 +59,7 @@ export default async function Page({
           Ky është mesazhi juaj i parë. {pro.user.name} ju përgjigjet në bisedë dhe ju dërgon një ofertë me çmim.
           Ju e punësoni me butonin “Puneso” vetëm kur jeni dakord.
         </p>
+        <IdGate actor={actor}>
         <ApiForm
           endpoint="/api/requests"
           idempotent
@@ -93,6 +95,7 @@ export default async function Page({
             },
           ]}
         />
+        </IdGate>
       </Panel>
     </Frame>
   );

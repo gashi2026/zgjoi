@@ -1,4 +1,5 @@
 import "server-only";
+import { requireIdApproved } from "./id-verification";
 import type { Prisma, ServiceRequest } from "@prisma/client";
 import { z } from "zod";
 import type { Actor } from "./auth";
@@ -45,6 +46,7 @@ export async function eligibleRecurringBooking(tx: Prisma.TransactionClient,
  * explicit customer acceptance and checkout; no automatic card charge. */
 export async function createRecurringRequest(actor: Actor, id: string, input: unknown) {
   invariant(actor.role === "CLIENT", "FORBIDDEN", 403, "Ky veprim është për klientin.");
+  await requireIdApproved(actor);
   entityId.parse(id);
   const { cadence } = inputSchema.parse(input);
   return serializable(async tx => {

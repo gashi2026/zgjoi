@@ -14,7 +14,7 @@ import { equalSecret, previewCookie } from "./lib/server/tokens";
 
 const LOCK_PATH = "/se-shpejti";
 
-const PROTECTED = ["/llogaria", "/pro", "/admin", "/kerkesa-e-re"];
+const PROTECTED = ["/llogaria", "/pro", "/admin", "/kerkesa-e-re", "/verifikimi"];
 
 export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;

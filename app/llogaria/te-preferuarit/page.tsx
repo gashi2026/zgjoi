@@ -1,3 +1,4 @@
+import { proUserWhere } from "@/lib/server/id-verification";
 import { categorySlugs, serviceCategory } from "@/lib/service-categories";
 import { pageGuard } from "@/lib/server/guard";
 import { db } from "@/lib/server/db";
@@ -13,7 +14,7 @@ export default async function Page() {
       userId: actor.id,
       profile: {
         verification: "APPROVED",
-        user: { suspendedAt: null, role: "PRO" },
+        user: proUserWhere(),
         categorySlug: { in: categories.flatMap((c) => categorySlugs(c.slug)) },
       },
     },

@@ -44,3 +44,18 @@ export function decrypt(payload: string): string {
 }
 
 export const last4 = (s: string) => s.slice(-4);
+
+/** Binary AES-256-GCM (ID photos): iv(12) | tag(16) | ciphertext. */
+export function encryptBytes(plain: Uint8Array): Buffer {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv(ALGO, key(), iv);
+  const enc = Buffer.concat([cipher.update(plain), cipher.final()]);
+  return Buffer.concat([iv, cipher.getAuthTag(), enc]);
+}
+
+export function decryptBytes(payload: Uint8Array): Buffer {
+  const b = Buffer.from(payload);
+  const decipher = crypto.createDecipheriv(ALGO, key(), b.subarray(0, 12));
+  decipher.setAuthTag(b.subarray(12, 28));
+  return Buffer.concat([decipher.update(b.subarray(28)), decipher.final()]);
+}

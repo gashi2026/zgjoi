@@ -1,4 +1,5 @@
 import "server-only";
+import { proUserWhere, requireIdApproved } from "./id-verification";
 import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 import type { Actor } from "./auth";
@@ -46,6 +47,7 @@ export async function proposeSeriesFromBooking(tx: Prisma.TransactionClient, act
     request: { id: string; categorySlug: string; detail: string | null; city: string; address: string | null; state: string } },
   cadence: SeriesCadence, clientKey: string) {
   invariant(actor.role === "PRO" && actor.proProfile?.id === booking.profileId, "FORBIDDEN", 403, "Vetëm profesionisti i këtij rezervimi e propozon përsëritjen.");
+  await requireIdApproved(actor, tx);
   const creationKey = hashToken(`series-proposal:${actor.id}:${clientKey}`);
   const previous = await tx.recurringSeries.findUnique({ where: { creationKey } });
   if (previous) return { ok: true, id: previous.id };
@@ -95,6 +97,8 @@ export async function seriesAction(actor: Actor, id: string, input: unknown) {
   entityId.parse(id);
   const { action } = seriesActionInput.parse(input);
   invariant(actor.role === "CLIENT" || actor.role === "PRO", "FORBIDDEN", 403, "Nuk keni qasje në këtë veprim.");
+  // Starting or restarting a series needs a verified ID; pausing or cancelling never does.
+  if (action === "CONFIRM" || action === "RESUME") await requireIdApproved(actor);
   const result = await serializable(async (tx) => {
     const series = await tx.recurringSeries.findUnique({ where: { id }, include: { profile: { select: { userId: true } } } });
     const mine = series && ((actor.role === "CLIENT" && series.clientId === actor.id) || (actor.role === "PRO" && actor.proProfile?.id === series.profileId));
@@ -164,7 +168,7 @@ export async function generateForSeries(seriesId: string, now = new Date()): Pro
       const step = await serializable(async (tx) => {
         const s = await tx.recurringSeries.findUnique({ where: { id: seriesId } });
         if (!s || s.status !== "ACTIVE" || (s.generatedUntil && s.generatedUntil >= at)) return "SKIP_DONE" as const;
-        const profile = await tx.proProfile.findFirst({ where: { id: s.profileId, verification: "APPROVED", user: { suspendedAt: null, role: "PRO" } } });
+        const profile = await tx.proProfile.findFirst({ where: { id: s.profileId, verification: "APPROVED", user: proUserWhere() } });
         const terms = profile && serviceCategory(profile.categorySlug)?.slug === serviceCategory(s.categorySlug)?.slug
           ? bookableTerms(profile, await categoryFlow(tx, s.categorySlug)) : null;
         const client = await tx.user.findFirst({ where: { id: s.clientId, suspendedAt: null, role: "CLIENT" } });
