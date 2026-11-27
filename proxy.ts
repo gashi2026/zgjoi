@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { equalSecret, previewCookie } from "./lib/server/tokens";
 import {
-  isLocale, localizePath, negotiateLocale, stripLocale,
+  isLocale, localizePath, stripLocale,
   LOCALE_COOKIE, LOCALE_HEADER, PATH_HEADER, type Locale,
 } from "./lib/i18n/config";
 
@@ -44,18 +44,18 @@ export function proxy(req: NextRequest) {
   const isApi = pathname.startsWith("/api/");
   const isPage = !isApi && !["/robots.txt", "/sitemap.xml"].includes(pathname);
 
-  // English-preferring visitors on an Albanian URL go to the /en version
+  // Visitors who chose English, on an Albanian URL, go to the /en version
   // (GET/HEAD only, so form posts and server actions are never redirected).
   if (!reentry && isPage && !prefixLocale && ["GET", "HEAD"].includes(req.method)) {
     // Crawlers are never redirected, so both language versions stay indexable via hreflang.
     const isBot = /bot|crawl|spider|slurp|facebookexternalhit|preview/i.test(req.headers.get("user-agent") ?? "");
-    const wanted: Locale = isLocale(cookieLocale) ? cookieLocale : isBot ? "sq" : negotiateLocale(req.headers.get("accept-language"));
+    // Albanian is always the default; English only after the visitor chose it (EN switch or an /en link).
+    const wanted: Locale = !isBot && isLocale(cookieLocale) ? cookieLocale : "sq";
     if (wanted === "en") {
       const url = req.nextUrl.clone();
       url.pathname = localizePath(pathname, "en");
       const res = NextResponse.redirect(url, 307);
-      if (!isLocale(cookieLocale)) setLocaleCookie(res, "en");
-      res.headers.set("Vary", "Cookie, Accept-Language");
+      res.headers.set("Vary", "Cookie");
       return res;
     }
   }

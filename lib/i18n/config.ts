@@ -7,7 +7,8 @@
 export const LOCALES = ["sq", "en"] as const;
 export type Locale = (typeof LOCALES)[number];
 export const DEFAULT_LOCALE: Locale = "sq";
-export const LOCALE_COOKIE = "zgjoi_locale";
+/** Renamed from zgjoi_locale (Nov 2026) so old browser-language guesses are forgotten. */
+export const LOCALE_COOKIE = "zgjoi_lang";
 /** Request header set by proxy.ts; never trusted from the client (the proxy overwrites it). */
 export const LOCALE_HEADER = "x-zgjoi-locale";
 /** Bare (unprefixed) pathname of the current page, set by proxy.ts for metadata. */
