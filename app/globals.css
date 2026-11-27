@@ -28,13 +28,9 @@ body {
 @container service-search (min-width: 36rem) {
   .service-search-form { grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr) auto; }
 }
-@container service-search (min-width: 24rem) and (max-width: 35.999rem) {
-  .service-search-form { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-  .service-search-form > button { grid-column: 1 / -1; }
-}
 /* Thin divider between the service and city fields; direction follows the grid. */
 .service-search-form .search-city { border-top: 1px solid #ECE7DD; }
-@container service-search (min-width: 24rem) {
+@container service-search (min-width: 36rem) {
   .service-search-form .search-city { border-top: none; border-left: 1px solid #ECE7DD; }
 }
 .hive-scroll { scrollbar-width: thin; scrollbar-color: #e89d00 #fff3cf; }
