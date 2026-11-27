@@ -4,7 +4,7 @@
 -- and must wait for the owner's approval.
 DO $guard$
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM public."Setting" WHERE key = '_staging_environment') THEN
+  IF NOT EXISTS (SELECT 1 FROM public."Setting" WHERE key = '_staging_environment' AND value->>'kind' = 'staging') THEN
     RAISE EXCEPTION 'This is the staging migration; production uses supabase/production/20261201_admin_pro_controls.sql';
   END IF;
 END

@@ -86,3 +86,17 @@ test("admin users page exposes profession ticks, timed suspension and typed dele
   assert.match(auth, /liftExpiredSuspension/);
   assert.match(auth, /suspensionIsActive/);
 });
+
+test("admin pro controls SQL is additive, staging-guarded, and CI applies it to the test database", () => {
+  const staging = readFileSync("supabase/staging/admin-pro-controls.sql", "utf8");
+  const production = readFileSync("supabase/production/20261201_admin_pro_controls.sql", "utf8");
+  assert.match(staging, /ADD COLUMN IF NOT EXISTS "suspendedUntil"/);
+  assert.match(staging, /ADD COLUMN IF NOT EXISTS "suspensionReason"/);
+  assert.match(staging, /ADD COLUMN IF NOT EXISTS "deletedAt"/);
+  assert.doesNotMatch(staging, /DROP COLUMN|DROP TABLE/i);
+  assert.match(staging, /_staging_environment' AND value->>'kind' = 'staging'/);
+  assert.match(production, /This is the production rollout/);
+  assert.match(production, /ADD COLUMN IF NOT EXISTS "deletedAt"/);
+  const prepare = readFileSync("scripts/prepare-test-db.mjs", "utf8");
+  assert.match(prepare, /supabase\/staging\/admin-pro-controls\.sql/);
+});
