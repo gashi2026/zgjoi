@@ -153,7 +153,7 @@ export async function insertBookNow(tx: Prisma.TransactionClient, b: BookNowInse
   const label = `${hoursLabel(b.minutes)} × ${money(b.rateCents)}/orë`;
   const request = await tx.serviceRequest.create({ data: {
     clientId: b.clientId, selectedProfileId: b.profile.id, acceptedProfileId: b.profile.id, categorySlug: b.categorySlug,
-    title: `${b.series ? "Rezervim i përsëritur" : "Rezervim"} · ${hoursLabel(b.minutes)}`, detail: b.detail, city: b.city, address: b.address,
+    title: `${b.series ? "Abonim" : "Rezervim"} · ${hoursLabel(b.minutes)}`, detail: b.detail, city: b.city, address: b.address,
     timing: b.series ? `Rezervo tani · ${b.series.label}` : "Rezervo tani",
     answers: { bookNow: { version: 1, minutes: b.minutes, rateCents: b.rateCents, ...(b.series ? { seriesId: b.series.id } : {}) } },
     state: "BOOKED", scheduledAt: b.startsAt, creationKey: hashToken(`booking-request:${b.creationKey}`), conversation: { create: {} },
@@ -182,7 +182,7 @@ export async function insertBookNow(tx: Prisma.TransactionClient, b: BookNowInse
     ...(b.series ? { seriesId: b.series.id, occurrenceAt: b.series.occurrenceAt } : {}),
   } });
   await notify(tx, b.profile.userId, "BOOKED", b.series
-    ? "U krijua vizita e radhës e rezervimit të përsëritur; pagesa është në pritje"
+    ? "U krijua vizita e radhës e abonimit; pagesa është në pritje"
     : "Keni një rezervim të ri me “Rezervo tani”; pagesa është në pritje", `/pro/kerkesat/${request.id}`);
   await tx.auditLog.create({ data: { actorId: b.actorId, action: b.series ? "RECURRING_OCCURRENCE_CREATED" : "BOOK_NOW_CREATED", target: request.id,
     meta: { minutes: b.minutes, rateCents: b.rateCents, totalCents, commission, creditCents: price.creditCents, estimateId: credit.estimateId,

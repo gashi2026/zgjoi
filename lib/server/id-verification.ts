@@ -53,7 +53,7 @@ export async function idCheckPending(actor: Pick<Actor, "id" | "role">, tx: Read
 
 /** What an unverified customer can still do (owner: "they can only see who's around"). */
 export const CLIENT_BROWSE_ONLY =
-  "Deri atëherë mund vetëm të shihni profesionistët përreth: nuk mund të hapni bisedë, të punësoni, të rezervoni, të kërkoni vlerësim ose rezervim të përsëritur.";
+  "Deri atëherë mund vetëm të shihni profesionistët përreth: nuk mund të hapni bisedë, të punësoni, të rezervoni, të kërkoni vlerësim ose abonim.";
 
 export function idRequiredMessage(role: string, status: IdStatus | null | undefined) {
   const what = role === "PRO" ? "të pranoni punë dhe të shfaqeni në kërkim" : "të hapni bisedë, të punësoni ose të rezervoni një profesionist";

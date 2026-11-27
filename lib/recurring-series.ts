@@ -122,6 +122,14 @@ export function seriesCommissionBps(categorySlug: string) {
   return commissionRate(categorySlug, { recurring: true, elite: false }).bps;
 }
 
+
+/** Pause or cancel copy: one visit uses the singular in both languages (via the catalog). */
+export function upcomingCancelledLabel(released: number) {
+  return released === 1
+    ? "1 vizitë e ardhshme u anulua falas."
+    : `${released} vizita të ardhshme u anuluan falas.`;
+}
+
 /** Pause or cancel: what happens to bookings already created for the series.
  * Occurrences more than 24 h away are cancelled free; those within 24 h stay
  * and follow the normal cancellation rules if either side cancels them. */

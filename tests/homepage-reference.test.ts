@@ -114,7 +114,7 @@ test("beta homepage and about page contain no invented stats, ratings, testimoni
 
 test("original footer is scoped to Preview homepage and cannot claim an unsaved subscription", async () => {
   const footer = await render(React.createElement(ReferenceFooter));
-  for (const text of ["Abonohu për lajme", "Kompania", "Mbështetje", "LinkedIn"])
+  for (const text of ["Regjistrohu për lajme", "Kompania", "Mbështetje", "LinkedIn"])
     assert(footer.includes(text));
   const component = readFileSync("components/homepage/Footer.tsx", "utf8");
   assert(component.includes("footer.newsletterIsntActiveYet"));
@@ -124,7 +124,7 @@ test("original footer is scoped to Preview homepage and cannot claim an unsaved 
   const switchNode = (enabled: boolean) => React.createElement(FooterSwitch, {
     enabled,
   }, React.createElement("footer", null, "live-marketplace-footer"));
-  assert((await render(switchNode(true))).includes("Abonohu për lajme"));
+  assert((await render(switchNode(true))).includes("Regjistrohu për lajme"));
   assert((await render(switchNode(true), "/llogaria")).includes("live-marketplace-footer"));
   assert((await render(switchNode(false))).includes("live-marketplace-footer"));
 });

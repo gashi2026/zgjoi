@@ -38,19 +38,19 @@ export const clientSignupSchema = z.object({
 });
 
 export const proSignupSchema = z.object({
-  name: z.string().min(3, "Shkruaj emrin dhe mbiemrin.").max(120),
+  name: z.string().min(3, "Shkruani emrin dhe mbiemrin.").max(120),
   personalNo,
   email,
   phone,
   password,
-  categorySlug: z.string().min(1, "Zgjidh një kategori."),
-  city: z.string().min(1, "Zgjidh qytetin ku punon."),
-  experience: z.string().min(1, "Zgjidh vitet e përvojës."),
+  categorySlug: z.string().min(1, "Zgjidhni një kategori."),
+  city: z.string().min(1, "Zgjidhni qytetin ku punon."),
+  experience: z.string().min(1, "Zgjidhni vitet e përvojës."),
   about: z.string().min(30, "Përshkrimi duhet të ketë të paktën 30 karaktere."),
-  priceFrom: z.coerce.number().int().positive("Shkruaj një çmim fillestar."),
-  iban: z.string().min(10, "Shkruaj numrin e llogarisë bankare.").max(34),
+  priceFrom: z.coerce.number().int().positive("Shkruani një çmim fillestar."),
+  iban: z.string().min(10, "Shkruani numrin e llogarisë bankare.").max(34),
   terms: z.literal(true, {
-    error: "Duhet t'i pranosh kushtet për të vazhduar.",
+    error: "Duhet t'i pranoni kushtet për të vazhduar.",
   }),
 });
 
@@ -61,10 +61,10 @@ export const loginSchema = z.object({
 });
 
 export const requestSchema = z.object({
-  categorySlug: z.string().min(1, "Zgjidh një kategori shërbimi."),
+  categorySlug: z.string().min(1, "Zgjidhni një kategori shërbimi."),
   answers: z.record(z.string(), z.union([z.string(), z.array(z.string())])),
-  city: z.string().min(1, "Zgjidh qytetin."),
-  timing: z.string().min(1, "Zgjidh kur ju nevojitet shërbimi."),
+  city: z.string().min(1, "Zgjidhni qytetin."),
+  timing: z.string().min(1, "Zgjidhni kur ju nevojitet shërbimi."),
   budgetBand: z.string().optional(),
   detail: z.string().max(2000).optional(),
   address: z.string().max(200).optional(),
@@ -80,8 +80,8 @@ export const quoteSchema = z.object({
         price: z.coerce.number().int().nonnegative(),
       }),
     )
-    .min(1, "Shto të paktën një zë me çmim."),
-  message: z.string().min(20, "Shkruaj një mesazh më të plotë për klientin."),
+    .min(1, "Shtoni të paktën një zë me çmim."),
+  message: z.string().min(20, "Shkruani një mesazh më të plotë për klientin."),
   availableAt: z.string().max(120).optional(),
   duration: z.string().max(60).optional(),
   warranty: z.string().max(160).optional(),
@@ -95,8 +95,8 @@ export const quoteSchema = z.object({
 
 export const reviewSchema = z.object({
   requestId: z.string().min(1),
-  rating: z.coerce.number().int().min(1, "Zgjidh një vlerësim me yje.").max(5),
-  text: z.string().min(15, "Shkruaj të paktën 15 karaktere."),
+  rating: z.coerce.number().int().min(1, "Zgjidhni një vlerësim me yje.").max(5),
+  text: z.string().min(15, "Shkruani të paktën 15 karaktere."),
   tags: z.array(z.string()).max(10).default([]),
 });
 
@@ -107,7 +107,7 @@ export const messageSchema = z.object({
 
 export const supportMessageSchema = z.object({
   ticketId: z.string().optional(),
-  body: z.string().min(1, "Shkruaj një mesazh.").max(2000),
+  body: z.string().min(1, "Shkruani një mesazh.").max(2000),
   guestName: z.string().max(120).optional(),
   guestEmail: z.string().email().optional().or(z.literal("")),
 });
@@ -116,5 +116,5 @@ export const leadBudgetSchema = z.object({
   weeklyBudget: z.coerce.number().int().min(1000).max(50000),
   radiusKm: z.coerce.number().int().min(5).max(100),
   autoBid: z.boolean(),
-  serviceCities: z.array(z.string()).min(1, "Zgjidh të paktën një qytet."),
+  serviceCities: z.array(z.string()).min(1, "Zgjidhni të paktën një qytet."),
 });
