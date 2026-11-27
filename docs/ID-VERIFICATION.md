@@ -4,8 +4,10 @@ Every customer and pro uploads the front and back of an ID document. The owner a
 declines each one at `/admin/verifikimi`. No hired staff and no third-party KYC service.
 
 ## How it works
-- **Upload** `/verifikimi` (customers and pros; staff are never asked). New sign-ups land here
-  (`/verifikimi?fillim=1`); existing users see a banner on every account page.
+- **Upload** is the last, required step of the sign-up wizard (`/regjistrohu/identiteti`, see
+  `docs/SIGNUP-PROFESSIONS.md`): a new account has `User.signupStep = "ID"` until the photos are sent, and
+  every account page (and login) sends it back there. Existing users (no `signupStep`) keep the
+  banner on every account page and upload at `/verifikimi`. Staff are never asked.
   Camera capture (`capture="environment"`) or gallery; JPEG, PNG or HEIC. The browser redraws
   the photo to a JPEG of at most 1800 px / 2 MB (which also strips EXIF/GPS). The server
   re-checks the real type and size from the bytes (JPEG/PNG only, ≥ 400 px, ≤ 2 MB per side,

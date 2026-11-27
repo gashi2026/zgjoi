@@ -40,15 +40,26 @@ export function hiringFlow(slug: string, override: FlowOverride = {}): HiringFlo
 
 export const MINUTE_STEP = 30;
 export const MAX_BOOKING_MINUTES = 12 * 60;
+/** Suggested minimum when a pro first sets a Book now rate (2 h), as before. */
+export const DEFAULT_MIN_MINUTES = 120;
 export const MIN_RATE_CENTS = 100;
 export const MAX_RATE_CENTS = 100_000;
 
+/** Albanian label ("2,5 orë"); English pages translate it to "2.5 hr" via t.tx. */
 export function hoursLabel(minutes: number) {
   const h = minutes / 60;
   const text = Number.isInteger(h) ? String(h) : h.toFixed(1).replace(".", ",");
   return `${text} orë`;
 }
 
+/** A minimum booking length a pro may set: 0.5..12 h in 30-minute steps. */
+export function validMinMinutes(m: unknown): m is number {
+  return typeof m === "number" && Number.isInteger(m) && m >= MINUTE_STEP && m <= MAX_BOOKING_MINUTES && m % MINUTE_STEP === 0;
+}
+/** The minimum for one profession: its own setting, else the pro's Book now default. */
+export function bookingMinimum(professionMin: number | null | undefined, profileMin: number | null | undefined): number | null {
+  return validMinMinutes(professionMin) ? professionMin : validMinMinutes(profileMin) ? profileMin : null;
+}
 /** Hour choices offered to the customer: from the pro's minimum up to 12 h. */
 export function hourOptions(minMinutes: number) {
   const out: number[] = [];

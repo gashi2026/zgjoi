@@ -136,6 +136,7 @@ test("database-backed private marketplace and authorization journey", async (t) 
                   about:
                     "Profesionist testues për skenarët e integrimit të aplikacionit.",
                   priceFrom: 2500,
+                  categories: { create: [{ categorySlug: category.slug, priceFromCents: 2500, approvedAt: new Date() }] },
                   serviceCities: ["Prishtinë"],
                   verification: "APPROVED",
                   autoBid: false,
@@ -1609,8 +1610,9 @@ test("database-backed private marketplace and authorization journey", async (t) 
           terms: true,
           ...(role === "PRO"
             ? {
-                categorySlug: category.slug,
+                categories: [category.slug, "pastrim"],
                 about: "Profesionist i ri për provën e regjistrimit të sigurt.",
+                // Ignored: prices are never taken at sign-up.
                 priceFrom: "35.50",
               }
             : {}),
@@ -1650,9 +1652,20 @@ test("database-backed private marketplace and authorization journey", async (t) 
             name: user.name,
             city: "Pejë",
             phone: "",
-            ...(role === "PRO" ? { priceFrom: "40.25" } : {}),
           }),
         );
+        if (role === "PRO") {
+          // Sign-up created both professions, unpriced and unapproved; no price was stored.
+          const rows = await db.proCategory.findMany({ where: { profileId: user.proProfile!.id }, orderBy: { position: "asc" } });
+          assert.deepEqual(rows.map((r) => [r.categorySlug, r.priceFromCents, r.approvedAt]), [[category.slug, null, null], ["pastrim", null, null]]);
+          assert.equal(user.proProfile!.priceFrom, null);
+          assert.equal(user.signupStep, null, "with ID uploads off there is no ID step");
+          // Prices are set per profession in the profile panel.
+          ok(await http("/api/account/professions", jar, { categories: [{ slug: category.slug, priceFrom: "40.25" }, { slug: "pastrim", priceFrom: "" }] }));
+          ok(await http("/api/account/professions", jar, { categories: [] }), 400);
+          ok(await http("/api/account/professions", jar, { categories: [{ slug: "trainer-personal" }] }), 400);
+          ok(await http("/api/account/professions", new Map(), { categories: [{ slug: "pastrim" }] }), 401);
+        }
         assert.equal(
           (await db.user.findUniqueOrThrow({ where: { id: user.id } })).city,
           "Pejë",
@@ -1696,6 +1709,8 @@ test("database-backed private marketplace and authorization journey", async (t) 
             ).priceFrom,
             4025,
           );
+          assert.deepEqual((await db.proCategory.findMany({ where: { profileId: user.proProfile!.id }, orderBy: { position: "asc" } }))
+            .map((r) => r.priceFromCents), [4025, null]);
           const days = [{ weekday: 1, startMin: 540, endMin: 1020 }];
           ok(await http("/api/availability", jar, { days }));
           assert.equal(
@@ -1726,6 +1741,23 @@ test("database-backed private marketplace and authorization journey", async (t) 
               (p: { id: string }) => p.id === user.proProfile!.id,
             ),
           );
+          // Both professions were approved with the profile; the unpriced one reads "ask for a price".
+          const inCleaning = ok(await http("/api/catalog?kategoria=pastrim")).pros.find((p: { id: string }) => p.id === user.proProfile!.id);
+          assert.equal(inCleaning?.categorySlug, "pastrim");
+          assert.equal(inCleaning?.priceFrom, null);
+          assert.equal(ok(await http(`/api/catalog?kategoria=${category.slug}`)).pros.find((p: { id: string }) => p.id === user.proProfile!.id)?.priceFrom, 4025);
+          // Adding a profession later: visible in the approved ones at once, the new one only after approval.
+          ok(await http("/api/account/professions", jar, { categories: [{ slug: category.slug, priceFrom: "40.25" }, { slug: "pastrim" }, { slug: "kopshtar", priceFrom: "20" }] }));
+          assert.equal((await db.proProfile.findUniqueOrThrow({ where: { id: user.proProfile!.id } })).verification, "APPROVED");
+          assert(!ok(await http("/api/catalog?kategoria=kopshtar")).pros.some((p: { id: string }) => p.id === user.proProfile!.id));
+          assert(ok(await http("/api/catalog?kategoria=pastrim")).pros.some((p: { id: string }) => p.id === user.proProfile!.id));
+          ok(await http("/api/admin/commands", adminj, { action: "PRO_APPROVE", id: user.proProfile!.id, reason: "Synthetic new profession checked" }));
+          assert(ok(await http("/api/catalog?kategoria=kopshtar")).pros.some((p: { id: string }) => p.id === user.proProfile!.id));
+          // Removing a profession takes it out of that category's search; the main one moves up.
+          ok(await http("/api/account/professions", jar, { categories: [{ slug: "pastrim" }, { slug: "kopshtar", priceFrom: "20" }] }));
+          assert(!ok(await http(`/api/catalog?kategoria=${category.slug}`)).pros.some((p: { id: string }) => p.id === user.proProfile!.id));
+          const after = await db.proProfile.findUniqueOrThrow({ where: { id: user.proProfile!.id } });
+          assert.deepEqual([after.categorySlug, after.priceFrom], ["pastrim", 2000]);
           ok(
             await http("/api/account", jar, {
               name: `${user.name} Changed`,
@@ -2340,9 +2372,9 @@ test("database-backed private marketplace and authorization journey", async (t) 
         { tables: bigint; rls: bigint; exposed: bigint }[]
       >`SELECT count(*) AS tables, count(*) FILTER (WHERE c.relrowsecurity) AS rls, count(*) FILTER (WHERE has_table_privilege('anon',c.oid,'SELECT,INSERT,UPDATE,DELETE') OR has_table_privilege('authenticated',c.oid,'SELECT,INSERT,UPDATE,DELETE')) AS exposed FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind='r'`;
       // 28 marketplace tables + Booking, BookingChange, Estimate (Book now) + BookingArrival, GeocodeCache (Arrita) + RecurringSeries
-      // + IdVerification, IdDocumentImage (ID check).
-      assert.equal(Number(checks[0].tables), 37);
-      assert.equal(Number(checks[0].rls), 37);
+      // + IdVerification, IdDocumentImage (ID check) + ProCategory (several professions per pro).
+      assert.equal(Number(checks[0].tables), 38);
+      assert.equal(Number(checks[0].rls), 38);
       assert.equal(Number(checks[0].exposed), 0);
       await assert.rejects(
         db.payment.update({ where: { requestId }, data: { amount: 100 } }),
@@ -2368,7 +2400,10 @@ test("approved catalogue and immutable tiered commissions", async (t) => {
     return db.user.create({ data: { name: "Synthetic commission account", email: `${randomUUID()}@ci.zgjoi.invalid`,
       passwordHash, role, city: "Prishtinë", emailVerified: new Date(),
       ...(role === "PRO" ? { proProfile: { create: { slug: randomUUID(), categorySlug,
-        about: "Synthetic professional for commission policy tests only.", priceFrom: 2500, verification: "APPROVED" } } } : {}) },
+        about: "Synthetic professional for commission policy tests only.", priceFrom: 2500, verification: "APPROVED",
+        // Like the backfill: a slug outside the catalogue gets no profession row.
+        categories: { create: serviceCategories.filter(c => c.slug === categorySlug || (c.aliases as readonly string[]).includes(categorySlug))
+          .map(c => ({ categorySlug: c.slug, approvedAt: new Date() })) } } } } : {}) },
       include: { proProfile: true } });
   }
   const customer = await account("CLIENT"), stranger = await account("CLIENT"), pro = await account("PRO", "hidraulik");

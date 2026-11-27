@@ -5,7 +5,7 @@ import { useBarePathname as usePathname } from "@/lib/i18n/client";
 import {
   LayoutGrid, Inbox, Briefcase, Wallet, UserRound, MessageSquare,
   Heart, Settings, CalendarDays, FileText, Users, Receipt,
-  ShieldAlert, Headset, Layers, Target, Repeat, BadgeCheck, type LucideIcon,
+  ShieldAlert, ShieldCheck, Headset, Layers, Target, Repeat, BadgeCheck, type LucideIcon,
 } from "lucide-react";
 import { Avatar } from "./Brand";
 import { useT } from "@/lib/i18n/client";
@@ -16,7 +16,7 @@ const navIcons: Record<string, LucideIcon> = {
   heart: Heart, settings: Settings, calendarDays: CalendarDays,
   fileText: FileText, users: Users, receipt: Receipt,
   shieldAlert: ShieldAlert, headset: Headset, layers: Layers, target: Target,
-  repeat: Repeat, badgeCheck: BadgeCheck,
+  repeat: Repeat, badgeCheck: BadgeCheck, shieldCheck: ShieldCheck,
 };
 
 export type NavItem = { href: string; label: string; icon: string };

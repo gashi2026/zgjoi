@@ -10,6 +10,7 @@ export const proNav: NavItem[] = [
   { href: "/pro/te-ardhurat", label: "Të ardhurat", icon: "receipt" },
   { href: "/pro/njoftimet", label: "Njoftimet", icon: "inbox" },
   { href: "/pro/profili", label: "Profili im", icon: "userRound" },
+  { href: "/siguria", label: "Siguria e llogarisë", icon: "shieldCheck" },
   { href: "/verifikimi", label: "Verifikimi i ID-së", icon: "badgeCheck" },
 ];
 
@@ -21,6 +22,7 @@ export const clientNav: NavItem[] = [
   { href: "/llogaria/te-preferuarit", label: "Të preferuarit", icon: "heart" },
   { href: "/llogaria/njoftimet", label: "Njoftimet", icon: "inbox" },
   { href: "/llogaria/cilesimet", label: "Cilësimet", icon: "settings" },
+  { href: "/siguria", label: "Siguria e llogarisë", icon: "shieldCheck" },
   { href: "/verifikimi", label: "Verifikimi i ID-së", icon: "badgeCheck" },
 ];
 
@@ -37,4 +39,5 @@ export const adminNav: NavItem[] = [
   { href: "/admin/transaksionet", label: "Transaksionet", icon: "receipt" },
   { href: "/admin/vleresimet", label: "Vlerësimet", icon: "shieldAlert" },
   { href: "/admin/mbeshtetja", label: "Mbështetja", icon: "headset" },
+  { href: "/siguria", label: "Siguria e llogarisë", icon: "shieldCheck" },
 ];

@@ -1,5 +1,6 @@
-import { requireActiveCategory } from "./service-catalog";
-import { serviceCategory } from "../service-categories";
+import { createProCategories, requireActiveCategories } from "./pro-categories";
+import { idUploadsAvailable } from "./id-verification";
+import { needsIdCheck } from "../id-verification";
 import "server-only";
 import bcrypt from "bcryptjs";
 import { Prisma } from "@prisma/client";
@@ -34,7 +35,7 @@ export async function authenticate(input: unknown, ip: string) {
     "Email ose fjalëkalim i pasaktë.",
   );
   const mfaVersion = await verifyLoginFactor(user.id, user.passwordHash, data.secondFactor);
-  return { id: user.id, role: user.role, passwordHash: user.passwordHash, mfaVersion };
+  return { id: user.id, role: user.role, signupStep: user.signupStep, passwordHash: user.passwordHash, mfaVersion };
 }
 
 export async function signup(input: unknown, ip: string) {
@@ -45,7 +46,7 @@ export async function signup(input: unknown, ip: string) {
   const locale = await getLocale();
   try {
     const user = await serializable(async (tx) => {
-      if (data.role === "PRO") data.categorySlug = (await requireActiveCategory(data.categorySlug!, tx)).slug;
+      const categories = data.role === "PRO" ? await requireActiveCategories(data.categories, tx) : [];
       const created = await tx.user.create({
         data: {
           name: data.name,
@@ -55,6 +56,9 @@ export async function signup(input: unknown, ip: string) {
           city: data.city,
           phone: data.phone || null,
           locale,
+          // The ID upload is the last step of the sign-up wizard; until it is done every account
+          // page sends the user back to it (only while ID uploads are switched on).
+          signupStep: idUploadsAvailable() && needsIdCheck(data.role) ? "ID" : null,
           ...(data.role === "PRO"
             ? {
                 proProfile: {
@@ -65,9 +69,10 @@ export async function signup(input: unknown, ip: string) {
                       .replace(/[\u0300-\u036f]/g, "")
                       .replace(/[^a-z0-9]+/g, "-")
                       .slice(0, 50)}-${opaqueToken().slice(0, 12)}`,
-                    categorySlug: data.categorySlug!,
+                    categorySlug: categories[0],
                     about: data.about!,
-                    priceFrom: data.priceFrom!,
+                    // No price at sign-up: set per profession in the profile panel.
+                    priceFrom: null,
                     experience: data.experience,
                     serviceCities: [data.city],
                     verification: "PENDING",
@@ -78,14 +83,15 @@ export async function signup(input: unknown, ip: string) {
               }
             : {}),
         },
-        select: { id: true, role: true },
+        select: { id: true, role: true, signupStep: true, proProfile: { select: { id: true } } },
       });
+      if (created.proProfile) await createProCategories(tx, created.proProfile.id, categories);
       await tx.auditLog.create({
         data: {
           actorId: created.id,
           action: "ACCOUNT_CREATED",
           target: created.id,
-          meta: { role: created.role },
+          meta: { role: created.role, ...(categories.length ? { categories } : {}) },
         },
       });
       return created;
@@ -241,22 +247,18 @@ export async function updateAccount(actor: Actor, input: unknown) {
       data: { name: data.name, city: data.city, phone: data.phone || null },
     });
     if (actor.role === "PRO" && actor.proProfile) {
-      if (data.categorySlug) data.categorySlug = (await requireActiveCategory(data.categorySlug, tx)).slug;
+      // Professions and prices are saved separately (saveProfessions in ./pro-categories).
       const before = await tx.proProfile.findUniqueOrThrow({
         where: { id: actor.proProfile.id },
       });
       const reviewAgain =
         data.name !== actor.name ||
-        (data.categorySlug !== undefined &&
-          data.categorySlug !== serviceCategory(before.categorySlug)?.slug) ||
         (data.about !== undefined && data.about !== before.about);
       await tx.proProfile.update({
         where: { id: actor.proProfile.id },
         data: {
           ...(reviewAgain ? { verification: "PENDING", verifiedAt: null } : {}),
           about: data.about,
-          categorySlug: data.categorySlug,
-          priceFrom: data.priceFrom,
           experience: data.experience,
           serviceCities: data.serviceCities,
           autoBid: false,

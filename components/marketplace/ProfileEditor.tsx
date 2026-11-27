@@ -1,4 +1,6 @@
 import { serviceCategory } from "@/lib/service-categories";
+import ProfessionsEditor from "./ProfessionsEditor";
+import { MAX_PRO_CATEGORIES, professionRate } from "@/lib/pro-categories";
 import { pageGuard } from "@/lib/server/guard";
 import { db } from "@/lib/server/db";
 import { activeCategories } from "@/lib/server/catalog";
@@ -6,8 +8,8 @@ import Frame, { Panel } from "./Frame";
 import ApiForm, { type Field } from "./ApiForm";
 import UploadDocument from "./UploadDocument";
 import Link from "@/components/i18n/Link";
-import { categoryFlow } from "@/lib/server/bookings";
-import { hourOptions, hoursLabel, MINUTE_STEP } from "@/lib/book-now";
+import { bookNowOn, categoryFlow } from "@/lib/server/bookings";
+import { DEFAULT_MIN_MINUTES, hourOptions, hoursLabel, MINUTE_STEP } from "@/lib/book-now";
 import { getT } from "@/lib/i18n/server";
 export default async function ProfileEditor({ pro }: { pro: boolean }) {
   const t = await getT();
@@ -21,6 +23,7 @@ export default async function ProfileEditor({ pro }: { pro: boolean }) {
       email: true,
       proProfile: {
         include: {
+          categories: { orderBy: { position: "asc" } },
           documents: {
             select: { id: true, kind: true, filename: true, reviewed: true },
             orderBy: { createdAt: "desc" },
@@ -31,7 +34,16 @@ export default async function ProfileEditor({ pro }: { pro: boolean }) {
   });
   const categories = pro ? await activeCategories() : [];
   const profile = user.proProfile;
-  const flow = pro && profile ? await categoryFlow(db, profile.categorySlug) : null;
+  // Book now applies when any of the pro's professions offers it (one hourly rate for all of them).
+  const flows = pro && profile ? await Promise.all(profile.categories.map((c) => categoryFlow(db, c.categorySlug))) : [];
+  const bookNowOffered = flows.some((f) => f.bookNow);
+  // Professions (canonical slugs) that offer Book now: their minimum hours limit the booking length.
+  const bookNowCategories = pro ? await Promise.all(categories.map(async (c) => ((await categoryFlow(db, c.slug)).bookNow ? c.slug : null))) : [];
+  const bookNowSlugs: string[] = bookNowCategories.flatMap((s) => (s ? [s] : []));
+  const defaultMin = String(profile?.bookingMinMinutes ?? DEFAULT_MIN_MINUTES);
+  // Book now needs at least one Book now profession with an hourly rate (its own, else the legacy single rate).
+  const bookNowRated = Boolean(profile?.categories.some((c, i) => flows[i]?.bookNow && professionRate(c, profile.hourlyRateCents)));
+  const euros = (cents: number | null) => (cents ? (cents % 100 ? (cents / 100).toFixed(2) : String(cents / 100)) : "");
   const fields: Field[] = [
     {
       name: "name",
@@ -57,14 +69,6 @@ export default async function ProfileEditor({ pro }: { pro: boolean }) {
   if (pro && profile)
     fields.push(
       {
-        name: "categorySlug",
-        label: t("profileEditor.mainCategory"),
-        type: "select",
-        value: serviceCategory(profile.categorySlug)?.slug ?? "",
-        required: true,
-        options: categories.map((c) => ({ value: c.slug, label: t.tx(c.name) })),
-      },
-      {
         name: "about",
         label: t("profileEditor.experienceServices"),
         type: "textarea",
@@ -72,16 +76,6 @@ export default async function ProfileEditor({ pro }: { pro: boolean }) {
         required: true,
         minLength: 30,
         maxLength: 4000,
-      },
-      {
-        name: "priceFrom",
-        label: t("profileEditor.startingPriceEuros"),
-        type: "number",
-        step: "0.01",
-        min: 0.01,
-        max: 100000,
-        value: profile.priceFrom / 100,
-        required: true,
       },
       {
         name: "experience",
@@ -114,26 +108,42 @@ export default async function ProfileEditor({ pro }: { pro: boolean }) {
         />
         {pro && (
           <p className="mt-4 text-sm text-muted">
-            {t("profileEditor.changingNameCategoryDescription")}</p>
+            {t("profileEditor.changingNameDescription")}</p>
         )}
       </Panel>
-      {pro && profile && flow?.bookNow && (
+      {pro && profile && (
+        <section id="profesionet" className="min-w-0 scroll-mt-24 break-words rounded-2xl border border-line bg-white p-4 shadow-soft sm:p-6">
+          <h2 className="mb-1 text-lg font-bold">{t("profileEditor.professionsPrices")}</h2>
+          <p className="mb-4 text-sm text-muted">{t("profileEditor.professionsPricesIntro")}</p>
+          <ProfessionsEditor max={MAX_PRO_CATEGORIES} profileApproved={profile.verification === "APPROVED"}
+            options={categories.map((c) => ({ slug: c.slug, label: t.tx(c.name), icon: c.icon }))}
+            initial={profile.categories.flatMap((c) => {
+              const slug = serviceCategory(c.categorySlug)?.slug;
+              return slug && categories.some((x) => x.slug === slug) ? [{ slug, priceFrom: euros(c.priceFromCents),
+                minMinutes: c.minMinutes ? String(c.minMinutes) : bookNowSlugs.includes(slug) ? defaultMin : "",
+                // Rates live per profession; a pro who had the old single rate sees it pre-filled on their Book now professions.
+                hourlyRate: euros(c.hourlyRateCents ?? (bookNowSlugs.includes(slug) ? profile.hourlyRateCents : null)),
+                approved: Boolean(c.approvedAt) }] : [];
+            })}
+            bookNowSlugs={bookNowSlugs} defaultMin={defaultMin}
+            hours={hourOptions(MINUTE_STEP).map((m) => ({ value: String(m), label: t.tx(hoursLabel(m)) }))} />
+        </section>
+      )}
+      {pro && profile && bookNowOffered && (
         <Panel>
-          <h2 className="mb-1 text-lg font-bold">{t("profileEditor.bookNowHourlyRate")}</h2>
+          <h2 className="mb-1 text-lg font-bold">{t("profileEditor.bookNowTitle")}</h2>
           <p className="mb-4 text-sm text-muted">
             {t("profileEditor.categoryCustomersCanBook")}</p>
-          <ApiForm
-            endpoint="/api/account/booking-settings"
-            label={t("profileEditor.saveRate")}
-            fields={[
-              { name: "enabled", label: t("profileEditor.acceptBookingsBookNow"), type: "checkbox", checked: Boolean(profile.hourlyRateCents) },
-              { name: "hourlyRate", label: t("profileEditor.hourlyRateEuros"), type: "number", step: "0.01", min: 1, max: 1000,
-                value: profile.hourlyRateCents ? profile.hourlyRateCents / 100 : "" },
-              { name: "minMinutes", label: t("profileEditor.minimumHoursPerBooking"), type: "select", as: "number",
-                value: String(profile.bookingMinMinutes ?? 120),
-                options: hourOptions(MINUTE_STEP).map((m) => ({ value: String(m), label: t.tx(hoursLabel(m)) })) },
-            ]}
-          />
+          {!bookNowRated && <p className="mb-4 rounded-xl bg-[#FFF9E3] p-3 text-sm" role="status">{t("profileEditor.bookNowNeedsRateProfession")}</p>}
+          <div data-testid="book-now-form">
+            <ApiForm
+              endpoint="/api/account/booking-settings"
+              label={t("profileEditor.saveBookNow")}
+              fields={[
+                { name: "enabled", label: t("profileEditor.acceptBookingsBookNow"), type: "checkbox", checked: bookNowOn(profile) && bookNowRated },
+              ]}
+            />
+          </div>
         </Panel>
       )}
       <Panel>

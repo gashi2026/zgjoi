@@ -101,3 +101,16 @@ test("User.locale SQL is additive, staging-guarded, and the production copy matc
   assert.match(production, /This is the production rollout/);
   assert.match(readFileSync("prisma/schema.prisma", "utf8"), /locale\s+String\?/);
 });
+
+test("hours labels use a decimal point in English and keep the comma in Albanian", async () => {
+  const { hoursLabel } = await import("../lib/book-now");
+  const en = makeTx("en", catalog());
+  assert.equal(hoursLabel(150), "2,5 orë");
+  assert.equal(en(hoursLabel(150)), "2.5 hr");
+  assert.equal(en(hoursLabel(120)), "2 hr");
+  assert.equal(makeTx("sq", catalog())(hoursLabel(150)), "2,5 orë");
+  assert.equal(en("15,00 €"), "€15.00", "money keeps its own formatting");
+  const frame = readFileSync("components/marketplace/Frame.tsx", "utf8");
+  assert.doesNotMatch(frame, /href="\/siguria"/, "no stray security link above account pages");
+  assert.match(readFileSync("lib/nav.ts", "utf8"), /href: "\/siguria"/, "account security stays reachable from the menu");
+});

@@ -1,5 +1,6 @@
 import { proUserWhere } from "@/lib/server/id-verification";
-import { categorySlugs, serviceCategory } from "@/lib/service-categories";
+import { categorySlugs } from "@/lib/service-categories";
+import { withDisplayCategory } from "@/lib/server/catalog";
 import { pageGuard } from "@/lib/server/guard";
 import { db } from "@/lib/server/db";
 import { publicProSelect, activeCategories } from "@/lib/server/catalog";
@@ -17,7 +18,7 @@ export default async function Page() {
       profile: {
         verification: "APPROVED",
         user: proUserWhere(),
-        categorySlug: { in: categories.flatMap((c) => categorySlugs(c.slug)) },
+        categories: { some: { categorySlug: { in: categories.flatMap((c) => categorySlugs(c.slug)) }, approvedAt: { not: null } } },
       },
     },
     orderBy: { createdAt: "desc" },
@@ -31,14 +32,11 @@ export default async function Page() {
           {t("account.haventSavedAnyPros")}</Panel>
       )}
       <div className="grid gap-5 sm:grid-cols-2">
-        {rows.map((row) => (
+        {rows.map(({ id, profile }) => ({ id, profile: withDisplayCategory(profile, categories.map((c) => c.slug)) })).map((row) => (
           <div key={row.id} className="space-y-2">
             <CatalogCard
               pro={row.profile}
-              category={
-                categories.find((c) => c.slug === serviceCategory(row.profile.categorySlug)?.slug)
-                  ?.name
-              }
+              category={categories.find((c) => c.slug === row.profile.categorySlug)?.name}
             />
             <ApiForm
               endpoint="/api/favorites"

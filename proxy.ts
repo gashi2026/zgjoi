@@ -26,7 +26,7 @@ import {
 
 const LOCK_PATH = "/se-shpejti";
 
-const PROTECTED = ["/llogaria", "/pro", "/admin", "/kerkesa-e-re", "/verifikimi"];
+const PROTECTED = ["/llogaria", "/pro", "/admin", "/kerkesa-e-re", "/verifikimi", "/regjistrohu/identiteti"];
 
 const ONE_YEAR = 60 * 60 * 24 * 365;
 

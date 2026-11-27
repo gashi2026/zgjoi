@@ -114,6 +114,9 @@ export async function submitIdVerification(actor: Actor, front: unknown, back: u
     for (const [side, img] of [["FRONT", f], ["BACK", b]] as const) if (img)
       await tx.idDocumentImage.create({ data: { verificationId: row.id, side, mimeType: img.type, sizeBytes: img.bytes.length,
         sha256: img.sha256, dataEnc: encryptBytes(img.bytes) } });
+    // Uploading the ID is the last step of the sign-up wizard: the account is now complete.
+    const finished = await tx.user.updateMany({ where: { id: actor.id, signupStep: "ID" }, data: { signupStep: null } });
+    if (finished.count) await tx.auditLog.create({ data: { actorId: actor.id, action: "SIGNUP_COMPLETED", target: actor.id, meta: { role: actor.role } } });
     await tx.auditLog.create({ data: { actorId: actor.id, action: "ID_SUBMITTED", target: row.id,
       meta: { attempt: row.attempts, role: actor.role, documentType, pages: b ? 2 : 1 } } });
     if (!existing || existing.status === "DECLINED") {

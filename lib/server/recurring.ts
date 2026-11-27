@@ -9,6 +9,7 @@ import { hashToken } from "./tokens";
 import { notify } from "./notifications";
 import { requireActiveCategory } from "./service-catalog";
 import { serviceCategory } from "../service-categories";
+import { offersCategory } from "../pro-categories";
 import { nextRecurringDate, readRecurrence, recurrenceLabels } from "../recurring-bookings";
 import { entityId } from "../marketplace-validation";
 
@@ -16,7 +17,8 @@ const inputSchema = z.object({ cadence: z.enum(["WEEKLY", "FORTNIGHTLY", "MONTHL
 const repeatKey = (id: string) => hashToken(`recurring-next:${id}`);
 const parentInclude = {
   payment: { include: { dispute: true } }, acceptedQuote: true,
-  acceptedPro: { include: { user: { select: { suspendedAt: true, role: true } } } },
+  acceptedPro: { include: { user: { select: { suspendedAt: true, role: true } },
+    categories: { select: { categorySlug: true, priceFromCents: true, position: true, approvedAt: true } } } },
 } satisfies Prisma.ServiceRequestInclude;
 
 function settled(payment: { state: string; heldAt: Date | null; refundedAt: Date | null; dispute: unknown } | null) {
@@ -36,7 +38,7 @@ export async function eligibleRecurringBooking(tx: Prisma.TransactionClient,
     serviceCategory(parent.categorySlug)?.slug === serviceCategory(request.categorySlug)?.slug &&
     parent.acceptedPro?.verification === "APPROVED" && !parent.acceptedPro.user.suspendedAt &&
     parent.acceptedPro.user.role === "PRO" &&
-    serviceCategory(parent.acceptedPro.categorySlug)?.slug === serviceCategory(request.categorySlug)?.slug &&
+    offersCategory(parent.acceptedPro.categories, request.categorySlug) &&
     settled(parent.payment) && !!parent.acceptedQuote?.scheduledAt &&
     scheduledAt.toISOString() === recurrence.scheduledAt &&
     nextRecurringDate(parent.acceptedQuote.scheduledAt, recurrence.cadence).toISOString() === recurrence.scheduledAt;
@@ -63,7 +65,7 @@ export async function createRecurringRequest(actor: Actor, id: string, input: un
       !parent.acceptedPro.user.suspendedAt && parent.acceptedQuote?.scheduledAt,
       "RECURRENCE_UNAVAILABLE", 409, "Përsëritja kërkon një punë të përfunduar dhe një pagesë të konfirmuar pa kontest.");
     const category = await requireActiveCategory(parent.categorySlug, tx);
-    invariant(serviceCategory(parent.acceptedPro.categorySlug)?.slug === category.slug,
+    invariant(offersCategory(parent.acceptedPro.categories, category.slug),
       "CATEGORY", 409, "Kategoria e profesionistit ka ndryshuar.");
     const scheduledAt = nextRecurringDate(parent.acceptedQuote.scheduledAt, cadence);
     invariant(scheduledAt.getTime() > Date.now() + 60_000, "TIMING", 409,

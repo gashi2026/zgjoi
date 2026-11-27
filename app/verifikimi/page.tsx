@@ -1,5 +1,4 @@
 import { localRedirect } from "@/lib/i18n/redirect";
-import Link from "@/components/i18n/Link";
 import { pageGuard } from "@/lib/server/guard";
 import { accountHome } from "@/lib/server/auth";
 import { CLIENT_BROWSE_ONLY, idStatusFor, idUploadsAvailable } from "@/lib/server/id-verification";
@@ -12,11 +11,10 @@ import HexBadge from "@/components/verification/HexBadge";
 import { getT } from "@/lib/i18n/server";
 
 /** Customers and pros upload the front and back of their ID; Zgjoi approves or declines by hand. */
-export default async function Page({ searchParams }: { searchParams: Promise<{ fillim?: string }> }) {
+export default async function Page() {
   const t = await getT();
   const actor = await pageGuard();
   if (!needsIdCheck(actor.role)) return localRedirect(accountHome(actor.role));
-  const { fillim } = await searchParams;
   const row = await idStatusFor(actor.id);
   const available = idUploadsAvailable();
   const pro = actor.role === "PRO";
@@ -24,13 +22,6 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ f
   return (
     <Frame actor={actor} hideIdNotice title={t("idVerification.identityVerification")}
       subtitle={t("idVerification.everyCustomerProZgjoi", { unlocks: unlocks, value: !pro && row?.status !== "APPROVED" ? ` ${CLIENT_BROWSE_ONLY}` : "" })}>
-      {fillim && !row && (
-        <Panel>
-          <p className="font-bold">{t("idVerification.accountReadyOneLast")}</p>
-          <p className="text-sm text-muted">{t("idVerification.takesAboutMinuteUntil")}</p>
-          <Link href={accountHome(actor.role)} className="mt-2 inline-flex min-h-11 items-center text-sm font-semibold text-gold-dark">{t("idVerification.laterGoMyDashboard")}</Link>
-        </Panel>
-      )}
       {!available ? (
         <Panel>
           <p className="font-semibold">{t("idVerification.documentUploadIsntAvailable")}</p>
