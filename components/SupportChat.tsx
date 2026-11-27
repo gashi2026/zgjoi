@@ -6,6 +6,8 @@ import Thread from "./marketplace/Thread";
 import { LogoMark } from "./Brand";
 import { formatSupportStatus, supportStatus, type SupportStatus } from "@/lib/support-hours";
 import { useT } from "@/lib/i18n/client";
+import { panelOpensDown } from "@/lib/support-launcher";
+import { useMagneticLauncher } from "./useMagneticLauncher";
 
 export default function SupportChat({
   productionHome = false,
@@ -24,6 +26,7 @@ export default function SupportChat({
   const path = usePathname();
   const referenceHome = productionHome && (path === "/" || path === "/se-shpejti");
   const [status, setStatus] = useState<SupportStatus>(() => supportStatus(now));
+  const launcher = useMagneticLauncher({ productionHome: referenceHome });
   useEffect(() => {
     const update = () => setStatus(supportStatus(now));
     const frame = requestAnimationFrame(update);
@@ -39,8 +42,33 @@ export default function SupportChat({
     button.current?.focus();
   }
   const statusLine = formatSupportStatus(status, t);
+  const side = launcher.pos?.side ?? "right";
+  const openDown =
+    open && launcher.pos && launcher.bounds
+      ? panelOpensDown(launcher.pos.y, launcher.bounds)
+      : false;
+  const defaultClass = referenceHome
+    ? "fixed bottom-[110px] right-3 z-50 lg:bottom-[30px]"
+    : "fixed bottom-24 right-4 z-50 lg:bottom-6";
+  const placed = launcher.pos != null;
+
   return (
-    <div className={referenceHome ? "fixed bottom-[110px] right-3 z-50 lg:bottom-[30px]" : "fixed bottom-24 right-4 z-50 lg:bottom-6"}>
+    <div
+      className={placed ? "fixed z-50" : defaultClass}
+      data-support-launcher=""
+      data-side={side}
+      data-dragging={launcher.dragging ? "true" : "false"}
+      style={
+        placed
+          ? {
+              top: launcher.pos!.y,
+              left: launcher.pos!.x,
+              width: launcher.buttonSize,
+              transition: launcher.transition,
+            }
+          : undefined
+      }
+    >
       {open && (
         <section
           ref={panel}
@@ -50,7 +78,13 @@ export default function SupportChat({
           onKeyDown={(e) => {
             if (e.key === "Escape") close();
           }}
-          className="mb-3 flex max-h-[70dvh] w-[min(360px,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-line bg-white shadow-lift"
+          className={`flex max-h-[70dvh] w-[min(360px,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-line bg-white shadow-lift ${
+            placed
+              ? `absolute ${openDown ? "top-full mt-3" : "bottom-full mb-3"} ${
+                  side === "left" ? "left-0" : "right-0"
+                }`
+              : "mb-3"
+          }`}
         >
           <div className="flex shrink-0 items-start gap-3 border-b border-line bg-cream px-4 py-3">
             <div className="relative mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center" aria-hidden="true">
@@ -92,14 +126,35 @@ export default function SupportChat({
       <button
         ref={button}
         type="button"
-        onClick={() => (open ? close() : setOpen(true))}
+        onPointerDown={launcher.onPointerDown}
+        onPointerMove={launcher.onPointerMove}
+        onPointerUp={(event) => {
+          if (launcher.endPointer(event) === "tap") {
+            if (open) close();
+            else setOpen(true);
+          }
+        }}
+        onPointerCancel={(event) => {
+          launcher.endPointer(event);
+        }}
+        onClick={(event) => {
+          // Pointer-up already toggles a tap. Swallow the leftover click
+          // so a drag never opens the chat and a tap is not fired twice.
+          event.preventDefault();
+        }}
         aria-expanded={open}
         aria-label={
           status.online
             ? t("supportChat.openSupport")
             : t("supportChat.openSupportOffline")
         }
-        className={`relative ml-auto flex h-14 w-14 items-center justify-center rounded-full bg-gold text-ink shadow-lift ${referenceHome ? "active:scale-95" : "border-2 border-white"}`}
+        aria-grabbed={launcher.dragging}
+        style={{ touchAction: "none", width: 56, height: 56 }}
+        className={`relative flex items-center justify-center rounded-full bg-gold text-ink shadow-lift ${
+          placed ? "" : "ml-auto"
+        } ${referenceHome ? "active:scale-95" : "border-2 border-white"} ${
+          launcher.dragging ? "cursor-grabbing" : "cursor-grab"
+        }`}
       >
         {referenceHome ? (open ? <X size={22} /> : <MessageCircle size={24} />) : <Headset size={25} />}
         {!open && (
