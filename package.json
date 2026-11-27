@@ -42,7 +42,7 @@
     "typescript": "5.9.3",
     "prisma": "5.22.0",
     "@types/bcryptjs": "^2.4.6",
-    "tsx": "^4.16.2"
+    "tsx": "^4.23.15"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
