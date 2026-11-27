@@ -1,4 +1,5 @@
 import "server-only";
+import { proUserWhere, requireIdApproved } from "./id-verification";
 import { z } from "zod";
 import type { Actor } from "./auth";
 import { invariant } from "./errors";
@@ -32,6 +33,7 @@ export { estimateStateLabels } from "../estimate-labels";
 
 export async function requestEstimate(actor: Actor, input: unknown) {
   invariant(actor.role === "CLIENT", "FORBIDDEN", 403, "Nuk keni qasje në këtë veprim.");
+  await requireIdApproved(actor);
   const data = estimateInput.parse(input);
   invariant(!containsContactDetails(data.detail), "CONTACT_DETAILS", 400,
     "Mos shkruani numra telefoni, email, lidhje ose rrjete sociale. Adresën e shënoni në fushën e saj.");
@@ -43,7 +45,7 @@ export async function requestEstimate(actor: Actor, input: unknown) {
   return serializable(async (tx) => {
     const previous = await tx.estimate.findUnique({ where: { creationKey } });
     if (previous?.requestId) return { ok: true, id: previous.requestId, redirect: `/llogaria/kerkesat/${previous.requestId}` };
-    const profile = await tx.proProfile.findFirst({ where: { id: data.profileId, verification: "APPROVED", user: { suspendedAt: null, role: "PRO" } } });
+    const profile = await tx.proProfile.findFirst({ where: { id: data.profileId, verification: "APPROVED", user: proUserWhere() } });
     invariant(profile && profile.userId !== actor.id, "PRO_UNAVAILABLE", 409, "Ky profesionist nuk pranon kërkesa për momentin.");
     const category = await requireActiveCategory(profile.categorySlug, tx);
     const flow = await categoryFlow(tx, category.slug);

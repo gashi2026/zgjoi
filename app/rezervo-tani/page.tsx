@@ -9,6 +9,7 @@ import { serviceCategory } from "@/lib/service-categories";
 import { bookingTotal, hourOptions, hoursLabel, estimateCredit, LATE_FEE_CENTS, FREE_CANCEL_HOURS } from "@/lib/book-now";
 import Frame, { Panel } from "@/components/marketplace/Frame";
 import ApiForm from "@/components/marketplace/ApiForm";
+import { IdGate } from "@/components/verification/IdNotice";
 import { SERIES_CADENCES, cadenceOptionLabels, GENERATION_HORIZON_DAYS, MIN_AHEAD_DAYS } from "@/lib/recurring-series";
 export const dynamic = "force-dynamic";
 const weekdays = ["E hënë", "E martë", "E mërkurë", "E enjte", "E premte", "E shtunë", "E diel"];
@@ -40,6 +41,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ p
             Keni paguar një vlerësim prej {money(credit.creditCents)} me këtë profesionist. Shuma zbritet plotësisht nga ky rezervim.
           </p>
         )}
+        <IdGate actor={actor}>
         <ApiForm endpoint="/api/bookings" idempotent values={{ profileId: pro.id }} label="Rezervo tani"
           confirmation={`Rezervoni ${pro.user.name}? Totali llogaritet nga ${money(terms.rateCents)}/orë dhe paguhet paraprakisht.`}
           fields={[
@@ -55,6 +57,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ p
             { name: "city", label: "Qyteti", value: actor.city ?? "", required: true, maxLength: 60 },
             { name: "address", label: "Adresa", maxLength: 300, hint: "Shfaqet te profesionisti pasi pagesa të konfirmohet." },
           ]} />
+        </IdGate>
       </Panel>
       <Panel>
         <h2 className="font-bold">Orari javor i {pro.user.name}</h2>

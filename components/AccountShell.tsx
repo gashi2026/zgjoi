@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutGrid, Inbox, Briefcase, Wallet, UserRound, MessageSquare,
   Heart, Settings, CalendarDays, FileText, Users, Receipt,
-  ShieldAlert, Headset, Layers, Target, Repeat, type LucideIcon,
+  ShieldAlert, Headset, Layers, Target, Repeat, BadgeCheck, type LucideIcon,
 } from "lucide-react";
 import { Avatar } from "./Brand";
 
@@ -15,7 +15,7 @@ const navIcons: Record<string, LucideIcon> = {
   heart: Heart, settings: Settings, calendarDays: CalendarDays,
   fileText: FileText, users: Users, receipt: Receipt,
   shieldAlert: ShieldAlert, headset: Headset, layers: Layers, target: Target,
-  repeat: Repeat,
+  repeat: Repeat, badgeCheck: BadgeCheck,
 };
 
 export type NavItem = { href: string; label: string; icon: string };

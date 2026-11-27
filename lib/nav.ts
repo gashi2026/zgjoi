@@ -10,6 +10,7 @@ export const proNav: NavItem[] = [
   { href: "/pro/te-ardhurat", label: "Të ardhurat", icon: "receipt" },
   { href: "/pro/njoftimet", label: "Njoftimet", icon: "inbox" },
   { href: "/pro/profili", label: "Profili im", icon: "userRound" },
+  { href: "/verifikimi", label: "Verifikimi i ID-së", icon: "badgeCheck" },
 ];
 
 export const clientNav: NavItem[] = [
@@ -20,12 +21,14 @@ export const clientNav: NavItem[] = [
   { href: "/llogaria/te-preferuarit", label: "Të preferuarit", icon: "heart" },
   { href: "/llogaria/njoftimet", label: "Njoftimet", icon: "inbox" },
   { href: "/llogaria/cilesimet", label: "Cilësimet", icon: "settings" },
+  { href: "/verifikimi", label: "Verifikimi i ID-së", icon: "badgeCheck" },
 ];
 
 export const adminNav: NavItem[] = [
   { href: "/admin", label: "Paneli", icon: "layoutGrid" },
   { href: "/admin/sistemi", label: "Shërbimet", icon: "settings" },
   { href: "/admin/perdoruesit", label: "Përdoruesit", icon: "users" },
+  { href: "/admin/verifikimi", label: "Verifikimi i ID-ve", icon: "badgeCheck" },
   { href: "/admin/kategorite", label: "Kategoritë & Faqja", icon: "layers" },
   { href: "/admin/komisionet", label: "Komisionet", icon: "receipt" },
   { href: "/admin/pagesat", label: "Pagesat", icon: "wallet" },

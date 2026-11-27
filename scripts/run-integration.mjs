@@ -58,6 +58,7 @@ try {
       "--test",
       "--test-concurrency=1",
       "tests/integration.test.ts",
+      "tests/id-verification.integration.test.ts",
     ],
     { env, stdio: "inherit" },
   );
