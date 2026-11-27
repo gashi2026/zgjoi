@@ -10,6 +10,7 @@ import { hashToken } from "./tokens";
 import { db } from "./db";
 import { entityId } from "../marketplace-validation";
 import { serviceCategory } from "../service-categories";
+import { proOffers } from "./pro-categories";
 import { checkHours } from "../book-now";
 import {
   SERIES_CADENCES, type SeriesCadence, kosovoSlot, kosovoDay, seriesLabel, plannedOccurrences, occurrenceAt,
@@ -169,7 +170,7 @@ export async function generateForSeries(seriesId: string, now = new Date()): Pro
         const s = await tx.recurringSeries.findUnique({ where: { id: seriesId } });
         if (!s || s.status !== "ACTIVE" || (s.generatedUntil && s.generatedUntil >= at)) return "SKIP_DONE" as const;
         const profile = await tx.proProfile.findFirst({ where: { id: s.profileId, verification: "APPROVED", user: proUserWhere() } });
-        const terms = profile && serviceCategory(profile.categorySlug)?.slug === serviceCategory(s.categorySlug)?.slug
+        const terms = profile && await proOffers(tx, profile.id, s.categorySlug)
           ? bookableTerms(profile, await categoryFlow(tx, s.categorySlug)) : null;
         const client = await tx.user.findFirst({ where: { id: s.clientId, suspendedAt: null, role: "CLIENT" } });
         if (!profile || !terms || !client) {

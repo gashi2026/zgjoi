@@ -110,6 +110,7 @@ export const currentUser = cache(async () => {
           city: true,
           suspendedAt: true,
           emailVerified: true,
+          signupStep: true,
           proProfile: { select: { id: true, slug: true, verification: true } },
         },
       },
@@ -145,6 +146,11 @@ export const accountHome = (role: Role) =>
       : role === "PRO"
         ? "/pro/paneli"
         : "/llogaria";
+/** The sign-up wizard's ID step: where a new account goes until its ID photos are uploaded. */
+export const SIGNUP_ID_PATH = "/regjistrohu/identiteti";
+/** Where to send a user after sign-up or login: the unfinished wizard step, or their home. */
+export const nextPathFor = (user: { role: Role; signupStep?: string | null }, idStepOn: boolean) =>
+  idStepOn && user.signupStep === "ID" ? SIGNUP_ID_PATH : accountHome(user.role);
 export type Actor = NonNullable<Awaited<ReturnType<typeof currentUser>>>;
 
 export async function requireUser() {

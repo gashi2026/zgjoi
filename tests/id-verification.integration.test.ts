@@ -24,7 +24,7 @@ function png(width: number, height: number, fill: number) {
   return b;
 }
 const file = (bytes: Buffer, type = "image/png", name = "id.png") => new File([new Uint8Array(bytes)], name, { type });
-const select = { id: true, email: true, name: true, role: true, city: true, suspendedAt: true, emailVerified: true,
+const select = { id: true, email: true, name: true, role: true, city: true, suspendedAt: true, emailVerified: true, signupStep: true,
   proProfile: { select: { id: true, slug: true, verification: true } } } as const;
 const actorOf = (id: string) => db.user.findUniqueOrThrow({ where: { id }, select });
 const inYears = (n: number) => { const d = new Date(); d.setUTCFullYear(d.getUTCFullYear() + n); return d.toISOString().slice(0, 10); };
@@ -41,7 +41,8 @@ test("ID verification: upload, gating, admin decision, re-upload, private viewin
     const mk = (role: "CLIENT" | "PRO" | "ADMIN" | "SUPPORT", name: string) => db.user.create({ data: {
       id: randomUUID(), email: `idv-${role.toLowerCase()}-${randomUUID()}@ci.zgjoi.invalid`, passwordHash, name, city: "Prishtinë", role, emailVerified: new Date(),
       ...(role === "PRO" ? { proProfile: { create: { slug: `idv-pro-${randomUUID()}`, categorySlug: "kopshtar", about: "Kopshtar me përvojë për testet e verifikimit të identitetit.",
-        priceFrom: 2500, serviceCities: ["Prishtinë"], verification: "APPROVED", verifiedAt: new Date(), hourlyRateCents: 2000, bookingMinMinutes: 60 } } } : {}) } });
+        priceFrom: 2500, serviceCities: ["Prishtinë"], verification: "APPROVED", verifiedAt: new Date(), hourlyRateCents: 2000, bookingMinMinutes: 60,
+        categories: { create: [{ categorySlug: "kopshtar", priceFromCents: 2500, approvedAt: new Date() }] } } } } : {}) } });
     const [clientRow, proRow, adminRow, supportRow] = [await mk("CLIENT", "Arta IDV"), await mk("PRO", "Driton IDV"), await mk("ADMIN", "Admin IDV"), await mk("SUPPORT", "Support IDV")];
     const client = await actorOf(clientRow.id), pro = await actorOf(proRow.id), admin = await actorOf(adminRow.id), support = await actorOf(supportRow.id);
     const profileId = pro.proProfile!.id;

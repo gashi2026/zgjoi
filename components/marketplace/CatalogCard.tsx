@@ -24,7 +24,9 @@ export default async function CatalogCard({
             <Link href={`/profesionisti/${pro.slug}`}>{pro.user.name}</Link>
           </h2>
           <p className="text-sm text-muted">
-            {category ? t.tx(category) : pro.categorySlug} · {pro.user.city}
+            {category ? t.tx(category) : pro.categorySlug}
+            {pro.categories.length > 1 && <span title={t("catalogCard.moreProfessions", { count: pro.categories.length - 1 })}> +{pro.categories.length - 1}</span>}
+            {" "}· {pro.user.city}
           </p>
         </div>
       </div>
@@ -33,7 +35,7 @@ export default async function CatalogCard({
         {pro.ratingCount
           ? t("catalogCard.reviews", { value: pro.ratingAvg.toFixed(1), ratingCount: pro.ratingCount })
           : t("catalogCard.noReviewsYet")}{" "}
-        {t("catalogCard.from", { amount: money(pro.priceFrom, t.locale) })}</p>
+        {pro.priceFrom ? t("catalogCard.from", { amount: money(pro.priceFrom, t.locale) }) : t("catalogCard.askForPrice")}</p>
       <Link
         href={`/profesionisti/${pro.slug}`}
         className="mt-auto rounded-full border border-gold px-4 py-3 text-center text-sm font-semibold"

@@ -15,18 +15,22 @@ import { getT } from "@/lib/i18n/server";
 export const dynamic = "force-dynamic";
 /** Paid estimate visit (Elektricist, Mjeshtër i Ujit): €15, credited in full
  * if the customer hires this pro by any path. Beta: Zgjoi confirms the payment. */
-export default async function Page({ searchParams }: { searchParams: Promise<{ pro?: string }> }) {
+export default async function Page({ searchParams }: { searchParams: Promise<{ pro?: string; kategoria?: string }> }) {
   const t = await getT();
   const actor = await pageGuard("CLIENT");
-  const { pro: id } = await searchParams;
+  const { pro: id, kategoria } = await searchParams;
   if (!id) return localRedirect("/kerko");
   const pro = await publicProfile(id);
   if (!pro) notFound();
-  const flow = await categoryFlow(db, pro.categorySlug);
-  if (!flow.estimate || !flow.estimatePriceCents) return localRedirect(`/kerkesa-e-re?pro=${pro.id}`);
+  // The estimate visit is per profession: the one asked for when it offers one, else the first that does.
+  const flows = await Promise.all(pro.categories.map(async (c) => ({ slug: c.categorySlug, flow: await categoryFlow(db, c.categorySlug) })));
+  const offered = flows.filter((f) => f.flow.estimate && f.flow.estimatePriceCents);
+  const chosen = offered.find((f) => f.slug === serviceCategory(kategoria ?? "")?.slug) ?? offered[0];
+  if (!chosen) return localRedirect(`/kerkesa-e-re?pro=${pro.id}${kategoria ? `&kategoria=${encodeURIComponent(kategoria)}` : ""}`);
+  const flow = chosen.flow as typeof chosen.flow & { estimatePriceCents: number };
   const price = money(flow.estimatePriceCents, t.locale);
   const open = await db.estimate.findFirst({ where: { clientId: actor.id, profileId: pro.id, state: { in: ["PENDING", "PAID"] } } });
-  const category = serviceCategory(pro.categorySlug)?.name ?? pro.categorySlug;
+  const category = t.tx(serviceCategory(chosen.slug)?.name ?? chosen.slug);
   return (
     <Frame actor={actor} title={t("estimate.estimateVisit", { name: pro.user.name })}
       subtitle={t("estimate.proComesOverLooks", { category: category, price: price })}>
@@ -47,7 +51,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ p
           </p>
         ) : (
           <IdGate actor={actor}>
-          <ApiForm endpoint="/api/estimates" idempotent values={{ profileId: pro.id }} label={t("estimate.requestEstimate", { price: price })}
+          <ApiForm endpoint="/api/estimates" idempotent values={{ profileId: pro.id, categorySlug: chosen.slug }} label={t("estimate.requestEstimate", { price: price })}
             confirmation={t("estimate.requestEstimateVisitFrom", { name: pro.user.name, price: price })}
             fields={[
               { name: "visitAt", label: t("estimate.whenSuitsVisitKosovo"), type: "datetime-local", kosovoTime: true, required: true,

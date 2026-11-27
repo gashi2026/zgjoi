@@ -9,19 +9,25 @@ import Frame, { Panel } from "@/components/marketplace/Frame";
 import ApiForm from "@/components/marketplace/ApiForm";
 import { IdGate } from "@/components/verification/IdNotice";
 import { getT } from "@/lib/i18n/server";
+import { activeCategories } from "@/lib/server/catalog";
+import { serviceCategory } from "@/lib/service-categories";
 /** Chat-then-hire: the customer opens a private chat with one chosen pro and
  * describes the job as the first message. There is no public job posting. */
 export default async function Page({
   searchParams,
 }: {
-  searchParams: Promise<{ pro?: string }>;
+  searchParams: Promise<{ pro?: string; kategoria?: string }>;
 }) {
   const t = await getT();
   const actor = await pageGuard("CLIENT");
-  const { pro: id } = await searchParams;
+  const { pro: id, kategoria } = await searchParams;
   if (!id) return localRedirect("/kerko");
   const pro = await publicProfile(id);
   if (!pro) notFound();
+  // A pro with several professions: the customer says which one the chat is about.
+  const names = await activeCategories();
+  const wanted = pro.categories.find((c) => c.categorySlug === serviceCategory(kategoria ?? "")?.slug)?.categorySlug ?? pro.categories[0]?.categorySlug;
+  const label = (slug: string) => t.tx(names.find((c) => c.slug === slug)?.name ?? slug);
   const open = await db.serviceRequest.findMany({
     where: {
       clientId: actor.id,
@@ -64,9 +70,17 @@ export default async function Page({
         <ApiForm
           endpoint="/api/requests"
           idempotent
-          values={{ profileId: pro.id }}
+          values={{ profileId: pro.id, ...(pro.categories.length > 1 ? {} : { categorySlug: wanted }) }}
           label={t("newChat.startChat")}
           fields={[
+            ...(pro.categories.length > 1 ? [{
+              name: "categorySlug",
+              label: t("newChat.whichService"),
+              type: "select" as const,
+              required: true,
+              value: wanted,
+              options: pro.categories.map((c) => ({ value: c.categorySlug, label: label(c.categorySlug) })),
+            }] : []),
             {
               name: "detail",
               label: t("newChat.whatJobDoNeed"),

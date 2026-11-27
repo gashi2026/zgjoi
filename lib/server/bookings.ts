@@ -8,7 +8,7 @@ import { notify } from "./notifications";
 import { enforceLimit } from "./rate-limit";
 import { hashToken } from "./tokens";
 import { serializable } from "./transaction";
-import { requireActiveCategory } from "./service-catalog";
+import { resolveProCategory } from "./pro-categories";
 import { bookingCommission } from "./commissions";
 import { assertAppointmentAvailable } from "./appointments";
 import { containsContactDetails } from "../contact-filter";
@@ -53,9 +53,10 @@ export async function saveBookingSettings(actor: Actor, input: unknown) {
   const data = bookingSettingsInput.parse(input);
   const profile = actor.proProfile;
   return serializable(async (tx) => {
-    const current = await tx.proProfile.findUniqueOrThrow({ where: { id: profile.id } });
-    const flow = await categoryFlow(tx, current.categorySlug);
-    invariant(flow.bookNow || !data.enabled, "BOOK_NOW_UNAVAILABLE", 409, "“Rezervo tani” nuk ofrohet në kategorinë tuaj. Klientët ju shkruajnë në bisedë.");
+    // One hourly rate for every profession of this pro that offers Book now.
+    const rows = await tx.proCategory.findMany({ where: { profileId: profile.id }, select: { categorySlug: true } });
+    const bookNow = (await Promise.all(rows.map((r) => categoryFlow(tx, r.categorySlug)))).some((f) => f.bookNow);
+    invariant(bookNow || !data.enabled, "BOOK_NOW_UNAVAILABLE", 409, "“Rezervo tani” nuk ofrohet në kategorinë tuaj. Klientët ju shkruajnë në bisedë.");
     if (data.enabled) {
       invariant(data.hourlyRate && data.hourlyRate >= MIN_RATE_CENTS && data.hourlyRate <= MAX_RATE_CENTS, "RATE", 400,
         `Tarifa për orë duhet të jetë nga ${money(MIN_RATE_CENTS)} deri në ${money(MAX_RATE_CENTS)}.`);
@@ -83,6 +84,7 @@ export function bookableTerms(profile: { categorySlug: string; hourlyRateCents: 
 
 export const bookNowInput = z.object({
   profileId: entityId,
+  categorySlug: cleanText(1, 80).optional(),
   clientKey,
   startsAt: z.string().datetime(),
   minutes: z.coerce.number().int(),
@@ -175,7 +177,7 @@ export async function createBooking(actor: Actor, input: unknown) {
     const profile = await tx.proProfile.findFirst({ where: { id: data.profileId, verification: "APPROVED", user: proUserWhere() },
       include: { user: { select: { id: true } } } });
     invariant(profile && profile.userId !== actor.id, "PRO_UNAVAILABLE", 409, "Ky profesionist nuk pranon rezervime për momentin.");
-    const category = await requireActiveCategory(profile.categorySlug, tx);
+    const category = await resolveProCategory(tx, profile.id, data.categorySlug);
     const terms = bookableTerms(profile, await categoryFlow(tx, category.slug));
     invariant(terms, "BOOK_NOW_UNAVAILABLE", 409, "Ky profesionist nuk pranon “Rezervo tani”. Filloni një bisedë me të.");
     const hours = checkHours(data.minutes, terms.minMinutes);

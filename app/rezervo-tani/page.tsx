@@ -19,18 +19,22 @@ const weekdays = [msgKey("bookNow.monday"), msgKey("bookNow.tuesday"), msgKey("b
 const clock = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
 /** Book now (hourly): the customer picks a start and hours at or above the
  * pro's minimum; total = rate × hours, paid upfront (beta: confirmed by Zgjoi). */
-export default async function Page({ searchParams }: { searchParams: Promise<{ pro?: string }> }) {
+export default async function Page({ searchParams }: { searchParams: Promise<{ pro?: string; kategoria?: string }> }) {
   const t = await getT();
   const actor = await pageGuard("CLIENT");
-  const { pro: id } = await searchParams;
+  const { pro: id, kategoria } = await searchParams;
   if (!id) return localRedirect("/kerko");
   const pro = await publicProfile(id);
   if (!pro) notFound();
-  const terms = bookableTerms(pro, await categoryFlow(db, pro.categorySlug));
-  if (!terms) return localRedirect(`/kerkesa-e-re?pro=${pro.id}`);
+  // Book now is per profession: the one asked for when it offers Book now, else the first that does.
+  const flows = await Promise.all(pro.categories.map((c) => categoryFlow(db, c.categorySlug)));
+  const bookable = pro.categories.flatMap((c, i) => { const tm = bookableTerms(pro, flows[i]); return tm ? [{ slug: c.categorySlug, terms: tm }] : []; });
+  const chosen = bookable.find((b) => b.slug === serviceCategory(kategoria ?? "")?.slug) ?? bookable[0];
+  if (!chosen) return localRedirect(`/kerkesa-e-re?pro=${pro.id}${kategoria ? `&kategoria=${encodeURIComponent(kategoria)}` : ""}`);
+  const terms = chosen.terms;
   const estimates = await db.estimate.findMany({ where: { clientId: actor.id, profileId: pro.id, state: "PAID", creditedRequestId: null } });
   const credit = estimateCredit(estimates, actor.id, pro.id);
-  const category = serviceCategory(pro.categorySlug)?.name ?? pro.categorySlug;
+  const category = t.tx(serviceCategory(chosen.slug)?.name ?? chosen.slug);
   return (
     <Frame actor={actor} title={t("bookNow.bookNow", { name: pro.user.name })}
       subtitle={t("bookNow.hrMinimumTotalRate", { category: category, amount: money(terms.rateCents, t.locale), label: t.tx(hoursLabel(terms.minMinutes)) })}>
@@ -43,7 +47,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ p
             {t("bookNow.youvePaidEstimatePro", { amount: money(credit.creditCents, t.locale) })}</p>
         )}
         <IdGate actor={actor}>
-        <ApiForm endpoint="/api/bookings" idempotent values={{ profileId: pro.id }} label={t("bookNow.bookNow2")}
+        <ApiForm endpoint="/api/bookings" idempotent values={{ profileId: pro.id, categorySlug: chosen.slug }} label={t("bookNow.bookNow2")}
           confirmation={t("bookNow.bookTotalBasedHr", { name: pro.user.name, amount: money(terms.rateCents, t.locale) })}
           fields={[
             { name: "startsAt", label: t("bookNow.startDateTimeKosovo"), type: "datetime-local", kosovoTime: true, required: true,

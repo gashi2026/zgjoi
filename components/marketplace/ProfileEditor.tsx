@@ -1,4 +1,6 @@
 import { serviceCategory } from "@/lib/service-categories";
+import ProfessionsEditor from "./ProfessionsEditor";
+import { MAX_PRO_CATEGORIES } from "@/lib/pro-categories";
 import { pageGuard } from "@/lib/server/guard";
 import { db } from "@/lib/server/db";
 import { activeCategories } from "@/lib/server/catalog";
@@ -21,6 +23,7 @@ export default async function ProfileEditor({ pro }: { pro: boolean }) {
       email: true,
       proProfile: {
         include: {
+          categories: { orderBy: { position: "asc" } },
           documents: {
             select: { id: true, kind: true, filename: true, reviewed: true },
             orderBy: { createdAt: "desc" },
@@ -31,7 +34,10 @@ export default async function ProfileEditor({ pro }: { pro: boolean }) {
   });
   const categories = pro ? await activeCategories() : [];
   const profile = user.proProfile;
-  const flow = pro && profile ? await categoryFlow(db, profile.categorySlug) : null;
+  // Book now applies when any of the pro's professions offers it (one hourly rate for all of them).
+  const flows = pro && profile ? await Promise.all(profile.categories.map((c) => categoryFlow(db, c.categorySlug))) : [];
+  const bookNowOffered = flows.some((f) => f.bookNow);
+  const euros = (cents: number | null) => (cents ? (cents % 100 ? (cents / 100).toFixed(2) : String(cents / 100)) : "");
   const fields: Field[] = [
     {
       name: "name",
@@ -57,14 +63,6 @@ export default async function ProfileEditor({ pro }: { pro: boolean }) {
   if (pro && profile)
     fields.push(
       {
-        name: "categorySlug",
-        label: t("profileEditor.mainCategory"),
-        type: "select",
-        value: serviceCategory(profile.categorySlug)?.slug ?? "",
-        required: true,
-        options: categories.map((c) => ({ value: c.slug, label: t.tx(c.name) })),
-      },
-      {
         name: "about",
         label: t("profileEditor.experienceServices"),
         type: "textarea",
@@ -72,16 +70,6 @@ export default async function ProfileEditor({ pro }: { pro: boolean }) {
         required: true,
         minLength: 30,
         maxLength: 4000,
-      },
-      {
-        name: "priceFrom",
-        label: t("profileEditor.startingPriceEuros"),
-        type: "number",
-        step: "0.01",
-        min: 0.01,
-        max: 100000,
-        value: profile.priceFrom / 100,
-        required: true,
       },
       {
         name: "experience",
@@ -114,10 +102,22 @@ export default async function ProfileEditor({ pro }: { pro: boolean }) {
         />
         {pro && (
           <p className="mt-4 text-sm text-muted">
-            {t("profileEditor.changingNameCategoryDescription")}</p>
+            {t("profileEditor.changingNameDescription")}</p>
         )}
       </Panel>
-      {pro && profile && flow?.bookNow && (
+      {pro && profile && (
+        <section id="profesionet" className="min-w-0 scroll-mt-24 break-words rounded-2xl border border-line bg-white p-4 shadow-soft sm:p-6">
+          <h2 className="mb-1 text-lg font-bold">{t("profileEditor.professionsPrices")}</h2>
+          <p className="mb-4 text-sm text-muted">{t("profileEditor.professionsPricesIntro")}</p>
+          <ProfessionsEditor max={MAX_PRO_CATEGORIES} profileApproved={profile.verification === "APPROVED"}
+            options={categories.map((c) => ({ slug: c.slug, label: t.tx(c.name), icon: c.icon }))}
+            initial={profile.categories.flatMap((c) => {
+              const slug = serviceCategory(c.categorySlug)?.slug;
+              return slug && categories.some((x) => x.slug === slug) ? [{ slug, priceFrom: euros(c.priceFromCents), approved: Boolean(c.approvedAt) }] : [];
+            })} />
+        </section>
+      )}
+      {pro && profile && bookNowOffered && (
         <Panel>
           <h2 className="mb-1 text-lg font-bold">{t("profileEditor.bookNowHourlyRate")}</h2>
           <p className="mb-4 text-sm text-muted">

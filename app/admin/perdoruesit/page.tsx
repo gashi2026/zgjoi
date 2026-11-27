@@ -5,6 +5,7 @@ import { activeCategories } from "@/lib/server/catalog";
 import Frame, { Panel } from "@/components/marketplace/Frame";
 import ApiForm, { type Field } from "@/components/marketplace/ApiForm";
 import { getT } from "@/lib/i18n/server";
+import { money } from "@/lib/format";
 export default async function Page({
   searchParams,
 }: {
@@ -45,6 +46,7 @@ export default async function Page({
             about: true,
             verification: true,
             categorySlug: true,
+            categories: { orderBy: { position: "asc" }, select: { categorySlug: true, priceFromCents: true, approvedAt: true } },
             documents: {
               select: { id: true, filename: true, kind: true, reviewed: true },
             },
@@ -112,14 +114,6 @@ export default async function Page({
                     label: t.tx(c.name),
                   })),
                 },
-                {
-                  name: "priceFrom",
-                  label: t("admin.startingPriceEurosPros"),
-                  type: "number",
-                  min: 0.01,
-                  max: 100000,
-                  step: "0.01",
-                },
               ]}
             />
           </div>
@@ -174,9 +168,19 @@ export default async function Page({
           </details>
           {user.proProfile && (
             <div className="mt-5 border-t border-line pt-4">
-              <p className="font-bold">
-                {user.proProfile.categorySlug} · {user.proProfile.verification}
-              </p>
+              <p className="font-bold">{user.proProfile.verification}</p>
+              <ul className="mt-2 flex flex-wrap gap-2" data-testid="admin-pro-categories">
+                {user.proProfile.categories.map((c) => (
+                  <li key={c.categorySlug} className={`rounded-full border px-3 py-1 text-sm ${c.approvedAt ? "border-gold bg-honey" : "border-dashed border-gold-dark"}`}>
+                    {t.tx(categories.find((x) => x.slug === c.categorySlug)?.name ?? c.categorySlug)} ·{" "}
+                    {c.priceFromCents ? money(c.priceFromCents, t.locale) : t("admin.noPriceYet")} ·{" "}
+                    {c.approvedAt ? t("admin.professionApproved") : t("admin.professionPending")}
+                  </li>
+                ))}
+                {!user.proProfile.categories.length && (
+                  <li className="text-sm text-red-700">{t("admin.noValidProfession", { slug: user.proProfile.categorySlug })}</li>
+                )}
+              </ul>
               <p className="my-3 whitespace-pre-wrap text-sm">
                 {user.proProfile.about}
               </p>
@@ -218,7 +222,9 @@ export default async function Page({
                     values={{ id: user.proProfile!.id, action }}
                     label={
                       action === "PRO_APPROVE"
-                        ? t("admin.approvePro")
+                        ? user.proProfile!.verification === "APPROVED" && user.proProfile!.categories.some((c) => !c.approvedAt)
+                          ? t("admin.approveNewProfessions")
+                          : t("admin.approvePro")
                         : t("admin.requestChanges")
                     }
                     fields={[

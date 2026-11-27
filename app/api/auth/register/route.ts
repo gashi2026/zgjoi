@@ -1,16 +1,15 @@
 import { api, readJson, requestIp } from "@/lib/server/http";
 import { signup } from "@/lib/server/accounts";
-import { accountHome, createSession } from "@/lib/server/auth";
+import { nextPathFor, createSession } from "@/lib/server/auth";
 import { scheduleAccountEmail } from "@/lib/server/account-email";
-import { idVerificationEnforced } from "@/lib/server/id-verification";
-import { needsIdCheck } from "@/lib/id-verification";
+import { idUploadsAvailable } from "@/lib/server/id-verification";
 export const maxDuration = 30;
 export async function POST(req: Request) {
   return api(req, async () => {
     const user = await signup(await readJson(req), requestIp(req.headers));
     scheduleAccountEmail(user.emailJobId);
     await createSession(user.id, user.passwordHash);
-    // Onboarding: the ID upload is the next step for every customer and pro.
-    return { ok: true, redirect: idVerificationEnforced() && needsIdCheck(user.role) ? "/verifikimi?fillim=1" : accountHome(user.role) };
+    // Sign-up wizard: the ID upload is the next (required) step for every customer and pro.
+    return { ok: true, redirect: nextPathFor(user, idUploadsAvailable()) };
   });
 }

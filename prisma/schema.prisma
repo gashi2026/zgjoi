@@ -100,6 +100,9 @@ model User {
   suspendedAt     DateTime?
   /// SUPPORT only: the owner can grant/revoke reviewing ID documents. Ignored for other roles.
   canReviewIds    Boolean   @default(false)
+  /// Sign-up wizard step still to finish. "ID" = account created, ID photos not yet uploaded
+  /// (new sign-ups only; every account page sends them back to /regjistrohu/identiteti). Null = done.
+  signupStep      String?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
@@ -140,9 +143,13 @@ model ProProfile {
   id                  String            @id @default(cuid())
   userId              String            @unique
   slug                String            @unique
+  /// Primary profession (first in `categories`). Kept in sync by lib/server/pro-categories.ts;
+  /// public matching uses the approved `categories` rows.
   categorySlug        String
   about               String            @db.Text
-  priceFrom           Int // in cents
+  /// Lowest "price from" over the pro's professions, in cents. Null = no price yet ("ask for a price").
+  /// Set from the profile panel only, never at sign-up.
+  priceFrom           Int?
   experience          String?
   serviceCities       String[]
   radiusKm            Int               @default(25)
@@ -172,6 +179,7 @@ model ProProfile {
 
   user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   services     ProService[]
+  categories   ProCategory[]
   documents    ProDocument[]
   quotes       Quote[]
   jobs         ServiceRequest[]  @relation("ProJobs")
@@ -187,6 +195,25 @@ model ProProfile {
 
   @@index([categorySlug])
   @@index([verification])
+}
+
+/// One profession a pro offers (a pro can offer several). Approved per profession: a row is public
+/// only once approvedAt is set (profile approval approves every row; later additions wait for the owner).
+model ProCategory {
+  id             String     @id @default(cuid())
+  profileId      String
+  /// Canonical slug from lib/service-categories.ts
+  categorySlug   String
+  /// "Price from" for this profession, in cents. Null = ask for a price (chat first).
+  priceFromCents Int?
+  position       Int        @default(0)
+  approvedAt     DateTime?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  profile        ProProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@unique([profileId, categorySlug])
+  @@index([categorySlug, approvedAt])
 }
 
 model ProService {
