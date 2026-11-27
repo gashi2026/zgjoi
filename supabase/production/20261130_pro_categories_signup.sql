@@ -2,7 +2,7 @@
 -- NOT applied. Apply only after the owner approves shipping this to main, with a backup first, and BEFORE the code reaches main.
 -- Same body as supabase/staging/pro-categories-signup.sql.
 -- Additive: new table "ProCategory" (RLS on) backfilled from ProProfile."categorySlug"/"priceFrom", new nullable User."signupStep",
--- and ProProfile."priceFrom" becomes nullable. No existing row is updated or deleted.
+-- ProCategory."minMinutes" (minimum hours per profession), and ProProfile."priceFrom" becomes nullable. No existing row is updated or deleted.
 DO $guard$
 BEGIN
   IF EXISTS (SELECT 1 FROM public."Setting" WHERE key = '_staging_environment') THEN
@@ -84,3 +84,16 @@ CROSS JOIN LATERAL (SELECT CASE p."categorySlug"
       ELSE p."categorySlug" END AS slug) m
 WHERE m.slug IN ('pastrim', 'dado', 'perkthyes', 'grim', 'frizer', 'kurse', 'valle', 'korrier', 'elektricist', 'mjeshter-i-ujit', 'ngrohje-klimatizim', 'shtepiak', 'moler', 'kopshtar')
 ON CONFLICT ("profileId", "categorySlug") DO NOTHING;
+
+-- 5) Minimum hours per profession, changeable any time in the profile panel. Null = none set:
+--    Book now keeps using the pro's existing ProProfile."bookingMinMinutes", so no backfill is
+--    needed and today's booking terms are unchanged. Same range as bookingMinMinutes, 30-minute steps.
+ALTER TABLE "ProCategory" ADD COLUMN IF NOT EXISTS "minMinutes" INTEGER;
+DO $m$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ProCategory_minMinutes_check') THEN
+    ALTER TABLE "ProCategory" ADD CONSTRAINT "ProCategory_minMinutes_check"
+      CHECK ("minMinutes" IS NULL OR ("minMinutes" BETWEEN 30 AND 720 AND "minMinutes" % 30 = 0));
+  END IF;
+END
+$m$;

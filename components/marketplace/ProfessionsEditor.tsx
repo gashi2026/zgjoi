@@ -5,12 +5,14 @@ import { buttonClass, inputClass } from "./ApiForm";
 import CategoryIcon from "@/components/CategoryIcon";
 
 export type ProfessionOption = { slug: string; label: string; icon: string };
-export type ProfessionRow = { slug: string; priceFrom: string; approved: boolean };
+export type ProfessionRow = { slug: string; priceFrom: string; minMinutes: string; approved: boolean };
 
-/** Profile panel: the pro's professions (first = main) and an optional "price from" for each.
- * No price = customers see "ask for a price" and start a chat. */
-export default function ProfessionsEditor({ options, initial, max, profileApproved }: {
+/** Profile panel, editable any time: the pro's professions (first = main), an optional "price from"
+ * and minimum hours for each. No price = customers see "ask for a price" and start a chat.
+ * For Book now professions the minimum limits the hours a customer can book (always set). */
+export default function ProfessionsEditor({ options, initial, max, profileApproved, bookNowSlugs, defaultMin, hours }: {
   options: ProfessionOption[]; initial: ProfessionRow[]; max: number; profileApproved: boolean;
+  bookNowSlugs: string[]; defaultMin: string; hours: { value: string; label: string }[];
 }) {
   const t = useT();
   const router = useRouter();
@@ -33,7 +35,7 @@ export default function ProfessionsEditor({ options, initial, max, profileApprov
       const response = await fetch("/api/account/professions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ categories: rows.map((r) => ({ slug: r.slug, priceFrom: r.priceFrom.trim() })) }),
+        body: JSON.stringify({ categories: rows.map((r) => ({ slug: r.slug, priceFrom: r.priceFrom.trim(), minMinutes: r.minMinutes })) }),
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok || result.ok === false) {
@@ -72,12 +74,24 @@ export default function ProfessionsEditor({ options, initial, max, profileApprov
                   <button type="button" disabled={rows.length === 1} onClick={() => setRows((list) => list.filter((_, j) => j !== i))} aria-label={t("professionsEditor.remove", { name: o?.label ?? row.slug })} className="h-11 rounded-full border border-line px-3 text-sm disabled:opacity-30">{t("professionsEditor.removeShort")}</button>
                 </div>
               </div>
-              <label className="mt-3 block text-sm font-semibold">
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <label className="block text-sm font-semibold">
                 {t("professionsEditor.priceFrom")}
                 <input inputMode="decimal" value={row.priceFrom} onChange={(e) => update(i, { priceFrom: e.target.value })} placeholder={t("professionsEditor.askForPricePlaceholder")}
-                  className={`${inputClass} mt-1 sm:max-w-xs`} aria-label={t("professionsEditor.priceFromFor", { name: o?.label ?? row.slug })} />
+                  className={`${inputClass} mt-1`} aria-label={t("professionsEditor.priceFromFor", { name: o?.label ?? row.slug })} />
                 <span className="mt-1 block text-xs font-normal text-muted">{t("professionsEditor.priceHint")}</span>
               </label>
+              <label className="block text-sm font-semibold">
+                {bookNowSlugs.includes(row.slug) ? t("professionsEditor.minimumHours") : t("professionsEditor.minimumHoursOptional")}
+                <select value={row.minMinutes} onChange={(e) => update(i, { minMinutes: e.target.value })} data-testid={`min-hours-${row.slug}`}
+                  className={`${inputClass} mt-1`} aria-label={t("professionsEditor.minimumHoursFor", { name: o?.label ?? row.slug })}>
+                  {!bookNowSlugs.includes(row.slug) && <option value="">{t("professionsEditor.noMinimum")}</option>}
+                  {hours.map((h) => <option key={h.value} value={h.value}>{h.label}</option>)}
+                </select>
+                <span className="mt-1 block text-xs font-normal text-muted">
+                  {bookNowSlugs.includes(row.slug) ? t("professionsEditor.minimumHoursBookNowHint") : t("professionsEditor.minimumHoursHint")}</span>
+              </label>
+              </div>
             </li>
           );
         })}
@@ -91,7 +105,7 @@ export default function ProfessionsEditor({ options, initial, max, profileApprov
               {left.map((o) => <option key={o.slug} value={o.slug}>{o.label}</option>)}
             </select>
           </label>
-          <button type="button" disabled={!adding} onClick={() => { setRows((list) => [...list, { slug: adding, priceFrom: "", approved: false }]); setAdding(""); }}
+          <button type="button" disabled={!adding} onClick={() => { setRows((list) => [...list, { slug: adding, priceFrom: "", minMinutes: bookNowSlugs.includes(adding) ? defaultMin : "", approved: false }]); setAdding(""); }}
             className="min-h-11 rounded-full border border-gold px-5 font-semibold disabled:opacity-40">{t("professionsEditor.add")}</button>
         </div>
       )}

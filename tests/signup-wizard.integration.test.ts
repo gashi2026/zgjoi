@@ -9,6 +9,7 @@ import { saveProfessions, resolveProCategory } from "../lib/server/pro-categorie
 import { adminCommand } from "../lib/server/admin";
 import { createInquiry } from "../lib/server/marketplace";
 import { searchPros, publicProfile } from "../lib/server/catalog";
+import { createBooking, saveBookingSettings, bookingTermsFor } from "../lib/server/bookings";
 
 const database = new URL(process.env.DATABASE_URL || "");
 assert(process.env.CI && ["localhost", "127.0.0.1"].includes(database.hostname) && database.pathname === "/zgjoi_test", "Refuse non-disposable database");
@@ -90,6 +91,29 @@ test("sign-up wizard: ID is a required step, pros pick several professions, no p
     assert(await db.notification.findFirst({ where: { userId: admin.id, kind: "PRO_CATEGORY_PENDING" } }));
     await adminCommand(admin, { action: "PRO_APPROVE", id: pro.proProfile!.id, reason: "Synthetic new profession checked" });
     assert((await searchPros({ kategoria: "kopshtar" })).pros.some((x) => x.id === pro.proProfile!.id));
+
+    // After approval the pro can still change everything at any time: order, prices and minimum hours.
+    // Approval is kept, nothing goes back to pending, and Book now enforces each profession's minimum.
+    const proActor = await db.user.findUniqueOrThrow({ where: { id: p.id }, include: { proProfile: true } });
+    await saveBookingSettings(proActor, { enabled: true, hourlyRate: "12" });
+    const profileRow = await db.proProfile.findUniqueOrThrow({ where: { id: pro.proProfile!.id } });
+    assert.equal(profileRow.bookingMinMinutes, 120, "a first Book now rate gets the 2 h default minimum");
+    await saveProfessions(pro, { categories: [{ slug: "dado", priceFrom: "9", minMinutes: "180" }, { slug: "pastrim", priceFrom: "18", minMinutes: "60" }, { slug: "kopshtar", minMinutes: "" }] });
+    const after = await db.proProfile.findUniqueOrThrow({ where: { id: pro.proProfile!.id }, include: { categories: { orderBy: { position: "asc" } } } });
+    assert.equal(after.verification, "APPROVED");
+    assert.deepEqual(after.categories.map((r) => [r.categorySlug, r.priceFromCents, r.minMinutes, Boolean(r.approvedAt)]),
+      [["dado", 900, 180, true], ["pastrim", 1800, 60, true], ["kopshtar", null, null, true]]);
+    assert.equal(after.categorySlug, "dado", "the first profession becomes the main one");
+    assert.equal((await bookingTermsFor(db, after, "dado"))?.minMinutes, 180);
+    assert.equal((await bookingTermsFor(db, after, "pastrim"))?.minMinutes, 60);
+    assert.equal((await publicProfile(pro.proProfile!.slug))?.categories.find((r) => r.categorySlug === "dado")?.minMinutes, 180);
+    const startsAt = new Date(Date.now() + 3 * 86_400_000).toISOString();
+    const book = (categorySlug: string, minutes: number) => createBooking(client, { profileId: pro.proProfile!.id, categorySlug, clientKey: randomUUID(),
+      startsAt, minutes, detail: "Pastrim i plotë i banesës me dy dhoma.", city: "Prishtinë" });
+    await assert.rejects(book("dado", 120), code("HOURS"), "below this profession's 3 h minimum");
+    await assert.rejects(book("pastrim", 30), code("HOURS"));
+    const ok = await book("pastrim", 60);
+    assert.equal((await db.booking.findFirstOrThrow({ where: { requestId: ok.id } })).minMinutes, 60);
 
     // Existing accounts (created before the wizard) are not pulled into it.
     const old = await db.user.create({ data: { email: `wizard-old-${randomUUID()}@ci.zgjoi.invalid`, passwordHash: "x", name: "Old", role: "CLIENT" } });

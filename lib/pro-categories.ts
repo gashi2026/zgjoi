@@ -3,7 +3,7 @@ import { serviceCategory } from "./service-categories";
 /** Most professions one pro can offer at once (sign-up and profile panel). */
 export const MAX_PRO_CATEGORIES = 5;
 
-export type ProCategoryRow = { categorySlug: string; priceFromCents: number | null; position: number; approvedAt: Date | null };
+export type ProCategoryRow = { categorySlug: string; priceFromCents: number | null; position: number; approvedAt: Date | null; minMinutes?: number | null };
 
 /** Canonical, de-duplicated, catalogue-only list of slugs in the order chosen. Unknown slugs
  * (e.g. the legacy "trainer-personal") are dropped. */

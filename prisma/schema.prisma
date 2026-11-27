@@ -206,6 +206,9 @@ model ProCategory {
   categorySlug   String
   /// "Price from" for this profession, in cents. Null = ask for a price (chat first).
   priceFromCents Int?
+  /// Minimum booking length for this profession, in minutes (30-minute steps, 30..720).
+  /// Null = none set: Book now falls back to ProProfile.bookingMinMinutes.
+  minMinutes     Int?
   position       Int        @default(0)
   approvedAt     DateTime?
   createdAt      DateTime   @default(now())

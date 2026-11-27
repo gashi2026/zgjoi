@@ -6,7 +6,7 @@ import { db } from "@/lib/server/db";
 import { money, dateTime } from "@/lib/format";
 import ApiForm from "@/components/marketplace/ApiForm";
 import { categoryFlow, bookableTerms } from "@/lib/server/bookings";
-import { hoursLabel } from "@/lib/book-now";
+import { bookingMinimum, hoursLabel } from "@/lib/book-now";
 import { proTrust } from "@/lib/server/trust";
 import { TRUST_PUBLIC } from "@/lib/trust";
 import TrustDonut from "@/components/marketplace/TrustDonut";
@@ -45,7 +45,7 @@ export default async function Page({
   ]);
   // One entry per approved profession (primary first), each with its own hiring paths and price.
   const professions = pro.categories.map((c, i) => ({
-    slug: c.categorySlug, priceFromCents: c.priceFromCents, flow: flows[i], terms: bookableTerms(pro, flows[i]),
+    slug: c.categorySlug, priceFromCents: c.priceFromCents, flow: flows[i], terms: bookableTerms(pro, flows[i], c), minMinutes: bookingMinimum(c.minMinutes, null),
     category: categories.find((x) => x.slug === c.categorySlug),
   }));
   const main = professions[0];
@@ -150,8 +150,12 @@ export default async function Page({
                 </span>
                 <div>
                   <p className="font-bold">{t.tx(p.category?.name)}</p>
-                  <p className="text-sm">{p.priceFromCents ? t("proProfile.from", { amount: money(p.priceFromCents, t.locale) }) : <span className="text-muted">{t("proProfile.askForPrice")}</span>}
+                  <p className="text-sm">{p.priceFromCents ? t("proProfile.priceFrom", { amount: money(p.priceFromCents, t.locale) }) : <span className="text-muted">{t("proProfile.askForPrice")}</span>}
                     {p.terms ? ` · ${t("proProfile.hr", { amount: money(p.terms.rateCents, t.locale) })}` : ""}</p>
+                  {(p.terms?.minMinutes ?? p.minMinutes) && (
+                    <p className="text-xs text-muted" data-testid={`min-hours-${p.slug}`}>
+                      {t("proProfile.minimumHours", { label: t.tx(hoursLabel((p.terms?.minMinutes ?? p.minMinutes)!)) })}</p>
+                  )}
                 </div>
               </div>
               {many && (

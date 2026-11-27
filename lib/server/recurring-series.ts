@@ -16,7 +16,7 @@ import {
   SERIES_CADENCES, type SeriesCadence, kosovoSlot, kosovoDay, seriesLabel, plannedOccurrences, occurrenceAt,
   occurrencesToRelease, GENERATION_HORIZON_DAYS, MIN_LEAD_MINUTES,
 } from "../recurring-series";
-import { bookableTerms, categoryFlow, insertBookNow, recordCancellation } from "./bookings";
+import { bookingTermsFor, insertBookNow, recordCancellation } from "./bookings";
 
 type SeriesRowInput = {
   clientId: string; profileId: string; categorySlug: string; cadence: SeriesCadence; firstStartsAt: Date;
@@ -57,7 +57,7 @@ export async function proposeSeriesFromBooking(tx: Prisma.TransactionClient, act
   const open = await tx.recurringSeries.findFirst({ where: { sourceRequestId: booking.request.id, status: { in: ["PROPOSED", "ACTIVE", "PAUSED"] } } });
   invariant(!open, "SERIES_EXISTS", 409, "Keni propozuar tashmë një përsëritje për këtë rezervim.");
   const profile = await tx.proProfile.findUniqueOrThrow({ where: { id: booking.profileId } });
-  const terms = bookableTerms(profile, await categoryFlow(tx, booking.request.categorySlug));
+  const terms = await bookingTermsFor(tx, profile, booking.request.categorySlug);
   invariant(terms, "BOOK_NOW_UNAVAILABLE", 409, "Aktivizoni “Rezervo tani” me tarifë për orë në profil para se të propozoni përsëritje.");
   const minutes = Math.max(booking.minutes, terms.minMinutes);
   const now = new Date();
@@ -171,7 +171,7 @@ export async function generateForSeries(seriesId: string, now = new Date()): Pro
         if (!s || s.status !== "ACTIVE" || (s.generatedUntil && s.generatedUntil >= at)) return "SKIP_DONE" as const;
         const profile = await tx.proProfile.findFirst({ where: { id: s.profileId, verification: "APPROVED", user: proUserWhere() } });
         const terms = profile && await proOffers(tx, profile.id, s.categorySlug)
-          ? bookableTerms(profile, await categoryFlow(tx, s.categorySlug)) : null;
+          ? await bookingTermsFor(tx, profile, s.categorySlug) : null;
         const client = await tx.user.findFirst({ where: { id: s.clientId, suspendedAt: null, role: "CLIENT" } });
         if (!profile || !terms || !client) {
           await tx.recurringSeries.update({ where: { id: s.id }, data: { status: "PAUSED", pausedAt: now, pausedBy: "SYSTEM",

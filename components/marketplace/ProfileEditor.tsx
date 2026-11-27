@@ -9,7 +9,7 @@ import ApiForm, { type Field } from "./ApiForm";
 import UploadDocument from "./UploadDocument";
 import Link from "@/components/i18n/Link";
 import { categoryFlow } from "@/lib/server/bookings";
-import { hourOptions, hoursLabel, MINUTE_STEP } from "@/lib/book-now";
+import { DEFAULT_MIN_MINUTES, hourOptions, hoursLabel, MINUTE_STEP } from "@/lib/book-now";
 import { getT } from "@/lib/i18n/server";
 export default async function ProfileEditor({ pro }: { pro: boolean }) {
   const t = await getT();
@@ -37,6 +37,10 @@ export default async function ProfileEditor({ pro }: { pro: boolean }) {
   // Book now applies when any of the pro's professions offers it (one hourly rate for all of them).
   const flows = pro && profile ? await Promise.all(profile.categories.map((c) => categoryFlow(db, c.categorySlug))) : [];
   const bookNowOffered = flows.some((f) => f.bookNow);
+  // Professions (canonical slugs) that offer Book now: their minimum hours limit the booking length.
+  const bookNowCategories = pro ? await Promise.all(categories.map(async (c) => ((await categoryFlow(db, c.slug)).bookNow ? c.slug : null))) : [];
+  const bookNowSlugs: string[] = bookNowCategories.flatMap((s) => (s ? [s] : []));
+  const defaultMin = String(profile?.bookingMinMinutes ?? DEFAULT_MIN_MINUTES);
   const euros = (cents: number | null) => (cents ? (cents % 100 ? (cents / 100).toFixed(2) : String(cents / 100)) : "");
   const fields: Field[] = [
     {
@@ -113,15 +117,19 @@ export default async function ProfileEditor({ pro }: { pro: boolean }) {
             options={categories.map((c) => ({ slug: c.slug, label: t.tx(c.name), icon: c.icon }))}
             initial={profile.categories.flatMap((c) => {
               const slug = serviceCategory(c.categorySlug)?.slug;
-              return slug && categories.some((x) => x.slug === slug) ? [{ slug, priceFrom: euros(c.priceFromCents), approved: Boolean(c.approvedAt) }] : [];
-            })} />
+              return slug && categories.some((x) => x.slug === slug) ? [{ slug, priceFrom: euros(c.priceFromCents),
+                minMinutes: c.minMinutes ? String(c.minMinutes) : bookNowSlugs.includes(slug) ? defaultMin : "",
+                approved: Boolean(c.approvedAt) }] : [];
+            })}
+            bookNowSlugs={bookNowSlugs} defaultMin={defaultMin}
+            hours={hourOptions(MINUTE_STEP).map((m) => ({ value: String(m), label: t.tx(hoursLabel(m)) }))} />
         </section>
       )}
       {pro && profile && bookNowOffered && (
         <Panel>
           <h2 className="mb-1 text-lg font-bold">{t("profileEditor.bookNowHourlyRate")}</h2>
           <p className="mb-4 text-sm text-muted">
-            {t("profileEditor.categoryCustomersCanBook")}</p>
+            {t("profileEditor.categoryCustomersCanBook")} {t("profileEditor.minimumHoursInProfessions")}</p>
           <ApiForm
             endpoint="/api/account/booking-settings"
             label={t("profileEditor.saveRate")}
@@ -129,9 +137,6 @@ export default async function ProfileEditor({ pro }: { pro: boolean }) {
               { name: "enabled", label: t("profileEditor.acceptBookingsBookNow"), type: "checkbox", checked: Boolean(profile.hourlyRateCents) },
               { name: "hourlyRate", label: t("profileEditor.hourlyRateEuros"), type: "number", step: "0.01", min: 1, max: 1000,
                 value: profile.hourlyRateCents ? profile.hourlyRateCents / 100 : "" },
-              { name: "minMinutes", label: t("profileEditor.minimumHoursPerBooking"), type: "select", as: "number",
-                value: String(profile.bookingMinMinutes ?? 120),
-                options: hourOptions(MINUTE_STEP).map((m) => ({ value: String(m), label: t.tx(hoursLabel(m)) })) },
             ]}
           />
         </Panel>

@@ -57,3 +57,14 @@ panel of their profile".
 `ProProfile` (alias slugs mapped, approved if the profile is approved), `User.signupStep` (nullable),
 `ProProfile.priceFrom` becomes nullable. Apply before this code reaches the environment.
 Rollback note: once a pro has signed up without a price, `priceFrom` is NULL; older code would show it badly, so roll back with Vercel instant rollback only before new pro sign-ups, or set a price first.
+
+## Minimum hours (per profession)
+
+- Each profession row (`ProCategory.minMinutes`, 30-minute steps, 0.5–12 h) has its own minimum, editable any time in
+  `/pro/profili#profesionet` together with the price and order — before or after approval, with no re-review.
+- Book now professions always have a minimum (the field has no "none" option); other professions may leave it empty
+  ("No minimum"), and when set it is shown on the public profile only.
+- Book now uses the profession's minimum, else the pro's `ProProfile.bookingMinMinutes` (set to 2 h when a first rate is
+  saved). Existing pros therefore keep today's minimum until they change it — no backfill.
+- Enforced server-side in `createBooking` (`checkHours`), in recurring proposals, and in the duration list on
+  `/rezervo-tani` (it starts at the minimum). The hourly rate stays one per pro.

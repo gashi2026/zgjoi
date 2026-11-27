@@ -9,12 +9,13 @@ import { notify } from "./notifications";
 import { activeServiceCategories, requireActiveCategory } from "./service-catalog";
 import { categorySlugs, serviceCategory } from "../service-categories";
 import { cleanText, euroAmount } from "../marketplace-validation";
+import { validMinMinutes } from "../book-now";
 import { MAX_PRO_CATEGORIES, lowestPrice, normalizeCategorySlugs, offersCategory, pickCategory, publicCategories } from "../pro-categories";
 
 type Tx = Prisma.TransactionClient;
 type CatalogTx = Pick<Tx, "category" | "proCategory">;
 
-export const proCategorySelect = { categorySlug: true, priceFromCents: true, position: true, approvedAt: true } satisfies Prisma.ProCategorySelect;
+export const proCategorySelect = { categorySlug: true, priceFromCents: true, minMinutes: true, position: true, approvedAt: true } satisfies Prisma.ProCategorySelect;
 /** Public (approved) professions, primary first. Use inside a ProProfile select. */
 export const publicCategoriesSelect = { where: { approvedAt: { not: null } }, orderBy: { position: "asc" }, select: proCategorySelect } satisfies Prisma.ProProfile$categoriesArgs;
 
@@ -63,13 +64,16 @@ export async function requireActiveCategories(raw: readonly string[], tx: Catalo
 }
 
 const optionalPrice = z.preprocess((v) => (v === "" || v === null ? undefined : v), euroAmount.optional());
+const optionalMinMinutes = z.preprocess((v) => (v === "" || v === null || v === undefined ? undefined : Number(v)),
+  z.number().refine(validMinMinutes, "Minimumi i orëve duhet të jetë nga 0,5 deri në 12 orë, me hapa gjysmë ore.").optional());
 export const professionsInput = z.object({
-  categories: z.array(z.object({ slug: cleanText(1, 80), priceFrom: optionalPrice })).min(1, "Zgjidhni të paktën një profesion.").max(MAX_PRO_CATEGORIES),
+  categories: z.array(z.object({ slug: cleanText(1, 80), priceFrom: optionalPrice, minMinutes: optionalMinMinutes })).min(1, "Zgjidhni të paktën një profesion.").max(MAX_PRO_CATEGORIES),
 });
 
-/** Profile panel: the pro's professions (order = order shown; first = main) and their optional prices.
+/** Profile panel, any time (pending or approved): the pro's professions (order = order shown; first = main),
+ * their optional prices and minimum hours.
  * Keeping a profession keeps its approval; a new one waits for the owner, while the pro stays
- * visible in the professions already approved. Prices never need approval. */
+ * visible in the professions already approved. Prices and minimum hours never need approval. */
 export async function saveProfessions(actor: Actor, input: unknown) {
   invariant(actor.role === "PRO" && actor.proProfile, "FORBIDDEN", 403, "Nuk keni qasje në këtë veprim.");
   const data = professionsInput.parse(input);
@@ -77,6 +81,7 @@ export async function saveProfessions(actor: Actor, input: unknown) {
   return serializable(async (tx) => {
     const slugs = await requireActiveCategories(data.categories.map((c) => c.slug), tx);
     const price = new Map<string, number | null>(data.categories.map((c) => [serviceCategory(c.slug)?.slug ?? c.slug, c.priceFrom ?? null]));
+    const minimum = new Map<string, number | null>(data.categories.map((c) => [serviceCategory(c.slug)?.slug ?? c.slug, c.minMinutes ?? null]));
     const before = await tx.proCategory.findMany({ where: { profileId } });
     const profile = await tx.proProfile.findUniqueOrThrow({ where: { id: profileId }, select: { verification: true } });
     const removed = before.filter((r) => !slugs.includes(serviceCategory(r.categorySlug)?.slug ?? ""));
@@ -85,15 +90,17 @@ export async function saveProfessions(actor: Actor, input: unknown) {
     for (const [position, slug] of slugs.entries()) {
       const existing = before.find((r) => serviceCategory(r.categorySlug)?.slug === slug);
       const priceFromCents = price.get(slug) ?? null;
-      if (existing) await tx.proCategory.update({ where: { id: existing.id }, data: { position, priceFromCents, categorySlug: slug } });
+      const minMinutes = minimum.get(slug) ?? null;
+      if (existing) await tx.proCategory.update({ where: { id: existing.id }, data: { position, priceFromCents, minMinutes, categorySlug: slug } });
       else {
         added.push(slug);
-        await tx.proCategory.create({ data: { profileId, categorySlug: slug, position, priceFromCents } });
+        await tx.proCategory.create({ data: { profileId, categorySlug: slug, position, priceFromCents, minMinutes } });
       }
     }
     await syncProfileSummary(tx, profileId);
     await tx.auditLog.create({ data: { actorId: actor.id, action: "PRO_CATEGORIES_UPDATED", target: profileId,
-      meta: { categories: slugs, added, removed: removed.map((r) => r.categorySlug), priced: slugs.filter((s) => price.get(s)) } } });
+      meta: { categories: slugs, added, removed: removed.map((r) => r.categorySlug), priced: slugs.filter((s) => price.get(s)),
+        minimums: Object.fromEntries(slugs.map((s) => [s, minimum.get(s) ?? null])) } } });
     // An approved pro adding a profession: the owner approves it before it shows publicly.
     if (added.length && profile.verification === "APPROVED") {
       const admins = await tx.user.findMany({ where: { role: "ADMIN", suspendedAt: null }, select: { id: true } });

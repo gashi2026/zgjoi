@@ -5,6 +5,7 @@ import { signupInput } from "../lib/marketplace-validation";
 import { MAX_PRO_CATEGORIES, lowestPrice, normalizeCategorySlugs, offersCategory, pickCategory, publicCategories } from "../lib/pro-categories";
 import { nextPathFor, SIGNUP_ID_PATH } from "../lib/server/auth";
 import { professionsInput } from "../lib/server/pro-categories";
+import { bookingMinimum, hourOptions, validMinMinutes } from "../lib/book-now";
 
 const base = { name: "Arta Krasniqi", email: "arta@example.test", password: "Fjalekalim-i-Forte-2026", city: "Prishtinë", terms: true };
 const about = "Pastrim shtëpish dhe zyrash me përvojë tetë-vjeçare, punë e pastër.";
@@ -90,9 +91,29 @@ test("pro categories SQL is additive, backfills the old category, and the produc
     assert.match(sql, /ENABLE ROW LEVEL SECURITY/);
     assert.match(sql, /INSERT INTO "ProCategory"[\s\S]+FROM "ProProfile" p[\s\S]+ON CONFLICT/);
     assert.match(sql, /WHEN 'hidraulik' THEN 'mjeshter-i-ujit'/);
+    assert.match(sql, /ALTER TABLE "ProCategory" ADD COLUMN IF NOT EXISTS "minMinutes" INTEGER/);
+    assert.match(sql, /"minMinutes" BETWEEN 30 AND 720 AND "minMinutes" % 30 = 0/);
   }
   assert.match(staging, /_staging_environment' AND value->>'kind' = 'staging'/);
   assert.match(production, /This is the production rollout/);
   assert.match(readFileSync("scripts/prepare-test-db.mjs", "utf8"), /pro-categories-signup\.sql/);
   assert.match(readFileSync("prisma/schema.prisma", "utf8"), /model ProCategory \{[\s\S]+@@unique\(\[profileId, categorySlug\]\)/);
+});
+
+test("minimum hours: per profession, optional, half-hour steps, falling back to the pro's Book now default", () => {
+  assert.equal(bookingMinimum(180, 120), 180, "the profession's own minimum wins");
+  assert.equal(bookingMinimum(null, 120), 120, "no minimum on the profession: the pro's default");
+  assert.equal(bookingMinimum(null, null), null);
+  assert.equal(bookingMinimum(45, 60), 60, "an invalid stored value is ignored");
+  assert.equal(validMinMinutes(30), true);
+  assert.equal(validMinMinutes(720), true);
+  assert.equal(validMinMinutes(750), false);
+  assert.equal(validMinMinutes(0), false);
+  assert.equal(hourOptions(180)[0], 180, "the booking duration list starts at the minimum");
+  const parsed = professionsInput.parse({ categories: [{ slug: "pastrim", minMinutes: "180" }, { slug: "dado", minMinutes: "" }, { slug: "kopshtar" }] });
+  assert.deepEqual(parsed.categories.map((c) => c.minMinutes), [180, undefined, undefined]);
+  assert.equal(professionsInput.safeParse({ categories: [{ slug: "pastrim", minMinutes: "45" }] }).success, false);
+  assert.equal(professionsInput.safeParse({ categories: [{ slug: "pastrim", minMinutes: "780" }] }).success, false);
+  const editor = readFileSync("components/marketplace/ProfileEditor.tsx", "utf8");
+  assert.doesNotMatch(editor, /name: "minMinutes"/, "the minimum lives with each profession, not in the Book now rate form");
 });

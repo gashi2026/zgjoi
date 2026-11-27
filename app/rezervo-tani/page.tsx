@@ -28,7 +28,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ p
   if (!pro) notFound();
   // Book now is per profession: the one asked for when it offers Book now, else the first that does.
   const flows = await Promise.all(pro.categories.map((c) => categoryFlow(db, c.categorySlug)));
-  const bookable = pro.categories.flatMap((c, i) => { const tm = bookableTerms(pro, flows[i]); return tm ? [{ slug: c.categorySlug, terms: tm }] : []; });
+  const bookable = pro.categories.flatMap((c, i) => { const tm = bookableTerms(pro, flows[i], c); return tm ? [{ slug: c.categorySlug, terms: tm }] : []; });
   const chosen = bookable.find((b) => b.slug === serviceCategory(kategoria ?? "")?.slug) ?? bookable[0];
   if (!chosen) return localRedirect(`/kerkesa-e-re?pro=${pro.id}${kategoria ? `&kategoria=${encodeURIComponent(kategoria)}` : ""}`);
   const terms = chosen.terms;
