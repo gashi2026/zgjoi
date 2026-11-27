@@ -1,3 +1,4 @@
+import type { T } from "./i18n/translate";
 /**
  * Live support runs 09:00–17:00, Monday to Friday, Kosovo time.
  * Kosovo uses Europe/Belgrade (CET/CEST) — the same offset year-round rules,
@@ -87,8 +88,6 @@ export function supportStatus(now = new Date()): SupportStatus {
   return { online, localTime: label, nextOpenLabel, reopen, nextWeekday };
 }
 
-type Translate = (key: string, params?: Record<string, string | number>) => string;
-
 const WEEKDAY_KEYS = [
   "supportChat.sunday",
   "supportChat.monday",
@@ -100,7 +99,7 @@ const WEEKDAY_KEYS = [
 ] as const;
 
 /** Locale-aware sentence for the open-panel status line. */
-export function formatSupportStatus(status: SupportStatus, t: Translate): string {
+export function formatSupportStatus(status: SupportStatus, t: T): string {
   const hour = {
     OPEN_HOUR: String(OPEN_HOUR).padStart(2, "0"),
     CLOSE_HOUR: String(CLOSE_HOUR).padStart(2, "0"),
