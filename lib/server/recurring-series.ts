@@ -14,7 +14,7 @@ import { proOffers } from "./pro-categories";
 import { checkHours } from "../book-now";
 import {
   SERIES_CADENCES, type SeriesCadence, kosovoSlot, kosovoDay, seriesLabel, plannedOccurrences, occurrenceAt,
-  occurrencesToRelease, GENERATION_HORIZON_DAYS, MIN_LEAD_MINUTES,
+  occurrencesToRelease, upcomingCancelledLabel, GENERATION_HORIZON_DAYS, MIN_LEAD_MINUTES,
 } from "../recurring-series";
 import { bookingTermsFor, insertBookNow, recordCancellation } from "./bookings";
 
@@ -47,18 +47,18 @@ export async function proposeSeriesFromBooking(tx: Prisma.TransactionClient, act
   booking: { id: string; profileId: string; clientId: string; startsAt: Date; minutes: number; seriesId: string | null; status: string;
     request: { id: string; categorySlug: string; detail: string | null; city: string; address: string | null; state: string } },
   cadence: SeriesCadence, clientKey: string) {
-  invariant(actor.role === "PRO" && actor.proProfile?.id === booking.profileId, "FORBIDDEN", 403, "Vetëm profesionisti i këtij rezervimi e propozon përsëritjen.");
+  invariant(actor.role === "PRO" && actor.proProfile?.id === booking.profileId, "FORBIDDEN", 403, "Vetëm profesionisti i këtij rezervimi e propozon abonimin.");
   await requireIdApproved(actor, tx);
   const creationKey = hashToken(`series-proposal:${actor.id}:${clientKey}`);
   const previous = await tx.recurringSeries.findUnique({ where: { creationKey } });
   if (previous) return { ok: true, id: previous.id };
-  invariant(!booking.seriesId, "SERIES_EXISTS", 409, "Ky rezervim është tashmë pjesë e një rezervimi të përsëritur.");
-  invariant(booking.status === "CONFIRMED" && booking.request.state !== "CANCELLED", "STATE", 409, "Përsëritja propozohet nga një rezervim aktiv ose i përfunduar.");
+  invariant(!booking.seriesId, "SERIES_EXISTS", 409, "Ky rezervim është tashmë pjesë e një abonimi.");
+  invariant(booking.status === "CONFIRMED" && booking.request.state !== "CANCELLED", "STATE", 409, "Abonimi propozohet nga një rezervim aktiv ose i përfunduar.");
   const open = await tx.recurringSeries.findFirst({ where: { sourceRequestId: booking.request.id, status: { in: ["PROPOSED", "ACTIVE", "PAUSED"] } } });
-  invariant(!open, "SERIES_EXISTS", 409, "Keni propozuar tashmë një përsëritje për këtë rezervim.");
+  invariant(!open, "SERIES_EXISTS", 409, "Keni propozuar tashmë një abonim për këtë rezervim.");
   const profile = await tx.proProfile.findUniqueOrThrow({ where: { id: booking.profileId } });
   const terms = await bookingTermsFor(tx, profile, booking.request.categorySlug);
-  invariant(terms, "BOOK_NOW_UNAVAILABLE", 409, "Aktivizoni “Rezervo tani” me tarifë për orë në profil para se të propozoni përsëritje.");
+  invariant(terms, "BOOK_NOW_UNAVAILABLE", 409, "Aktivizoni “Rezervo tani” me tarifë për orë në profil para se të propozoni abonim.");
   const minutes = Math.max(booking.minutes, terms.minMinutes);
   const now = new Date();
   let first: Date | null = null;
@@ -68,10 +68,10 @@ export async function proposeSeriesFromBooking(tx: Prisma.TransactionClient, act
   }
   invariant(first, "TIMING", 409, "Nuk u gjet një datë e ardhshme për këtë orar.");
   const series = await createSeriesRow(tx, { clientId: booking.clientId, profileId: booking.profileId, categorySlug: booking.request.categorySlug,
-    cadence, firstStartsAt: first, minutes, rateCents: terms.rateCents, detail: booking.request.detail ?? "Rezervim i përsëritur",
+    cadence, firstStartsAt: first, minutes, rateCents: terms.rateCents, detail: booking.request.detail ?? "Abonim",
     city: booking.request.city, address: booking.request.address, proposedBy: "PRO", status: "PROPOSED", creationKey, now, sourceRequestId: booking.request.id,
     monthDay: kosovoDay(booking.startsAt) });
-  await notify(tx, booking.clientId, "RECURRING", "Profesionisti propozoi një rezervim të përsëritur; konfirmoni ose refuzoni", hrefFor("CLIENT"));
+  await notify(tx, booking.clientId, "RECURRING", "Profesionisti propozoi një abonim; konfirmoni ose refuzoni", hrefFor("CLIENT"));
   await tx.auditLog.create({ data: { actorId: actor.id, action: "RECURRING_SERIES_PROPOSED", target: series.id,
     meta: { cadence, firstStartsAt: first.toISOString(), minutes, rateCents: terms.rateCents, sourceRequestId: booking.request.id } } });
   return { ok: true, id: series.id, message: `Propozimi u dërgua: ${seriesLabel(series)}. Rezervimet krijohen pasi klienti ta konfirmojë.` };
@@ -103,21 +103,21 @@ export async function seriesAction(actor: Actor, id: string, input: unknown) {
   const result = await serializable(async (tx) => {
     const series = await tx.recurringSeries.findUnique({ where: { id }, include: { profile: { select: { userId: true } } } });
     const mine = series && ((actor.role === "CLIENT" && series.clientId === actor.id) || (actor.role === "PRO" && actor.proProfile?.id === series.profileId));
-    invariant(series && mine, "NOT_FOUND", 404, "Rezervimi i përsëritur nuk u gjet.");
+    invariant(series && mine, "NOT_FOUND", 404, "Abonimi nuk u gjet.");
     const by = actor.role === "PRO" ? "PRO" : "CLIENT";
     const other = by === "PRO" ? series.clientId : series.profile.userId;
     const otherHref = hrefFor(by === "PRO" ? "CLIENT" : "PRO");
     const now = new Date();
     const audit = (meta: Record<string, unknown> = {}) => tx.auditLog.create({ data: { actorId: actor.id, action: `RECURRING_SERIES_${action}`, target: series.id, meta: { by, ...meta } } });
     if (action === "CONFIRM" || action === "DECLINE") {
-      invariant(by === "CLIENT", "FORBIDDEN", 403, "Vetëm klienti e konfirmon rezervimin e përsëritur.");
+      invariant(by === "CLIENT", "FORBIDDEN", 403, "Vetëm klienti e konfirmon abonimin.");
       const target = action === "CONFIRM" ? "ACTIVE" : "DECLINED";
       if (series.status === target) return { ok: true, generate: false };
       invariant(series.status === "PROPOSED", "STALE", 409, "Propozimi nuk është më i hapur. Rifreskoni faqen.");
       const changed = await tx.recurringSeries.updateMany({ where: { id, status: "PROPOSED" },
         data: target === "ACTIVE" ? { status: "ACTIVE", confirmedAt: now } : { status: "DECLINED", cancelledAt: now } });
       invariant(changed.count === 1, "STALE", 409, "Propozimi ka ndryshuar. Rifreskoni faqen.");
-      await notify(tx, other, "RECURRING", target === "ACTIVE" ? "Klienti konfirmoi rezervimin e përsëritur" : "Klienti nuk e pranoi rezervimin e përsëritur", otherHref);
+      await notify(tx, other, "RECURRING", target === "ACTIVE" ? "Klienti konfirmoi abonimin" : "Klienti nuk e pranoi abonimin", otherHref);
       await audit();
       return { ok: true, generate: target === "ACTIVE",
         message: target === "ACTIVE" ? `U konfirmua: ${seriesLabel(series)}. Vizitat e ardhshme krijohen si rezervime.` : "Propozimi u refuzua." };
@@ -126,23 +126,23 @@ export async function seriesAction(actor: Actor, id: string, input: unknown) {
       const target = action === "PAUSE" ? "PAUSED" : "CANCELLED";
       if (series.status === target) return { ok: true, generate: false };
       const allowed = action === "PAUSE" ? ["ACTIVE"] : ["ACTIVE", "PAUSED", "PROPOSED"];
-      invariant(allowed.includes(series.status), "STATE", 409, action === "PAUSE" ? "Vetëm një rezervim i përsëritur aktiv mund të pauzohet." : "Ky rezervim i përsëritur është mbyllur tashmë.");
+      invariant(allowed.includes(series.status), "STATE", 409, action === "PAUSE" ? "Vetëm një abonim aktiv mund të pauzohet." : "Ky abonim është mbyllur tashmë.");
       const changed = await tx.recurringSeries.updateMany({ where: { id, status: series.status },
         data: action === "PAUSE" ? { status: "PAUSED", pausedAt: now, pausedBy: by } : { status: "CANCELLED", cancelledAt: now, cancelledBy: by } });
-      invariant(changed.count === 1, "STALE", 409, "Rezervimi i përsëritur ka ndryshuar. Rifreskoni faqen.");
-      const note = action === "PAUSE" ? "Rezervimi i përsëritur u pauzua" : "Rezervimi i përsëritur u anulua";
+      invariant(changed.count === 1, "STALE", 409, "Abonimi ka ndryshuar. Rifreskoni faqen.");
+      const note = action === "PAUSE" ? "Abonimi u vu në pauzë" : "Abonimi u anulua";
       const { released, kept } = await releaseUpcoming(tx, id, by, actor.id, now, note);
-      await notify(tx, other, "RECURRING", action === "PAUSE" ? "Rezervimi i përsëritur u vu në pauzë" : "Rezervimi i përsëritur u anulua", otherHref);
+      await notify(tx, other, "RECURRING", action === "PAUSE" ? "Abonimi u vu në pauzë" : "Abonimi u anulua", otherHref);
       await audit({ released, kept });
       const keptText = kept ? ` ${kept === 1 ? "Vizita" : `${kept} vizita`} brenda 24 orëve ${kept === 1 ? "mbetet" : "mbeten"}; anulimi i saj ndjek rregullat e zakonshme.` : "";
       return { ok: true, generate: false,
-        message: `${action === "PAUSE" ? "U vu në pauzë" : "U anulua"}. ${released ? `${released} vizita të ardhshme u anuluan falas.` : "Nuk kishte vizita për t’u anuluar."}${keptText}` };
+        message: `${action === "PAUSE" ? "U vu në pauzë" : "U anulua"}. ${released ? upcomingCancelledLabel(released) : "Nuk kishte vizita për t’u anuluar."}${keptText}` };
     }
     // RESUME
     if (series.status === "ACTIVE") return { ok: true, generate: false };
-    invariant(series.status === "PAUSED", "STATE", 409, "Vetëm një rezervim i përsëritur në pauzë mund të rifillojë.");
+    invariant(series.status === "PAUSED", "STATE", 409, "Vetëm një abonim në pauzë mund të rifillojë.");
     await tx.recurringSeries.update({ where: { id }, data: { status: "ACTIVE", pausedAt: null, pausedBy: null, statusNote: null, generatedUntil: now } });
-    await notify(tx, other, "RECURRING", "Rezervimi i përsëritur rifilloi", otherHref);
+    await notify(tx, other, "RECURRING", "Abonimi rifilloi", otherHref);
     await audit();
     return { ok: true, generate: true, message: "Rifilloi. Vizitat e ardhshme krijohen përsëri si rezervime." };
   });
@@ -176,19 +176,19 @@ export async function generateForSeries(seriesId: string, now = new Date()): Pro
         if (!profile || !terms || !client) {
           await tx.recurringSeries.update({ where: { id: s.id }, data: { status: "PAUSED", pausedAt: now, pausedBy: "SYSTEM",
             statusNote: "Profesionisti nuk pranon më “Rezervo tani” ose llogaria nuk është aktive." } });
-          await notify(tx, s.clientId, "RECURRING", "Rezervimi i përsëritur u vu në pauzë: profesionisti nuk pranon rezervime tani", hrefFor("CLIENT"));
-          if (profile) await notify(tx, profile.userId, "RECURRING", "Rezervimi i përsëritur u vu në pauzë: aktivizoni “Rezervo tani” për ta rifilluar", hrefFor("PRO"));
+          await notify(tx, s.clientId, "RECURRING", "Abonimi u vu në pauzë: profesionisti nuk pranon rezervime tani", hrefFor("CLIENT"));
+          if (profile) await notify(tx, profile.userId, "RECURRING", "Abonimi u vu në pauzë: aktivizoni “Rezervo tani” për ta rifilluar", hrefFor("PRO"));
           await tx.auditLog.create({ data: { action: "RECURRING_SERIES_AUTO_PAUSED", target: s.id, meta: { occurrenceAt: at.toISOString() } } });
           return "PAUSED" as const;
         }
         const live = await tx.booking.findFirst({ where: { seriesId: s.id, occurrenceAt: at, status: "CONFIRMED" } });
         if (!live) {
-          invariant(checkHours(s.minutes, 30).ok, "HOURS", 409, "Orët e serisë nuk janë të vlefshme.");
+          invariant(checkHours(s.minutes, 30).ok, "HOURS", 409, "Orët e abonimit nuk janë të vlefshme.");
           await insertBookNow(tx, { actorId: s.clientId, clientId: s.clientId, profile, categorySlug: s.categorySlug,
             rateCents: s.hourlyRateCents, minMinutes: terms.minMinutes, minutes: s.minutes, startsAt: at, detail: s.detail,
             city: s.city, address: s.address, now, creationKey: hashToken(`series-occurrence:${s.id}:${at.toISOString()}:${now.getTime()}`),
             series: { id: s.id, occurrenceAt: at, label: seriesLabel(s) } });
-          await notify(tx, s.clientId, "BOOKED", "U krijua vizita e radhës e rezervimit tuaj të përsëritur; pagesa është në pritje", hrefFor("CLIENT"));
+          await notify(tx, s.clientId, "BOOKED", "U krijua vizita e radhës e abonimit tuaj; pagesa është në pritje", hrefFor("CLIENT"));
         }
         await tx.recurringSeries.update({ where: { id: s.id }, data: { generatedUntil: at } });
         return live ? ("SKIP_DONE" as const) : ("CREATED" as const);
@@ -203,7 +203,7 @@ export async function generateForSeries(seriesId: string, now = new Date()): Pro
         const s = await tx.recurringSeries.findUnique({ where: { id: seriesId }, include: { profile: { select: { userId: true } } } });
         if (!s || s.status !== "ACTIVE") return;
         await tx.recurringSeries.update({ where: { id: s.id }, data: { generatedUntil: at } });
-        const title = `Vizita e përsëritur e ${at.toISOString().slice(0, 10)} nuk u krijua: ${error.message}`.slice(0, 190);
+        const title = `Vizita me abonim e ${at.toISOString().slice(0, 10)} nuk u krijua: ${error.message}`.slice(0, 190);
         await notify(tx, s.clientId, "RECURRING", title, hrefFor("CLIENT"));
         await notify(tx, s.profile.userId, "RECURRING", title, hrefFor("PRO"));
         await tx.auditLog.create({ data: { action: "RECURRING_OCCURRENCE_SKIPPED", target: s.id, meta: { occurrenceAt: at.toISOString(), code: error.code } } });

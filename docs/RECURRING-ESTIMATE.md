@@ -17,10 +17,10 @@ Owner rules (26 Nov 2026). Pure rules: `lib/recurring-series.ts`, `lib/book-now.
 
 **Who sets it**
 
-- Customer: on `/rezervo-tani`, “Përsëritja” = Çdo javë / Çdo dy javë / Çdo muaj. The series is ACTIVE at once (same as Book now: the
+- Customer: on `/rezervo-tani`, “Abonim” = Çdo javë / Çdo dy javë / Çdo muaj. The series is ACTIVE at once (same as Book now: the
   pro's public terms), the first visit is that booking.
-- Pro: on any non-cancelled Book now booking, “Propozo rezervim të përsëritur”. The series is PROPOSED; nothing is booked
-  until the customer presses “Konfirmo përsëritjen” (in the chat card or on `/llogaria/perseritjet`). First visit = one
+- Pro: on any non-cancelled Book now booking, “Propozo abonim”. The series is PROPOSED; nothing is booked
+  until the customer presses “Konfirmo abonimin” (in the chat card or on `/llogaria/perseritjet`). First visit = one
   cadence after that booking (at least 24 h away), at the pro's current rate.
 
 **Pause / resume / cancel** (customer or pro, `/llogaria/perseritjet`, `/pro/perseritjet`)

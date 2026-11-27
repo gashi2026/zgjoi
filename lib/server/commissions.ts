@@ -60,7 +60,7 @@ export async function bookingCommission(tx: Prisma.TransactionClient,
   const series = opts.seriesId ? await tx.recurringSeries.findFirst({ where: { id: opts.seriesId, status: "ACTIVE",
     clientId: request.clientId, profileId: request.selectedProfileId ?? "" } }) : null;
   invariant(!opts.seriesId || (series && serviceCategory(series.categorySlug)?.slug === serviceCategory(request.categorySlug)?.slug),
-    "SERIES_UNAVAILABLE", 409, "Rezervimi i përsëritur nuk është më aktiv.");
+    "SERIES_UNAVAILABLE", 409, "Abonimi nuk është më aktiv.");
   const recurring = series ? isRecurringVisit(series, opts.occurrenceAt ?? scheduledAt)
     : await eligibleRecurringBooking(tx, request, scheduledAt);
   invariant(!readRecurrence(request.answers) || recurring, "RECURRENCE_UNAVAILABLE", 409, "Kushtet e rezervimit të përsëritur kanë ndryshuar. Kërkoni një ofertë të re.");
