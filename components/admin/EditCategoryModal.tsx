@@ -4,12 +4,14 @@ import { useState } from "react";
 import { Pencil, X } from "lucide-react";
 import { saveCategory } from "@/app/actions/categories";
 import IconPicker from "./IconPicker";
+import { useT } from "@/lib/i18n/client";
 
 export default function EditCategoryModal({
   cat,
 }: {
   cat: { id: string; name: string; slug: string; icon: string };
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
 
   return (
@@ -19,23 +21,22 @@ export default function EditCategoryModal({
         onClick={() => setOpen(true)}
         className="flex items-center gap-1.5 rounded-full border border-line px-3.5 py-1.5 text-xs font-semibold text-ink transition-colors hover:border-gold hover:text-gold-dark"
       >
-        <Pencil size={12} /> Modifiko
-      </button>
+        <Pencil size={12} /> {" "}{t("editCategoryModal.edit")}</button>
 
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true">
-          <button type="button" className="absolute inset-0 bg-ink/40" onClick={() => setOpen(false)} aria-label="Mbyll" tabIndex={-1} />
+          <button type="button" className="absolute inset-0 bg-ink/40" onClick={() => setOpen(false)} aria-label={t("editCategoryModal.close")} tabIndex={-1} />
           <div className="relative z-10 max-h-[90vh] w-full max-w-md overflow-y-auto rounded-3xl bg-white p-6 shadow-lift sm:p-8">
             <button
               type="button"
               onClick={() => setOpen(false)}
               className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-full text-muted hover:bg-cream hover:text-ink"
-              aria-label="Mbyll"
+              aria-label={t("editCategoryModal.close")}
             >
               <X size={18} />
             </button>
 
-            <h2 className="text-lg font-extrabold text-ink">Modifiko kategorinë</h2>
+            <h2 className="text-lg font-extrabold text-ink">{t("editCategoryModal.editCategory")}</h2>
             <p className="mt-1 text-sm text-muted">/{cat.slug}</p>
 
             <form
@@ -44,7 +45,7 @@ export default function EditCategoryModal({
             >
               <input type="hidden" name="id" value={cat.id} />
               <div>
-                <label className="text-sm font-semibold text-ink" htmlFor={`cn-${cat.id}`}>Emri</label>
+                <label className="text-sm font-semibold text-ink" htmlFor={`cn-${cat.id}`}>{t("editCategoryModal.name")}</label>
                 <input
                   id={`cn-${cat.id}`}
                   name="name"
@@ -53,7 +54,7 @@ export default function EditCategoryModal({
                 />
               </div>
               <div>
-                <label className="text-sm font-semibold text-ink">Ikona</label>
+                <label className="text-sm font-semibold text-ink">{t("editCategoryModal.icon")}</label>
                 <div className="mt-1.5">
                   <IconPicker name="icon" defaultValue={cat.icon} />
                 </div>
@@ -62,8 +63,7 @@ export default function EditCategoryModal({
                 type="submit"
                 className="w-full rounded-full bg-gold px-6 py-3 text-sm font-semibold text-ink transition-colors hover:bg-gold-dark"
               >
-                Ruaj ndryshimet
-              </button>
+                {t("editCategoryModal.saveChanges")}</button>
             </form>
           </div>
         </div>

@@ -1,7 +1,7 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+import Link from "@/components/i18n/Link";
+import { useBarePathname as usePathname } from "@/lib/i18n/client";
 import { useEffect, useState } from "react";
 import {
   Headset,
@@ -10,6 +10,7 @@ import {
   UserRound,
   Users,
 } from "lucide-react";
+import { useT } from "@/lib/i18n/client";
 
 type Me = { name: string; role: "CLIENT" | "PRO" | "ADMIN" | "SUPPORT" } | null;
 
@@ -29,6 +30,7 @@ export default function MobileBottomNav() {
 }
 
 function AccountBottomNav({ pathname }: { pathname: string }) {
+  const t = useT();
   const [me, setMe] = useState<Me>(null);
 
   useEffect(() => {
@@ -50,29 +52,29 @@ function AccountBottomNav({ pathname }: { pathname: string }) {
 
   const items =
     me.role === "SUPPORT"
-      ? [{ href: "/admin/mbeshtetja", label: "Mbështetja", icon: Headset }]
+      ? [{ href: "/admin/mbeshtetja", label: t("mobileBottomNav.support"), icon: Headset }]
       : me.role === "ADMIN"
         ? [
-            { href: "/admin", label: "Paneli", icon: LayoutGrid },
-            { href: "/admin/mbeshtetja", label: "Mbështetja", icon: Headset },
-            { href: "/admin/perdoruesit", label: "Përdoruesit", icon: Users },
+            { href: "/admin", label: t("mobileBottomNav.dashboard"), icon: LayoutGrid },
+            { href: "/admin/mbeshtetja", label: t("mobileBottomNav.support"), icon: Headset },
+            { href: "/admin/perdoruesit", label: t("mobileBottomNav.users"), icon: Users },
           ]
         : me.role === "PRO"
           ? [
-              { href: "/pro/kerkesat", label: "Bisedat", icon: MessageSquare },
-              { href: "/pro/paneli", label: "Punët e mia", icon: LayoutGrid },
-              { href: "/pro/profili", label: "Profili", icon: UserRound },
+              { href: "/pro/kerkesat", label: t("mobileBottomNav.chats"), icon: MessageSquare },
+              { href: "/pro/paneli", label: t("mobileBottomNav.myJobs"), icon: LayoutGrid },
+              { href: "/pro/profili", label: t("mobileBottomNav.profile"), icon: UserRound },
             ]
           : [
               {
                 href: "/llogaria/kerkesat",
-                label: "Bisedat",
+                label: t("mobileBottomNav.chats"),
                 icon: MessageSquare,
               },
-              { href: "/llogaria", label: "Punët e mia", icon: LayoutGrid },
+              { href: "/llogaria", label: t("mobileBottomNav.myJobs"), icon: LayoutGrid },
               {
                 href: "/llogaria/cilesimet",
-                label: "Profili",
+                label: t("mobileBottomNav.profile"),
                 icon: UserRound,
               },
             ];
@@ -80,7 +82,7 @@ function AccountBottomNav({ pathname }: { pathname: string }) {
   return (
     <nav
       className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-white pb-[env(safe-area-inset-bottom)] lg:hidden"
-      aria-label="Navigimi i llogarisë"
+      aria-label={t("mobileBottomNav.accountNavigation")}
     >
       <div className="grid" style={{ gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))` }}>
         {items.map(({ href, label, icon: Icon }) => {

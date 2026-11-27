@@ -1,10 +1,12 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/lib/i18n/client";
 import { useState } from "react";
 import { Lock, ArrowRight } from "lucide-react";
+import { useT } from "@/lib/i18n/client";
 
 export default function SeShpejtiPage() {
+  const t = useT();
   const router = useRouter();
   const [showLogin, setShowLogin] = useState(false);
   const [fjalekalimi, setFjalekalimi] = useState("");
@@ -26,11 +28,11 @@ export default function SeShpejtiPage() {
         router.refresh();
       } else {
         const data = await res.json().catch(() => null);
-        setGabim(data?.message ?? "Fjalëkalimi nuk është i saktë.");
+        setGabim(data?.message ?? t("lock.passwordIncorrect"));
         setDuke(false);
       }
     } catch {
-      setGabim("Diçka shkoi keq. Provoni përsëri.");
+      setGabim(t("lock.somethingWentWrongPlease"));
       setDuke(false);
     }
   }
@@ -67,7 +69,7 @@ export default function SeShpejtiPage() {
           Zgjoi
         </h1>
 
-        <p className="mt-5 text-xl font-semibold text-[#E9A93A]">Së shpejti</p>
+        <p className="mt-5 text-xl font-semibold text-[#E9A93A]">{t("lock.comingSoon")}</p>
 
         {/* Discreet team access */}
         <div className="mt-14 w-full">
@@ -77,8 +79,7 @@ export default function SeShpejtiPage() {
               className="inline-flex items-center gap-2 text-xs font-medium text-neutral-400 transition-colors hover:text-neutral-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#FFB800] focus-visible:ring-offset-2"
             >
               <Lock className="h-3.5 w-3.5" />
-              Hyrje për ekipin
-            </button>
+              {t("lock.teamLogin")}</button>
           ) : (
             <div className="mx-auto flex w-full max-w-xs flex-col gap-3">
               <div className="flex overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm focus-within:border-[#FFB800] focus-within:ring-2 focus-within:ring-[#FFB800]/30">
@@ -88,13 +89,13 @@ export default function SeShpejtiPage() {
                   value={fjalekalimi}
                   onChange={(e) => setFjalekalimi(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && hyr()}
-                  placeholder="Fjalëkalimi"
+                  placeholder={t("lock.password")}
                   className="w-full bg-transparent px-4 py-3 text-sm text-neutral-900 placeholder-neutral-400 focus:outline-none"
                 />
                 <button
                   onClick={hyr}
                   disabled={duke}
-                  aria-label="Hyr"
+                  aria-label={t("lock.log")}
                   className="flex items-center bg-[#FFB800] px-4 text-neutral-900 transition-opacity hover:opacity-90 disabled:opacity-50"
                 >
                   <ArrowRight className="h-4 w-4" />

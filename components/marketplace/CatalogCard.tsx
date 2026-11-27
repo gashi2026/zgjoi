@@ -1,18 +1,20 @@
-import Link from "next/link";
+import Link from "@/components/i18n/Link";
 import type { Prisma } from "@prisma/client";
 import { publicProSelect, initials } from "@/lib/server/catalog";
 import { money } from "@/lib/format";
 import { Avatar } from "@/components/Brand";
+import { getT } from "@/lib/i18n/server";
 export type CatalogPro = Prisma.ProProfileGetPayload<{
   select: typeof publicProSelect;
 }>;
-export default function CatalogCard({
+export default async function CatalogCard({
   pro,
   category,
 }: {
   pro: CatalogPro;
   category?: string;
 }) {
+  const t = await getT();
   return (
     <article className="flex flex-col gap-3 rounded-2xl border border-line bg-white p-5 shadow-soft">
       <div className="flex items-center gap-3">
@@ -22,23 +24,21 @@ export default function CatalogCard({
             <Link href={`/profesionisti/${pro.slug}`}>{pro.user.name}</Link>
           </h2>
           <p className="text-sm text-muted">
-            {category ?? pro.categorySlug} · {pro.user.city}
+            {category ? t.tx(category) : pro.categorySlug} · {pro.user.city}
           </p>
         </div>
       </div>
       <p className="line-clamp-3 text-sm text-muted">{pro.about}</p>
       <p className="text-sm">
         {pro.ratingCount
-          ? `★ ${pro.ratingAvg.toFixed(1)} · ${pro.ratingCount} vlerësime`
-          : "Pa vlerësime ende"}{" "}
-        · Nga {money(pro.priceFrom)}
-      </p>
+          ? t("catalogCard.reviews", { value: pro.ratingAvg.toFixed(1), ratingCount: pro.ratingCount })
+          : t("catalogCard.noReviewsYet")}{" "}
+        {t("catalogCard.from", { amount: money(pro.priceFrom, t.locale) })}</p>
       <Link
         href={`/profesionisti/${pro.slug}`}
         className="mt-auto rounded-full border border-gold px-4 py-3 text-center text-sm font-semibold"
       >
-        Shiko profilin
-      </Link>
+        {t("catalogCard.viewProfile")}</Link>
     </article>
   );
 }

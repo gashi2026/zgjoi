@@ -1,13 +1,14 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+import Link from "@/components/i18n/Link";
+import { useBarePathname as usePathname } from "@/lib/i18n/client";
 import {
   LayoutGrid, Inbox, Briefcase, Wallet, UserRound, MessageSquare,
   Heart, Settings, CalendarDays, FileText, Users, Receipt,
   ShieldAlert, Headset, Layers, Target, Repeat, BadgeCheck, type LucideIcon,
 } from "lucide-react";
 import { Avatar } from "./Brand";
+import { useT } from "@/lib/i18n/client";
 
 const navIcons: Record<string, LucideIcon> = {
   layoutGrid: LayoutGrid, inbox: Inbox, briefcase: Briefcase,
@@ -33,6 +34,7 @@ export default function AccountShell({
   user: { name: string; initials: string; hue: number; caption: string };
   children: React.ReactNode;
 }) {
+  const t = useT();
   const pathname = usePathname();
 
   return (
@@ -53,7 +55,7 @@ export default function AccountShell({
 
             <nav
               className="mt-4 flex gap-2 overflow-x-auto no-scrollbar lg:flex-col"
-              aria-label="Llogaria"
+              aria-label={t("accountShell.account")}
             >
               {nav.map(({ href, label, icon }) => {
                 const Icon = navIcons[icon];
@@ -70,7 +72,7 @@ export default function AccountShell({
                     }`}
                   >
                     {Icon ? <Icon size={17} strokeWidth={2} /> : null}
-                    {label}
+                    {t.tx(label)}
                   </Link>
                 );
               })}

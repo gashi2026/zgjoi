@@ -1,8 +1,10 @@
 "use client";
+import { msgKey } from "@/lib/i18n/translate";
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/lib/i18n/client";
 import { buttonClass } from "./ApiForm";
 import { clockTime } from "@/lib/format";
+import { useT } from "@/lib/i18n/client";
 
 /** Minutes left until `endsAt`, refreshed every 15 seconds. */
 export function WaitCountdown({ endsAt, template, done }: { endsAt: string; template: string; done: string }) {
@@ -25,13 +27,13 @@ async function compress(file: File): Promise<string> {
     const url = canvas.toDataURL("image/jpeg", quality);
     if (url.length < 780_000) return url;
   }
-  throw new Error("Fotoja është shumë e madhe. Provoni përsëri.");
+  throw new Error(msgKey("arrivalPanel.photoTooLargePlease"));
 }
 
 function position(): Promise<GeolocationPosition> {
   return new Promise((resolve, reject) => {
-    if (!navigator.geolocation) return reject(new Error("Shfletuesi nuk e jep vendndodhjen. Përdorni foton."));
-    navigator.geolocation.getCurrentPosition(resolve, () => reject(new Error("Lejoni vendndodhjen për Zgjoi dhe provoni përsëri.")),
+    if (!navigator.geolocation) return reject(new Error(msgKey("arrivalPanel.browserIsntSharingLocation")));
+    navigator.geolocation.getCurrentPosition(resolve, () => reject(new Error(msgKey("arrivalPanel.allowLocationAccessZgjoi"))),
       { enableHighAccuracy: true, timeout: 20_000, maximumAge: 0 });
   });
 }
@@ -42,6 +44,7 @@ export type ProArrival = { checkedInAt: string; distanceM: number | null; method
 export default function ArrivalPanel({ requestId, startsAt, arrival, whatsapp, contactLabel, canCheckIn }: {
   requestId: string; startsAt: string; arrival: ProArrival | null; whatsapp: string | null; contactLabel: string | null; canCheckIn: boolean;
 }) {
+  const t = useT();
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState("");
@@ -64,71 +67,71 @@ export default function ArrivalPanel({ requestId, startsAt, arrival, whatsapp, c
         accuracy: coords.current.accuracy, ...(photo ? { photo } : {}) });
       if (!ok) {
         if (result.code === "PHOTO_REQUIRED") setNeedsPhoto(true);
-        throw new Error(result.message || "Arritja nuk u shënua. Provoni përsëri.");
+        throw new Error(result.message || t("arrivalPanel.checkWasntRecordedPlease"));
       }
       setMessage(result.message);
       router.refresh();
     } catch (e) {
-      setMessage(e instanceof Error ? e.message : "Lidhja dështoi. Provoni përsëri.");
+      setMessage(e instanceof Error ? t.any(e.message) : t("arrivalPanel.connectionFailedPleaseTry"));
     } finally { setPending(false); }
   }
   async function onPhoto(file: File | undefined) {
     if (!file) return;
-    try { setPhoto(await compress(file)); setMessage("Fotoja u shtua."); }
-    catch (e) { setMessage(e instanceof Error ? e.message : "Fotoja nuk u lexua."); }
+    try { setPhoto(await compress(file)); setMessage(t("arrivalPanel.photoAdded")); }
+    catch (e) { setMessage(e instanceof Error ? t.any(e.message) : t("arrivalPanel.photoCouldntRead")); }
   }
   async function callHelpline() {
     // The wa.me link opens in a new tab from the click itself; the tap is logged in parallel.
     setPending(true);
     const { ok, result } = await post({ action: "HELPLINE" }).catch(() => ({ ok: false, result: {} as Record<string, string> }));
     setPending(false);
-    setMessage(ok ? result.message : result.message || "Thirrja nuk u regjistrua. Provoni përsëri.");
+    setMessage(ok ? result.message : result.message || t("arrivalPanel.callWasntRecordedPlease"));
     if (ok) { setHelpline(new Date().toISOString()); router.refresh(); }
   }
 
   if (!arrival) return (
-    <div className="mt-4 rounded-2xl border-2 border-gold bg-honey/40 p-4" aria-label="Arrita">
-      <h3 className="font-bold">Arrita</h3>
-      <p className="mt-1 text-sm">Kur të arrini te adresa, shtypni “Arrita”. Shfletuesi kërkon vendndodhjen një herë; klienti sheh vetëm që jeni te adresa, jo vendndodhjen tuaj.</p>
-      <p className="mt-1 text-xs text-muted">Hapet 15 minuta para fillimit ({clockTime(startsAt)}) dhe mbyllet 30 minuta pas tij.</p>
+    <div className="mt-4 rounded-2xl border-2 border-gold bg-honey/40 p-4" aria-label={t("arrivalPanel.iveArrived")}>
+      <h3 className="font-bold">{t("arrivalPanel.iveArrived")}</h3>
+      <p className="mt-1 text-sm">{t("arrivalPanel.whenGetAddressTap")}</p>
+      <p className="mt-1 text-xs text-muted">{t("arrivalPanel.opens15MinutesBefore", { time: clockTime(startsAt, t.locale) })}</p>
       <label className="mt-3 block text-sm font-semibold">
-        {needsPhoto ? "Fotoja te dera ose hyrja (e detyrueshme)" : "Foto te dera (opsionale)"}
+        {needsPhoto ? t("arrivalPanel.photoDoorEntranceRequired") : t("arrivalPanel.photoDoorOptional")}
         <input type="file" accept="image/*" capture="environment" className="mt-1 block w-full text-sm" onChange={e => onPhoto(e.target.files?.[0])} />
       </label>
       <button type="button" className={`${buttonClass} mt-3`} disabled={pending || !canCheckIn || (needsPhoto && !photo)} onClick={checkIn}>
-        {pending ? "Duke shënuar…" : "Arrita"}
+        {pending ? t("arrivalPanel.checking") : t("arrivalPanel.iveArrived")}
       </button>
-      {!canCheckIn && <p className="mt-2 text-xs text-muted">“Arrita” nuk është e hapur tani.</p>}
+      {!canCheckIn && <p className="mt-2 text-xs text-muted">{t("arrivalPanel.iveArrivedIsntOpen")}</p>}
       {message && <p role="status" className="mt-2 text-sm">{message}</p>}
     </div>
   );
-  const time = clockTime(arrival.checkedInAt);
+  const time = clockTime(arrival.checkedInAt, t.locale);
   return (
-    <div className="mt-4 rounded-2xl border-2 border-gold bg-honey/40 p-4" aria-label="Arrita">
-      <h3 className="font-bold">Arrita · {time}</h3>
-      <p className="text-sm">{arrival.method === "GPS" ? `Te adresa (${arrival.distanceM} m)` : "Konfirmuar me foto"}</p>
+    <div className="mt-4 rounded-2xl border-2 border-gold bg-honey/40 p-4" aria-label={t("arrivalPanel.iveArrived")}>
+      <h3 className="font-bold">{t("arrivalPanel.checked", { time: time })}</h3>
+      <p className="text-sm">{arrival.method === "GPS" ? t("arrivalPanel.addressM", { distanceM: arrival.distanceM }) : t("arrivalPanel.confirmedPhoto")}</p>
       {!helpline ? (
         <>
-          <p className="mt-2 text-sm">Klienti nuk përgjigjet? Thirrni ndihmën e Zgjoi. Pas thirrjes prisni së paku 30 minuta te adresa.</p>
+          <p className="mt-2 text-sm">{t("arrivalPanel.customerNotAnsweringCall")}</p>
           {whatsapp ? (
-            <a href={whatsapp} target="_blank" rel="noopener noreferrer" className={`${buttonClass} mt-3`} onClick={callHelpline}>Thirr ndihmën e Zgjoi</a>
+            <a href={whatsapp} target="_blank" rel="noopener noreferrer" className={`${buttonClass} mt-3`} onClick={callHelpline}>{t("arrivalPanel.callZgjoiHelpline")}</a>
           ) : (
             <>
-              <button type="button" className={`${buttonClass} mt-3`} disabled={pending} onClick={callHelpline}>Thirr ndihmën e Zgjoi</button>
-              <p className="mt-2 text-xs text-muted">Numri i WhatsApp-it të ndihmës nuk është vendosur ende. Butoni e njofton administratën në faqe.</p>
+              <button type="button" className={`${buttonClass} mt-3`} disabled={pending} onClick={callHelpline}>{t("arrivalPanel.callZgjoiHelpline")}</button>
+              <p className="mt-2 text-xs text-muted">{t("arrivalPanel.helplineWhatsappNumberIsnt")}</p>
             </>
           )}
         </>
       ) : (
         <p className="mt-2 text-sm" role="status">
-          Zgjoi u njoftua.{" "}
-          {arrival.waitEndsAt ? <WaitCountdown endsAt={arrival.waitEndsAt} template="Prisni edhe {m} min te adresa." done="Pritja prej 30 minutash përfundoi." /> : "Prisni 30 minuta te adresa."}
-          {contactLabel ? ` · ${contactLabel}` : " · Zgjoi po e kontakton klientin."}
-          {whatsapp && <> <a href={whatsapp} target="_blank" rel="noopener noreferrer" className="text-gold-dark underline">Hap përsëri WhatsApp</a></>}
+          {t("arrivalPanel.zgjoiHasBeenNotified")}{" "}
+          {arrival.waitEndsAt ? <WaitCountdown endsAt={arrival.waitEndsAt} template={t("arrivalPanel.waitAnotherMinAddress")} done={t("arrivalPanel.n30MinuteWaitOver")} /> : t("arrivalPanel.wait30MinutesAddress")}
+          {contactLabel ? ` · ${contactLabel}` : t("arrivalPanel.zgjoiContactingCustomer")}
+          {whatsapp && <> <a href={whatsapp} target="_blank" rel="noopener noreferrer" className="text-gold-dark underline">{t("arrivalPanel.openWhatsappAgain")}</a></>}
         </p>
       )}
       {helpline && !whatsapp && (
-        <p className="mt-2 text-xs text-muted">Numri i WhatsApp-it të ndihmës nuk është vendosur ende. Administrata u njoftua në faqe.</p>
+        <p className="mt-2 text-xs text-muted">{t("arrivalPanel.helplineWhatsappNumberIsnt2")}</p>
       )}
       {message && <p role="status" className="mt-2 text-sm">{message}</p>}
     </div>

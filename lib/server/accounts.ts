@@ -12,7 +12,8 @@ import { enforceLimit } from "./rate-limit";
 import { AppError, invariant } from "./errors";
 import { opaqueToken, hashToken, validToken } from "./tokens";
 import { serializable } from "./transaction";
-import { queueAccountEmail } from "./notifications";
+import { queueAccountEmail, userLocale } from "./notifications";
+import { getLocale } from "../i18n/server";
 import { verifyLoginFactor } from "./mfa";
 
 const dummyHash = bcrypt.hashSync(opaqueToken(), 12);
@@ -40,6 +41,8 @@ export async function signup(input: unknown, ip: string) {
   const data = signupInput.parse(input);
   await enforceLimit(`signup:${ip}`, 10, 60 * 60_000);
   const passwordHash = await hashPassword(data.password);
+  // The language the visitor signed up in becomes their saved preference (emails follow it).
+  const locale = await getLocale();
   try {
     const user = await serializable(async (tx) => {
       if (data.role === "PRO") data.categorySlug = (await requireActiveCategory(data.categorySlug!, tx)).slug;
@@ -51,6 +54,7 @@ export async function signup(input: unknown, ip: string) {
           role: data.role,
           city: data.city,
           phone: data.phone || null,
+          locale,
           ...(data.role === "PRO"
             ? {
                 proProfile: {
@@ -115,7 +119,7 @@ export async function requestAccountToken(
 ) {
   const user = await db.user.findUniqueOrThrow({
     where: { id: userId },
-    select: { id: true, email: true },
+    select: { id: true, email: true, locale: true },
   });
   const token = opaqueToken();
   return serializable(async (tx) => {
@@ -142,6 +146,7 @@ export async function requestAccountToken(
       token,
       record.id,
       record.expiresAt,
+      userLocale(user.locale),
     );
   });
 }

@@ -5,11 +5,15 @@ import MobileHexBelt from "./MobileHexBelt";
 import { serviceCategories } from "@/lib/service-categories";
 import { DEFAULT_SERVICES } from "@/lib/honeycomb-slots";
 import presentation from "@/lib/homepage-reference-settings.json";
+import { getT } from "@/lib/i18n/server";
 
-export default function Hero() {
-  const { heroTitle: title, heroAccent: accent, heroSubtitle: subtitle } = presentation.site;
+export default async function Hero() {
+  const t = await getT();
+  const title = t.tx(presentation.site.heroTitle);
+  const accent = t.tx(presentation.site.heroAccent);
+  const subtitle = t.tx(presentation.site.heroSubtitle);
   const services = DEFAULT_SERVICES;
-  const catalog = serviceCategories.map(c => ({ slug: c.slug, name: c.name, icon: c.icon }));
+  const catalog = serviceCategories.map(c => ({ slug: c.slug, name: t.tx(c.name), icon: c.icon }));
   const beltCats = catalog;
 
   const [line1, line2] = title.includes("\n") ? title.split("\n") : [title, ""];

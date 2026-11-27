@@ -1,57 +1,59 @@
 import { idUploadsAvailable } from "@/lib/server/id-verification";
 import AuthPage from "@/components/marketplace/AuthPage";
 import { activeCategories } from "@/lib/server/catalog";
+import { getT } from "@/lib/i18n/server";
 export const dynamic = "force-dynamic";
 export default async function Page() {
+  const t = await getT();
   const categories = await activeCategories();
   return (
     <AuthPage
-      title="Bëhuni profesionist në Zgjoi"
+      title={t("auth.becomeProZgjoi")}
       endpoint="/api/auth/register"
-      label="Dërgo regjistrimin"
+      label={t("auth.submitSignUp")}
       values={{ role: "PRO" }}
-      text={`Profili juaj shqyrtohet para se të shfaqet në kërkim. ${idUploadsAvailable() ? "Pas regjistrimit ngarkoni letërnjoftimin (para dhe mbrapa) ose pasaportën; pa miratimin e saj nuk shfaqeni dhe nuk pranoni punë. " : ""}Klientët ju kontaktojnë drejtpërdrejt; ju dërgoni ofertën tuaj.`}
+      text={t("auth.profileReviewedBeforeAppears", { value: idUploadsAvailable() ? t("auth.afterSigningUpUpload") : "" })}
       fields={[
         {
           name: "name",
-          label: "Emri dhe mbiemri",
+          label: t("auth.fullName"),
           required: true,
           maxLength: 120,
           autoComplete: "name",
         },
         {
           name: "email",
-          label: "Emaili",
+          label: t("auth.email"),
           type: "email",
           required: true,
           autoComplete: "email",
         },
         {
           name: "password",
-          label: "Fjalëkalimi",
+          label: t("auth.password"),
           type: "password",
           required: true,
           minLength: 12,
-          hint: "Të paktën 12 karaktere; deri në 72 byte.",
+          hint: t("auth.least12CharactersUp"),
           autoComplete: "new-password",
         },
         {
           name: "city",
-          label: "Qyteti",
+          label: t("auth.city"),
           required: true,
           maxLength: 60,
           autoComplete: "address-level2",
         },
         {
           name: "categorySlug",
-          label: "Shërbimi kryesor",
+          label: t("auth.mainService"),
           type: "select",
           required: true,
-          options: categories.map((c) => ({ value: c.slug, label: c.name })),
+          options: categories.map((c) => ({ value: c.slug, label: t.tx(c.name) })),
         },
         {
           name: "about",
-          label: "Përvoja dhe shërbimet tuaja",
+          label: t("auth.experienceServices"),
           type: "textarea",
           minLength: 30,
           maxLength: 4000,
@@ -59,7 +61,7 @@ export default async function Page() {
         },
         {
           name: "priceFrom",
-          label: "Çmimi fillestar në euro",
+          label: t("auth.startingPriceEuros"),
           type: "number",
           min: 0.01,
           max: 100000,
@@ -68,7 +70,7 @@ export default async function Page() {
         },
         {
           name: "terms",
-          label: "Pranoj kushtet dhe politikën e privatësisë",
+          label: t("auth.iAcceptTermsPrivacy"),
           type: "checkbox",
           required: true,
         },

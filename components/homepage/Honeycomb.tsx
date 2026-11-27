@@ -1,10 +1,11 @@
 import { approvedHoneycomb } from "@/lib/service-categories";
-import Link from "next/link";
+import Link from "@/components/i18n/Link";
 import CategoryIcon from "./CategoryIcon";
 import BeeCell from "../BeeCell";
 import { categories } from "@/lib/homepage-reference-data";
 import { DEFAULT_SERVICES } from "@/lib/honeycomb-slots";
 import { HEX_D, HEX_RATIO as RATIO } from "@/lib/hex";
+import { getT } from "@/lib/i18n/server";
 
 type Cell = {
   col: number; // horizontal step (odd rows are offset by half a step)
@@ -115,7 +116,7 @@ function Label({ name, below }: { name: string; below?: boolean }) {
   );
 }
 
-export default function Honeycomb({
+export default async function Honeycomb({
   size = 70,
   services,
   catalog,
@@ -124,6 +125,7 @@ export default function Honeycomb({
   services?: Record<string, string>;
   catalog?: { slug: string; name: string; icon: string }[];
 }) {
+  const t = await getT();
   const activeServices = approvedHoneycomb(services ?? SERVICES);
   const lookup = (slug: string) =>
     catalog?.find((c) => c.slug === slug) ?? categories.find((c) => c.slug === slug);
@@ -218,7 +220,7 @@ export default function Honeycomb({
           <Link
             key={i}
             href={`/kerko?kategoria=${category!.slug}`}
-            aria-label={`${category!.name} — shiko profesionistët`}
+            aria-label={t("honeycomb.seePros", { name: category!.name })}
             draggable={false}
             className="group absolute z-10 hover:z-40 focus:z-40"
             style={{ left, top, width: size, height: h }}
@@ -236,7 +238,7 @@ export default function Honeycomb({
                 />
               )}
             </span>
-            <Label name={category!.name} below={c.below} />
+            <Label name={t.tx(category!.name)} below={c.below} />
           </Link>
         );
       })}

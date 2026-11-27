@@ -10,6 +10,7 @@ import {
 import { buttonClass, inputClass } from "./ApiForm";
 import { mergeThreadPage } from "@/lib/thread-pages";
 import { mergeTimeline } from "@/lib/chat-timeline";
+import { useT } from "@/lib/i18n/client";
 /** Server-rendered items shown in the chat between messages (quote cards, job status). */
 export type ThreadEvent = { id: string; createdAt: string; node: ReactNode };
 type Message = {
@@ -35,6 +36,7 @@ export default function Thread({
   events?: ThreadEvent[];
   placeholder?: string;
 }) {
+  const t = useT();
   const [id, setId] = useState(initialId);
   const [messages, setMessages] = useState<Message[]>([]);
   const [hasMore, setHasMore] = useState(false);
@@ -61,7 +63,7 @@ export default function Thread({
     let active = true;
     fetch("/api/support/current", { cache: "no-store" })
       .then(async (response) => {
-        if (!response.ok) throw new Error("Biseda nuk u hap. Provoni përsëri.");
+        if (!response.ok) throw new Error(t("thread.chatDidntOpenPlease"));
         const data = await response.json();
         if (active) {
           identity.current = data.identity;
@@ -75,7 +77,7 @@ export default function Thread({
     return () => {
       active = false;
     };
-  }, [support, initialId]);
+  }, [support, initialId, t]);
   const load = useCallback(
     async (before?: string) => {
       if (!id || loading.current) return;
@@ -86,7 +88,7 @@ export default function Thread({
           const response = await fetch("/api/support/current", {
             cache: "no-store",
           });
-          if (!response.ok) throw new Error("Biseda nuk është e disponueshme.");
+          if (!response.ok) throw new Error(t("thread.chatIsntAvailable"));
           const data = await response.json();
           if (identity.current !== data.identity) {
             if (mounted.current) {
@@ -116,7 +118,7 @@ export default function Thread({
             setBody("");
             key.current = null;
           }
-          throw new Error(data.message || "Biseda nuk u hap.");
+          throw new Error(data.message || t("thread.chatDidntOpen"));
         }
         if (!mounted.current) return;
         const previous = messageSnapshot.current;
@@ -130,13 +132,13 @@ export default function Thread({
           setError(
             e instanceof Error
               ? e.message
-              : "Lidhja dështoi. Po provojmë përsëri.",
+              : t("thread.connectionFailedTryingAgain"),
           );
       } finally {
         loading.current = false;
       }
     },
-    [id, support, staff, initialId],
+    [id, support, staff, initialId, t],
   );
   useEffect(() => {
     const initial = setTimeout(() => {
@@ -188,7 +190,7 @@ export default function Thread({
       );
       const data = await response.json();
       if (!response.ok)
-        throw new Error(data.message || "Mesazhi nuk u dërgua.");
+        throw new Error(data.message || t("thread.messageWasntSent"));
       if (!mounted.current) return;
       setBody("");
       key.current = null;
@@ -199,7 +201,7 @@ export default function Thread({
         setError(
           e instanceof Error
             ? e.message
-            : "Mesazhi nuk u dërgua. Teksti juaj mbetet këtu.",
+            : t("thread.messageWasntSentText"),
         );
     } finally {
       sendLock.current = false;
@@ -213,13 +215,12 @@ export default function Thread({
           onClick={() => void load(messages[0]?.id)}
           className="min-h-11 text-sm text-gold-dark"
         >
-          Ngarko mesazhe më të vjetra
-        </button>
+          {t("thread.loadOlderMessages")}</button>
       )}
       <div
         ref={log}
         role="log"
-        aria-label="Mesazhet"
+        aria-label={t("thread.messages")}
         aria-live="polite"
         onScroll={(event) => {
           const el = event.currentTarget;
@@ -229,7 +230,7 @@ export default function Thread({
       >
         {!timeline.length && (
           <p className="text-sm text-muted">
-            {ready ? "Nuk ka mesazhe ende." : "Duke hapur bisedën…"}
+            {ready ? t("thread.noMessagesYet") : t("thread.openingChat")}
           </p>
         )}
         {timeline.map((row) =>
@@ -242,7 +243,7 @@ export default function Thread({
             >
               <p className="whitespace-pre-wrap break-words text-sm">{row.item.body}</p>
               <time className="mt-1 block text-xs text-muted">
-                {support ? (row.item.fromAgent ? "Mbështetja · " : "") : ""}
+                {support ? (row.item.fromAgent ? t("thread.support") : "") : ""}
                 {row.item.time}
               </time>
             </div>
@@ -256,13 +257,11 @@ export default function Thread({
       )}
       {closed ? (
         <p className="text-sm text-muted">
-          Biseda është mbyllur. Për ndihmë përdorni mbështetjen.
-        </p>
+          {t("thread.chatClosedHelpContact")}</p>
       ) : (
         <form onSubmit={send} className="space-y-2">
           <label className="block text-sm font-semibold">
-            Mesazhi
-            <textarea
+            {t("thread.message")}<textarea
               value={body}
               onChange={(e) => {
                 setBody(e.target.value);
@@ -277,7 +276,7 @@ export default function Thread({
             />
           </label>
           <button disabled={pending || !ready} className={buttonClass}>
-            {pending ? "Duke dërguar…" : "Dërgo"}
+            {pending ? t("thread.sending") : t("thread.send")}
           </button>
         </form>
       )}

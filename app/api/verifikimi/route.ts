@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/server/auth";
 import { invariant } from "@/lib/server/errors";
 import { idStatusFor, idUploadsAvailable, submitIdVerification } from "@/lib/server/id-verification";
 import { ID_MAX_IMAGE_BYTES } from "@/lib/id-verification";
+import { getT } from "@/lib/i18n/server";
 export const runtime = "nodejs";
 export const maxDuration = 30;
 // Two converted photos plus multipart overhead; stays under Vercel's 4.5 MB request limit.
@@ -17,11 +18,12 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  const t = await getT();
   return api(req, async () => {
     const actor = await requireUser();
-    invariant(req.headers.get("content-type")?.startsWith("multipart/form-data"), "CONTENT_TYPE", 415, "Formati nuk është i vlefshëm.");
+    invariant(req.headers.get("content-type")?.startsWith("multipart/form-data"), "CONTENT_TYPE", 415, t("api.formatIsntValid"));
     const reader = req.body?.getReader();
-    invariant(reader, "EMPTY", 400, "Kërkesa është bosh.");
+    invariant(reader, "EMPTY", 400, t("api.requestEmpty"));
     const chunks: Uint8Array[] = [];
     let size = 0;
     while (true) {
@@ -30,7 +32,7 @@ export async function POST(req: Request) {
       size += part.value.length;
       if (size > MAX_BODY) {
         await reader.cancel();
-        invariant(false, "SIZE", 413, "Fotot janë tepër të mëdha. Secila duhet të jetë deri në 2 MB.");
+        invariant(false, "SIZE", 413, t("api.photosTooLargeEach"));
       }
       chunks.push(part.value);
     }

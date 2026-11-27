@@ -1,8 +1,10 @@
 "use client";
 import { useState, type FormEvent } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/lib/i18n/client";
 import { buttonClass, inputClass } from "./ApiForm";
+import { useT } from "@/lib/i18n/client";
 export default function UploadDocument() {
+  const t = useT();
   const [pending, setPending] = useState(false),
     [message, setMessage] = useState("");
   const router = useRouter();
@@ -18,13 +20,13 @@ export default function UploadDocument() {
         body: data,
       });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.message || "Ngarkimi dështoi.");
-      setMessage("Dokumenti u ruajt privatisht.");
+      if (!response.ok) throw new Error(result.message || t("uploadDocument.uploadFailed"));
+      setMessage(t("uploadDocument.documentWasSavedPrivately"));
       form.reset();
       router.refresh();
     } catch (e) {
       setMessage(
-        e instanceof Error ? e.message : "Ngarkimi dështoi. Provoni përsëri.",
+        e instanceof Error ? e.message : t("uploadDocument.uploadFailedPleaseTry"),
       );
     } finally {
       setPending(false);
@@ -33,18 +35,16 @@ export default function UploadDocument() {
   return (
     <form onSubmit={submit} className="space-y-3">
       <p className="text-sm text-muted">
-        Letërnjoftimi ngarkohet te <a className="font-semibold text-gold-dark underline" href="/verifikimi">Verifikimi i ID-së</a>.
+        {t("uploadDocument.idCardUploadedUnder")}{" "}<a className="font-semibold text-gold-dark underline" href="/verifikimi">{t("uploadDocument.idVerification")}</a>.
       </p>
       <label className="block text-sm">
-        Lloji
-        <select name="kind" className={inputClass}>
-          <option value="CERTIFICATE">Certifikatë</option>
-          <option value="INSURANCE">Sigurim</option>
+        {t("uploadDocument.type")}<select name="kind" className={inputClass}>
+          <option value="CERTIFICATE">{t("uploadDocument.certificate")}</option>
+          <option value="INSURANCE">{t("uploadDocument.insurance")}</option>
         </select>
       </label>
       <label className="block text-sm">
-        Dokumenti (PDF, PNG ose JPEG, deri 3 MB)
-        <input
+        {t("uploadDocument.documentPdfPngJpeg")}<input
           type="file"
           name="file"
           required
@@ -56,7 +56,7 @@ export default function UploadDocument() {
         {message}
       </p>
       <button disabled={pending} className={buttonClass}>
-        {pending ? "Duke ngarkuar…" : "Ngarko privatisht"}
+        {pending ? t("uploadDocument.loading") : t("uploadDocument.uploadPrivately")}
       </button>
     </form>
   );

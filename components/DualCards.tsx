@@ -1,6 +1,7 @@
-import Link from "next/link";
+import Link from "@/components/i18n/Link";
 import { Check, Smartphone, HardHat } from "lucide-react";
 import { Bee, HexOutline } from "./Brand";
+import { getT } from "@/lib/i18n/server";
 
 function BenefitList({ items }: { items: string[] }) {
   return (
@@ -42,7 +43,8 @@ function HexIllustration({
   );
 }
 
-export default function DualCards() {
+export default async function DualCards() {
+  const t = await getT();
   return (
     <section className="bg-cream">
       <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
@@ -52,24 +54,22 @@ export default function DualCards() {
             <div className="grid items-center gap-8 sm:grid-cols-2">
               <div>
                 <h2 className="text-2xl font-extrabold tracking-tight text-ink">
-                  Për klientët
-                </h2>
+                  {t("dualCards.customers")}</h2>
                 <BenefitList
                   items={[
-                    "Gjej profesionistët më të vlerësuar",
-                    "Shiko profile dhe komente",
-                    "Pagesa nis pas pranimit të ofertës",
+                    t("dualCards.findTopRatedPros"),
+                    t("dualCards.seeProfilesReviews"),
+                    t("dualCards.paymentOnlyStartsOnce"),
                   ]}
                 />
                 <Link
                   href="/kerko"
                   className="mt-7 inline-block rounded-full bg-gold px-6 py-3 text-sm font-semibold text-ink transition-all hover:bg-gold-dark hover:shadow-lift"
                 >
-                  Gjej shërbim
-                </Link>
+                  {t("dualCards.findService")}</Link>
               </div>
               <HexIllustration
-                label="Klientë duke shfletuar shërbime në telefon"
+                label={t("dualCards.customersBrowsingServicesPhone")}
                 icon={<Smartphone size={56} strokeWidth={1.6} />}
               />
             </div>
@@ -80,24 +80,22 @@ export default function DualCards() {
             <div className="grid items-center gap-8 sm:grid-cols-2">
               <div>
                 <h2 className="text-2xl font-extrabold tracking-tight text-ink">
-                  Për profesionistët
-                </h2>
+                  {t("dualCards.pros")}</h2>
                 <BenefitList
                   items={[
-                    "Merr biseda private nga klientët",
-                    "Ndërto profilin tënd profesional",
-                    "Rrit të ardhurat",
+                    t("dualCards.getPrivateChatsFrom"),
+                    t("dualCards.buildProfessionalProfile"),
+                    t("dualCards.growIncome"),
                   ]}
                 />
                 <Link
                   href="/profesionistet"
                   className="mt-7 inline-block rounded-full bg-gold px-6 py-3 text-sm font-semibold text-ink transition-all hover:bg-gold-dark hover:shadow-lift"
                 >
-                  Bëhu profesionist
-                </Link>
+                  {t("dualCards.becomePro")}</Link>
               </div>
               <HexIllustration
-                label="Profesionist me helmetë pune"
+                label={t("dualCards.proWearingWorkHelmet")}
                 icon={<HardHat size={56} strokeWidth={1.6} />}
               />
             </div>

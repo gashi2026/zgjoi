@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/i18n/Link";
 import { db } from "@/lib/server/db";
 import { pageGuard } from "@/lib/server/guard";
 import { money, dateTime, stateLabel } from "@/lib/format";
@@ -7,11 +7,13 @@ import Frame, { Panel } from "@/components/marketplace/Frame";
 import ApiForm from "@/components/marketplace/ApiForm";
 import { hoursLabel, ESTIMATE_PRO_SHARE_CENTS, ESTIMATE_PLATFORM_SHARE_CENTS } from "@/lib/book-now";
 import { estimateStateLabels } from "@/lib/estimate-labels";
+import { getT } from "@/lib/i18n/server";
 export default async function Page({
   searchParams,
 }: {
   searchParams: Promise<{ page?: string }>;
 }) {
+  const t = await getT();
   const actor = await pageGuard("ADMIN");
   const page = Math.min(
     1000,
@@ -64,119 +66,115 @@ export default async function Page({
   return (
     <Frame
       actor={actor}
-      title="Pagesat dhe kontestet"
-      subtitle="Gjendja e pagesave ndryshon vetëm nga ngjarje të verifikuara te ofruesi ose nga një konfirmim i regjistruar i administratës gjatë beta-s."
+      title={t("admin.paymentsDisputes")}
+      subtitle={t("admin.paymentStatusOnlyChanges")}
     >
       <Panel>
         <p>
           {paymentsReady()
-            ? "Mjedis prove Stripe. Asnjë pagesë reale nuk mund të përpunohet nga ky version."
-            : "Pagesat online janë të çaktivizuara. Gjatë beta-s, pasi të konfirmoni pagesën e klientit jashtë platformës, përdorni “Shëno si të paguar” te rezervimi përkatës."}
+            ? t("admin.stripeTestEnvironmentNo")
+            : t("admin.onlinePaymentsSwitchedOff")}
         </p>
       </Panel>
       <Panel>
-        <h2 className="text-lg font-bold">Vizitat e vlerësimit</h2>
-        <p className="mt-1 text-sm text-muted">Kur klienti paguan vlerësimin jashtë platformës, shënojeni këtu. Një vlerësim i paguar zbritet plotësisht nga puna e parë me të njëjtin profesionist (çdo rrugë punësimi); komisioni mbetet mbi çmimin e plotë. Nëse klienti nuk e punëson, ndahet: {money(ESTIMATE_PRO_SHARE_CENTS)} profesionisti, {money(ESTIMATE_PLATFORM_SHARE_CENTS)} Zgjoi.</p>
-        {!estimates.length && <p className="mt-3 text-sm">Nuk ka vlerësime në pritje ose të papërdorura.</p>}
+        <h2 className="text-lg font-bold">{t("admin.estimateVisits")}</h2>
+        <p className="mt-1 text-sm text-muted">{t("admin.whenCustomerPaysEstimate", { amount: money(ESTIMATE_PRO_SHARE_CENTS, t.locale), amount2: money(ESTIMATE_PLATFORM_SHARE_CENTS, t.locale) })}</p>
+        {!estimates.length && <p className="mt-3 text-sm">{t("admin.noPendingUnusedEstimates")}</p>}
         {estimates.map((e) => (
           <div key={e.id} className="mt-4 rounded-xl bg-cream p-3">
             <p className="font-semibold">
-              Vlerësim {money(e.amountCents)} · {estimateClients.get(e.clientId) ?? "Klienti"} → {e.profile.user.name} · {estimateStateLabels[e.state] ?? e.state}
+              {t("admin.estimate2", { amount: money(e.amountCents, t.locale) })}{" "}{estimateClients.get(e.clientId) ?? t("admin.customer")} → {e.profile.user.name} · {t.tx(estimateStateLabels[e.state]) ?? e.state}
             </p>
-            <p className="text-xs text-muted">Kërkuar {dateTime(e.createdAt)}{e.visitAt ? ` · vizita ${dateTime(e.visitAt)}` : ""}{e.paidAt ? ` · paguar ${dateTime(e.paidAt)}` : ""}</p>
+            <p className="text-xs text-muted">{t("admin.requested", { date: dateTime(e.createdAt, t.locale) })}{e.visitAt ? ` · vizita ${dateTime(e.visitAt, t.locale)}` : ""}{e.paidAt ? ` · paguar ${dateTime(e.paidAt, t.locale)}` : ""}</p>
             {e.proShareCents != null && e.platformShareCents != null && (
-              <p className="text-sm">Ndarja nëse nuk punësohet: <strong>{money(e.proShareCents)}</strong> për {e.profile.user.name} · <strong>{money(e.platformShareCents)}</strong> Zgjoi</p>
+              <p className="text-sm">{t("admin.splitIfNotHired")}{" "}<strong>{money(e.proShareCents, t.locale)}</strong> {" "}{t("admin.to", { name: e.profile.user.name })}{" "}<strong>{money(e.platformShareCents, t.locale)}</strong> Zgjoi</p>
             )}
             {e.state === "PENDING" ? (
               <div className="mt-2 space-y-2">
-                <ApiForm endpoint="/api/admin/estimates" values={{ id: e.id, action: "MARK_PAID" }} label="Shëno si të paguar"
-                  fields={[{ name: "reason", label: "Si u pagua? (p.sh. para në dorë, transfer me referencë)", required: true, minLength: 10, maxLength: 500 }]} />
-                <details><summary className="cursor-pointer text-sm">Anulo kërkesën</summary>
-                  <ApiForm endpoint="/api/admin/estimates" values={{ id: e.id, action: "CANCEL" }} label="Anulo"
-                    fields={[{ name: "reason", label: "Arsyeja", required: true, minLength: 10, maxLength: 500 }]} /></details>
+                <ApiForm endpoint="/api/admin/estimates" values={{ id: e.id, action: "MARK_PAID" }} label={t("admin.markPaid")}
+                  fields={[{ name: "reason", label: t("admin.howWasPaidE"), required: true, minLength: 10, maxLength: 500 }]} />
+                <details><summary className="cursor-pointer text-sm">{t("admin.cancelRequest")}</summary>
+                  <ApiForm endpoint="/api/admin/estimates" values={{ id: e.id, action: "CANCEL" }} label={t("admin.cancel")}
+                    fields={[{ name: "reason", label: t("admin.reason"), required: true, minLength: 10, maxLength: 500 }]} /></details>
               </div>
             ) : (
-              <details className="mt-2"><summary className="cursor-pointer text-sm">Rimburso (vizita nuk u bë)</summary>
-                <ApiForm endpoint="/api/admin/estimates" values={{ id: e.id, action: "REFUND" }} label="Shëno si të rimbursuar"
-                  fields={[{ name: "reason", label: "Si u rimbursua dhe pse?", required: true, minLength: 10, maxLength: 500 }]} /></details>
+              <details className="mt-2"><summary className="cursor-pointer text-sm">{t("admin.refundVisitDidntHappen")}</summary>
+                <ApiForm endpoint="/api/admin/estimates" values={{ id: e.id, action: "REFUND" }} label={t("admin.markRefunded")}
+                  fields={[{ name: "reason", label: t("admin.howWasRefundedWhy"), required: true, minLength: 10, maxLength: 500 }]} /></details>
             )}
           </div>
         ))}
       </Panel>
       <Panel>
-        <h2 className="text-lg font-bold">Detyra: rimbursime, tarifa dhe kredi</h2>
-        <p className="mt-1 text-sm text-muted">Gjatë beta-s asnjë para nuk lëviz automatikisht. Kryeni rimbursimin ose mbledhjen jashtë platformës dhe shënojeni këtu.</p>
-        {!todos.length && !disputeTodos.length && <p className="mt-3 text-sm">Nuk ka detyra të hapura.</p>}
-        {disputeTodos.map((t) => (
-          <div key={t.id} className="mt-4 rounded-xl bg-cream p-3">
+        <h2 className="text-lg font-bold">{t("admin.tasksRefundsFeesCredits")}</h2>
+        <p className="mt-1 text-sm text-muted">{t("admin.duringBetaNoMoney")}</p>
+        {!todos.length && !disputeTodos.length && <p className="mt-3 text-sm">{t("admin.noOpenTasks")}</p>}
+        {disputeTodos.map((todo) => (
+          <div key={todo.id} className="mt-4 rounded-xl bg-cream p-3">
             <p className="font-semibold">
-              {`Kontest · ${t.todoKind === "REFUND" ? "Rimburso klientin" : "Jepi kredi klientit"}: ${money(t.todoCents ?? 0)} · ${t.payment.request.title} · ${t.payment.request.client.name}`}
+              {t("admin.disputeTodo", { kind: todo.todoKind === "REFUND" ? t("admin.refundCustomer") : t("admin.creditCustomer"), amount: money(todo.todoCents ?? 0, t.locale), title: todo.payment.request.title, client: todo.payment.request.client.name })}
             </p>
-            {t.resolution && <p className="text-sm">{t.resolution}</p>}
-            <Link className="text-xs text-gold-dark" href={`/admin/kontestet/${t.id}`}>Shiko kontestin →</Link>
-            <ApiForm endpoint="/api/admin/disputes" values={{ id: t.id, action: "TODO_DONE" }} label="Shëno si të kryer"
-              fields={[{ name: "reason", label: "Si u krye? (p.sh. para në dorë, transfer)", required: true, minLength: 5, maxLength: 500 }]} />
+            {todo.resolution && <p className="text-sm">{t.tx(todo.resolution)}</p>}
+            <Link className="text-xs text-gold-dark" href={`/admin/kontestet/${todo.id}`}>{t("admin.viewDispute")}</Link>
+            <ApiForm endpoint="/api/admin/disputes" values={{ id: todo.id, action: "TODO_DONE" }} label={t("admin.markDone")}
+              fields={[{ name: "reason", label: t("admin.howWasDoneE"), required: true, minLength: 5, maxLength: 500 }]} />
           </div>
         ))}
-        {todos.map((t) => (
-          <div key={t.id} className="mt-4 rounded-xl bg-cream p-3">
+        {todos.map((todo) => (
+          <div key={todo.id} className="mt-4 rounded-xl bg-cream p-3">
             <p className="font-semibold">
-              {t.todoKind === "REFUND" ? "Rimburso klientin" : "Mblidh nga klienti"}: {money(t.todoCents ?? 0)} · {t.booking.request.title} · {t.booking.request.client.name}
+              {todo.todoKind === "REFUND" ? t("admin.refundCustomer") : t("admin.collectFromCustomer")}: {money(todo.todoCents ?? 0, t.locale)} · {t.tx(todo.booking.request.title)} · {todo.booking.request.client.name}
             </p>
-            {t.note && <p className="text-sm">{t.note}</p>}
-            <p className="text-xs text-muted">{dateTime(t.createdAt)}</p>
-            <ApiForm endpoint="/api/admin/bookings" values={{ id: t.id, action: "TODO_DONE" }} label="Shëno si të kryer"
-              fields={[{ name: "reason", label: "Si u krye? (p.sh. para në dorë, transfer)", required: true, minLength: 5, maxLength: 500 }]} />
+            {todo.note && <p className="text-sm">{t.tx(todo.note)}</p>}
+            <p className="text-xs text-muted">{dateTime(todo.createdAt, t.locale)}</p>
+            <ApiForm endpoint="/api/admin/bookings" values={{ id: todo.id, action: "TODO_DONE" }} label={t("admin.markDone")}
+              fields={[{ name: "reason", label: t("admin.howWasDoneE"), required: true, minLength: 5, maxLength: 500 }]} />
           </div>
         ))}
       </Panel>
-      {!payments.length && <Panel>Nuk ka pagesa të regjistruara.</Panel>}
+      {!payments.length && <Panel>{t("admin.noPaymentsRecorded")}</Panel>}
       {payments.map((p) => (
         <Panel key={p.id}>
-          <h2 className="text-lg font-bold">{p.request.title}</h2>
+          <h2 className="text-lg font-bold">{t.tx(p.request.title)}</h2>
           <p className="mt-2">
             {p.request.client.name} → {p.request.acceptedPro?.user.name ?? "—"}
           </p>
           <p className="mt-2">
-            {money(p.amount)} · {stateLabel(p.state)} · {dateTime(p.createdAt)}
+            {money(p.amount, t.locale)} · {t.tx(stateLabel(p.state))} · {dateTime(p.createdAt, t.locale)}
           </p>
           {p.request.booking && (
             <p className="text-sm">
-              Rezervo tani · {hoursLabel(p.request.booking.minutes)} × {money(p.request.booking.hourlyRateCents)}/orë · fillimi{" "}
-              {dateTime(p.request.booking.startsAt)}{p.request.booking.status === "CANCELLED" && " · Anuluar"}
+              {t("admin.bookNowHrStarts2", { label: t.tx(hoursLabel(p.request.booking.minutes)), amount: money(p.request.booking.hourlyRateCents, t.locale) })}{" "}
+              {dateTime(p.request.booking.startsAt, t.locale)}{p.request.booking.status === "CANCELLED" && " · Anuluar"}
             </p>
           )}
           {p.estimateCreditCents > 0 && (
-            <p className="text-sm">Kredi nga vlerësimi: −{money(Math.min(p.estimateCreditCents, p.amount))} · Për t’u paguar nga klienti: {money(due(p))}</p>
+            <p className="text-sm">{t("admin.estimateCreditCustomerPays", { amount: money(Math.min(p.estimateCreditCents, p.amount), t.locale), amount2: money(due(p), t.locale) })}</p>
           )}
           <p className="text-sm text-muted">
-            Mënyra: {p.method === "OFFLINE" ? "jashtë platformës (beta)" : p.method} · Komisioni (regjistruar, mblidhet më vonë): {money(p.commissionAmount)} · Profesionisti:{" "}
-            {money(p.proAmount)} · {stateLabel(p.request.state)}
+            {t("admin.method")}{" "}{p.method === "OFFLINE" ? t("admin.outsidePlatformBeta") : p.method} {" "}{t("admin.commissionRecordedCollectedLater", { amount: money(p.commissionAmount, t.locale) })}{" "}
+            {money(p.proAmount, t.locale)} · {t.tx(stateLabel(p.request.state))}
           </p>
           {p.operation && (
             <p className="mt-2 font-semibold">
-              Veprim në pritje të konfirmimit: {p.operation}. Kontrolloni
-              ofruesin para çdo ndërhyrjeje.
-            </p>
+              {t("admin.actionAwaitingConfirmationCheck", { operation: p.operation })}</p>
           )}
           {p.dispute && (
             <div className="mt-3 rounded-xl bg-cream p-3">
-              <h3 className="font-bold"><Link href={`/admin/kontestet/${p.dispute.id}`}>Kontesti →</Link></h3>
-              <p className="whitespace-pre-wrap">{p.dispute.reason}</p>
-              <p>{p.dispute.resolution || "Pa zgjidhje ende"}</p>
+              <h3 className="font-bold"><Link href={`/admin/kontestet/${p.dispute.id}`}>{t("admin.dispute")}</Link></h3>
+              <p className="whitespace-pre-wrap">{t.tx(p.dispute.reason)}</p>
+              <p>{p.dispute.resolution || t("admin.notResolvedYet")}</p>
             </div>
           )}
           {p.payouts.map((out) => (
             <p key={out.id} className="mt-2 text-sm">
-              {stateLabel(out.state)}: {money(out.amount)}
+              {t.tx(stateLabel(out.state))}: {money(out.amount, t.locale)}
             </p>
           ))}
           {p.provider === "offline" && (
             <p className="mt-2 text-sm font-semibold">
-              Shënuar si e paguar jashtë platformës (beta) më{" "}
-              {p.heldAt ? dateTime(p.heldAt) : "—"}. Transferimi te
-              profesionisti bëhet manualisht.
-            </p>
+              {t("admin.markedPaidOutsidePlatform")}{" "}
+              {p.heldAt ? dateTime(p.heldAt, t.locale) : "—"}{t("admin.transferProDoneManually")}</p>
           )}
           {p.state === "PENDING" &&
             p.provider === "disabled" &&
@@ -186,17 +184,16 @@ export default async function Page({
             p.request.state === "BOOKED" && (
               <details className="mt-4">
                 <summary className="cursor-pointer font-semibold">
-                  Shëno si të paguar (beta, pa pagesë online)
-                </summary>
+                  {t("admin.markPaidBetaNo")}</summary>
                 <ApiForm
                   endpoint="/api/admin/payments"
                   values={{ id: p.id, action: "MARK_PAID_OFFLINE" }}
-                  label="Shëno si të paguar"
-                  confirmation={`Konfirmoni që klienti ka paguar ${money(due(p))} jashtë platformës? Profesionisti do të njoftohet se mund të fillojë punën. Ky veprim regjistrohet në auditim.`}
+                  label={t("admin.markPaid")}
+                  confirmation={t("admin.confirmCustomerPaidOutside", { amount: money(due(p), t.locale) })}
                   fields={[
                     {
                       name: "reason",
-                      label: "Si u pagua? (p.sh. para në dorë, transfer bankar, referenca)",
+                      label: t("admin.howWasPaidE2"),
                       type: "textarea",
                       minLength: 10,
                       maxLength: 500,
@@ -216,8 +213,8 @@ export default async function Page({
                 <ApiForm
                   endpoint="/api/admin/payments"
                   values={{ id: p.id, action: "RELEASE" }}
-                  label="Transfero pjesën e profesionistit (provë)"
-                  confirmation="Klienti ka konfirmuar përfundimin. Kryeni transferimin te llogaria e profesionistit?"
+                  label={t("admin.transferProsShareTest")}
+                  confirmation={t("admin.customerHasConfirmedCompletion")}
                 />
               </div>
             )}
@@ -226,16 +223,16 @@ export default async function Page({
             ["HELD", "DISPUTED", "REFUND_PENDING"].includes(p.state) &&
             !p.stripeTransferId && (
               <details className="mt-4">
-                <summary>Rimbursim i plotë (provë)</summary>
+                <summary>{t("admin.fullRefundTest")}</summary>
                 <ApiForm
                   endpoint="/api/admin/payments"
                   values={{ id: p.id, action: "REFUND" }}
-                  label="Kryej rimbursimin"
-                  confirmation="Kryeni rimbursimin e plotë për klientin?"
+                  label={t("admin.issueRefund")}
+                  confirmation={t("admin.issueFullRefundCustomer")}
                   fields={[
                     {
                       name: "reason",
-                      label: "Arsyeja dhe rezultati i shqyrtimit",
+                      label: t("admin.reasonReviewOutcome"),
                       type: "textarea",
                       minLength: 20,
                       maxLength: 1000,
@@ -248,9 +245,9 @@ export default async function Page({
         </Panel>
       ))}
       <nav className="flex gap-4">
-        {page > 1 && <Link href={`?page=${page - 1}`}>← Më parë</Link>}
+        {page > 1 && <Link href={`?page=${page - 1}`}>{t("admin.previous")}</Link>}
         {payments.length === 50 && (
-          <Link href={`?page=${page + 1}`}>Tjetër →</Link>
+          <Link href={`?page=${page + 1}`}>{t("admin.next")}</Link>
         )}
       </nav>
     </Frame>

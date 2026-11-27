@@ -2,7 +2,9 @@ import { pageGuard } from "@/lib/server/guard";
 import { db } from "@/lib/server/db";
 import Frame, { Panel } from "@/components/marketplace/Frame";
 import ApiForm from "@/components/marketplace/ApiForm";
+import { getT } from "@/lib/i18n/server";
 export default async function Page() {
+  const t = await getT();
   const actor = await pageGuard("ADMIN");
   const reviews = await db.review.findMany({
     include: {
@@ -13,14 +15,12 @@ export default async function Page() {
     take: 100,
   });
   return (
-    <Frame actor={actor} title="Moderimi i vlerësimeve">
+    <Frame actor={actor} title={t("admin.reviewModeration")}>
       <Panel>
         <p>
-          100 vlerësimet më të fundit. Çdo ndryshim regjistrohet me arsyen e tij
-          dhe përditëson mesataren publike.
-        </p>
+          {t("admin.n100MostRecentReviews")}</p>
       </Panel>
-      {!reviews.length && <Panel>Nuk ka vlerësime ende.</Panel>}
+      {!reviews.length && <Panel>{t("admin.noReviewsYet")}</Panel>}
       {reviews.map((r) => (
         <Panel key={r.id}>
           <h2 className="font-bold">
@@ -31,11 +31,11 @@ export default async function Page() {
             <ApiForm
               endpoint="/api/admin/commands"
               values={{ id: r.id, action: "REVIEW_REMOVE" }}
-              label="Hiq nga publikimi"
+              label={t("admin.unpublish")}
               fields={[
                 {
                   name: "reason",
-                  label: "Arsyeja e moderimit",
+                  label: t("admin.moderationReason"),
                   required: true,
                   minLength: 5,
                   maxLength: 1000,
@@ -46,7 +46,7 @@ export default async function Page() {
               <ApiForm
                 endpoint="/api/admin/commands"
                 values={{ id: r.id, action: "REVIEW_RESTORE" }}
-                label="Rikthe vlerësimin"
+                label={t("admin.restoreReview")}
               />
             )}
           </div>

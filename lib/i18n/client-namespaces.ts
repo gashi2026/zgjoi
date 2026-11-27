@@ -1,0 +1,2 @@
+/** Message namespaces used by "use client" components; only these are sent to the browser. */
+export const CLIENT_NAMESPACES = ["accountShell","apiForm","arrivalPanel","availabilityEditor","beeCell","common","editCategoryModal","footer","header","home","iconPicker","idReviewer","idUploadForm","lock","marquee","mfaPanel","mobileBottomNav","mobileHexBelt","printButton","searchBar","stats","supportChat","thread","trustDonut","uploadDocument"] as const;

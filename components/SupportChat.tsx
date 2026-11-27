@@ -1,10 +1,12 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { usePathname } from "next/navigation";
+import { useBarePathname as usePathname } from "@/lib/i18n/client";
 import { Headset, MessageCircle, X } from "lucide-react";
 import Thread from "./marketplace/Thread";
 import { supportStatus } from "@/lib/support-hours";
+import { useT } from "@/lib/i18n/client";
 export default function SupportChat({ productionHome = false }: { productionHome?: boolean }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const button = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLElement>(null);
@@ -32,27 +34,25 @@ export default function SupportChat({ productionHome = false }: { productionHome
           ref={panel}
           tabIndex={-1}
           role="dialog"
-          aria-label="Mbështetja Zgjoi"
+          aria-label={t("supportChat.zgjoiSupport")}
           onKeyDown={(e) => {
             if (e.key === "Escape") close();
           }}
           className="mb-3 max-h-[70dvh] w-[min(360px,calc(100vw-2rem))] overflow-y-auto rounded-2xl border border-line bg-white p-4 shadow-lift"
         >
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="font-bold">Mbështetja Zgjoi</h2>
+            <h2 className="font-bold">{t("supportChat.zgjoiSupport")}</h2>
             <button
               type="button"
               onClick={close}
-              aria-label="Mbyll bisedën"
+              aria-label={t("supportChat.closeChat")}
               className="p-3"
             >
               <X size={20} />
             </button>
           </div>
           <p className="mb-3 text-xs text-muted">
-            Na shkruani këtu. Mesazhet ruhen edhe kur ekipi nuk është online.
-            Mos dërgoni fjalëkalime ose të dhëna karte.
-          </p>
+            {t("supportChat.writeUsHereMessages")}</p>
           <Thread key={path} support />
         </section>
       )}
@@ -61,7 +61,7 @@ export default function SupportChat({ productionHome = false }: { productionHome
         type="button"
         onClick={() => (open ? close() : setOpen(true))}
         aria-expanded={open}
-        aria-label="Hap mbështetjen"
+        aria-label={t("supportChat.openSupport")}
         className={`relative ml-auto flex h-14 w-14 items-center justify-center rounded-full bg-gold text-ink shadow-lift ${referenceHome ? "active:scale-95" : "border-2 border-white"}`}
       >
         {referenceHome ? (open ? <X size={22} /> : <MessageCircle size={24} />) : <Headset size={25} />}

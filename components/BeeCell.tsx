@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Bee } from "./Brand";
 import { HEX_D } from "@/lib/hex";
+import { useT } from "@/lib/i18n/client";
 
 type Flyer = {
   id: number;
@@ -44,6 +45,7 @@ function makeSwarm(seed: number): Flyer[] {
 }
 
 export default function BeeCell({ size, height }: { size: number; height: number }) {
+  const t = useT();
   const [swarm, setSwarm] = useState<Flyer[]>([]);
   const seed = useRef(0);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -74,7 +76,7 @@ export default function BeeCell({ size, height }: { size: number; height: number
       <button
         type="button"
         onClick={release}
-        aria-label="Lësho bletët"
+        aria-label={t("beeCell.releaseBees")}
         className="group absolute inset-0 cursor-pointer"
         style={{ width: size, height }}
       >
@@ -99,8 +101,7 @@ export default function BeeCell({ size, height }: { size: number; height: number
         </span>
         <span className="pointer-events-none absolute bottom-full left-1/2 z-30 -mb-1.5 -translate-x-1/2 opacity-0 transition-all duration-200 group-hover:mb-0.5 group-hover:opacity-100">
           <span className="block whitespace-nowrap rounded-full border border-gold bg-white px-3 py-1 text-xs font-bold text-ink shadow-lift">
-            Kliko
-          </span>
+            {t("beeCell.click")}</span>
           <span className="mx-auto block h-3.5 w-[2px] bg-gold" />
         </span>
       </button>

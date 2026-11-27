@@ -1,9 +1,10 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/lib/i18n/client";
 import { useId, useState } from "react";
 import { Search, MapPin, type LucideIcon } from "lucide-react";
 import { categories, cities } from "@/lib/data";
+import { useT } from "@/lib/i18n/client";
 
 const normalize = (text: string) => text.trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 
@@ -63,12 +64,13 @@ function SearchField({ value, onChange, label, options, icon: Icon }: {
 export default function SearchBar({ initialQuery = "", initialCity = "", compact = false }: {
   initialQuery?: string; initialCity?: string; compact?: boolean;
 }) {
+  const t = useT();
   const router = useRouter();
   const [query, setQuery] = useState(initialQuery);
   const [city, setCity] = useState(initialCity);
   return (
     <div className="service-search min-w-0 w-full">
-      <form role="search" aria-label="Kërkoni profesionistë"
+      <form role="search" aria-label={t("searchBar.searchPros")}
         className={`service-search-form grid min-w-0 gap-1 rounded-2xl border border-line bg-white p-2 ${compact ? "" : "shadow-card"}`}
         onSubmit={(event) => {
           event.preventDefault();
@@ -77,9 +79,9 @@ export default function SearchBar({ initialQuery = "", initialCity = "", compact
           if (city.trim()) params.set("qyteti", city.trim());
           router.push(`/kerko${params.size ? `?${params}` : ""}`);
         }}>
-        <SearchField value={query} onChange={setQuery} label="Çfarë shërbimi ju nevojitet?" options={categories.map((category) => category.name)} icon={Search} />
-        <SearchField value={city} onChange={setCity} label="Komuna / Qyteti" options={cities} icon={MapPin} />
-        <button type="submit" className="min-h-12 rounded-xl bg-gold px-6 py-3 text-base font-semibold text-ink transition-colors hover:bg-gold-dark">Kërko</button>
+        <SearchField value={query} onChange={setQuery} label={t("searchBar.whatServiceDoNeed")} options={categories.map((category) => t.tx(category.name))} icon={Search} />
+        <SearchField value={city} onChange={setCity} label={t("searchBar.municipalityCity")} options={cities} icon={MapPin} />
+        <button type="submit" className="min-h-12 rounded-xl bg-gold px-6 py-3 text-base font-semibold text-ink transition-colors hover:bg-gold-dark">{t("searchBar.search")}</button>
       </form>
     </div>
   );

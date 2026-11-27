@@ -1,12 +1,14 @@
 "use server";
-import { redirect } from "next/navigation";
+import { localRedirect } from "@/lib/i18n/redirect";
 import { createCategory, updateCategory } from "./admin";
 import { requireRole } from "@/lib/server/auth";
 import { AppError } from "@/lib/server/errors";
 import { ZodError } from "zod";
+import { getT } from "@/lib/i18n/server";
 async function run(fd: FormData, save: boolean) {
+  const t = await getT();
   await requireRole("ADMIN");
-  let message = "Ndryshimet u ruajtën.",
+  let message = t("actions.changesSaved"),
     ok = true;
   try {
     if (save) await updateCategory(fd);
@@ -15,12 +17,12 @@ async function run(fd: FormData, save: boolean) {
     ok = false;
     message =
       error instanceof AppError
-        ? error.message
+        ? t.tx(error.message)
         : error instanceof ZodError
-          ? "Kontrolloni fushat e kategorisë."
-          : "Kategoria nuk u ruajt. Provoni përsëri.";
+          ? t("actions.checkCategoryFields")
+          : t("actions.categoryWasntSavedPlease");
   }
-  redirect(
+  await localRedirect(
     `/admin/kategorite?${ok ? "ok" : "err"}=${encodeURIComponent(message)}`,
   );
 }

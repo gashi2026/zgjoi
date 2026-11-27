@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/i18n/Link";
 import { notFound } from "next/navigation";
 import { publicProfile, activeCategories } from "@/lib/server/catalog";
 import { currentUser } from "@/lib/server/auth";
@@ -10,20 +10,22 @@ import { hoursLabel } from "@/lib/book-now";
 import { proTrust } from "@/lib/server/trust";
 import { TRUST_PUBLIC } from "@/lib/trust";
 import TrustDonut from "@/components/marketplace/TrustDonut";
+import { getT, pageMetadata } from "@/lib/i18n/server";
 export const dynamic = "force-dynamic";
 export async function generateMetadata({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
+  const t = await getT();
   const { id } = await params;
   const pro = await publicProfile(id);
   return {
     title: pro
       ? `${pro.user.name} — ${pro.user.city} | Zgjoi`
-      : "Profili nuk u gjet | Zgjoi",
+      : t("proProfile.profileNotFoundZgjoi"),
     description: pro?.about.slice(0, 160),
-    alternates: { canonical: pro ? `/profesionisti/${pro.slug}` : "/kerko" },
+    alternates: (await pageMetadata({ canonical: pro ? `/profesionisti/${pro.slug}` : "/kerko" })).alternates,
   };
 }
 export default async function Page({
@@ -31,6 +33,7 @@ export default async function Page({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  const t = await getT();
   const { id } = await params;
   const pro = await publicProfile(id);
   if (!pro) notFound();
@@ -52,50 +55,48 @@ export default async function Page({
         )
       : false;
   const weekdays = [
-    "E hënë",
-    "E martë",
-    "E mërkurë",
-    "E enjte",
-    "E premte",
-    "E shtunë",
-    "E diel",
+    t("proProfile.monday"),
+    t("proProfile.tuesday"),
+    t("proProfile.wednesday"),
+    t("proProfile.thursday"),
+    t("proProfile.friday"),
+    t("proProfile.saturday"),
+    t("proProfile.sunday"),
   ];
   const clock = (minutes: number) =>
     `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
   return (
     <div className="mx-auto max-w-5xl space-y-6 px-4 py-10">
       <Link href="/kerko" className="text-gold-dark">
-        ← Kthehu te kërkimi
-      </Link>
+        {t("proProfile.backSearch")}</Link>
       <section className="rounded-2xl border border-line bg-cream p-6">
         <h1 className="text-3xl font-bold">{pro.user.name}</h1>
         <p className="mt-2 text-muted">
-          {categories.find((c) => c.slug === pro.categorySlug)?.name} ·{" "}
+          {t.tx(categories.find((c) => c.slug === pro.categorySlug)?.name)} ·{" "}
           {pro.user.city}
         </p>
         <p className="mt-4 whitespace-pre-wrap">{pro.about}</p>
         <p className="mt-4 font-semibold">
-          Nga {money(pro.priceFrom)} ·{" "}
+          {t("proProfile.from", { amount: money(pro.priceFrom, t.locale) })}{" "}
           {pro.ratingCount
-            ? `★ ${pro.ratingAvg.toFixed(1)} (${pro.ratingCount} vlerësime)`
-            : "Pa vlerësime ende"}
+            ? t("proProfile.reviews", { value: pro.ratingAvg.toFixed(1), ratingCount: pro.ratingCount })
+            : t("proProfile.noReviewsYet")}
         </p>
         {trust && <TrustDonut summary={trust} />}
         <p className="mt-2 text-sm text-muted">
           {terms
-            ? `Rezervoni direkt me tarifë për orë (${money(terms.rateCents)}/orë, së paku ${hoursLabel(terms.minMinutes)}), ose bisedoni privatisht dhe e punësoni me “Puneso”.`
-            : "Bisedoni privatisht për punën. Çmimi përfundimtar dhe koha vijnë si ofertë në bisedë, dhe ju e punësoni me “Puneso”."}
+            ? t("proProfile.bookDirectlyHourlyRate", { amount: money(terms.rateCents, t.locale), label: t.tx(hoursLabel(terms.minMinutes)) })
+            : t("proProfile.chatPrivatelyAboutJob")}
         </p>
         {flow.estimate && flow.estimatePriceCents && (
           <p className="mt-2 text-sm text-muted">
-            Nuk jeni të sigurt sa punë është? Kërkoni një vizitë vlerësimi për {money(flow.estimatePriceCents)}. Nëse e punësoni këtë profesionist, {money(flow.estimatePriceCents)} zbriten plotësisht nga puna.
-          </p>
+            {t("proProfile.notSureHowBig", { amount: money(flow.estimatePriceCents, t.locale), amount2: money(flow.estimatePriceCents, t.locale) })}</p>
         )}
         {terms && (
           <div className="mt-4 inline-flex flex-wrap items-center gap-2 rounded-2xl border border-gold/50 bg-white px-4 py-3 text-sm">
             <svg aria-hidden viewBox="0 0 24 24" className="h-4 w-4"><path d="M12 2 21 7v10l-9 5-9-5V7z" className="fill-gold" /></svg>
-            <span className="font-semibold">{money(terms.rateCents)} / orë</span>
-            <span className="text-muted">· minimumi {hoursLabel(terms.minMinutes)} · paguhet paraprakisht</span>
+            <span className="font-semibold">{t("proProfile.hr", { amount: money(terms.rateCents, t.locale) })}</span>
+            <span className="text-muted">{t("proProfile.minimumPaidUpfront", { label: t.tx(hoursLabel(terms.minMinutes)) })}</span>
           </div>
         )}
         <div className="mt-5 flex flex-wrap items-start gap-4">
@@ -104,47 +105,41 @@ export default async function Page({
               className="rounded-full bg-gold px-5 py-3 font-semibold"
               href={`/rezervo-tani?pro=${pro.id}`}
             >
-              Rezervo tani
-            </Link>
+              {t("proProfile.bookNow")}</Link>
           )}
           <Link
             className={terms ? "rounded-full border-2 border-gold px-5 py-3 font-semibold" : "rounded-full bg-gold px-5 py-3 font-semibold"}
             href={`/kerkesa-e-re?pro=${pro.id}`}
           >
-            Fillo bisedën
-          </Link>
+            {t("proProfile.startChat")}</Link>
           {flow.estimate && flow.estimatePriceCents && actor?.role !== "PRO" && (
             <Link
               className="rounded-full border-2 border-gold px-5 py-3 font-semibold"
               href={`/kerko-vleresim?pro=${pro.id}`}
             >
-              Kërko vlerësim · {money(flow.estimatePriceCents)}
-            </Link>
+              {t("proProfile.requestEstimate", { amount: money(flow.estimatePriceCents, t.locale) })}</Link>
           )}
           {actor?.role === "CLIENT" && (
             <ApiForm
               endpoint="/api/favorites"
               values={{ profileId: pro.id, saved: !saved }}
               label={
-                saved ? "Hiq nga të preferuarit" : "Ruaj te të preferuarit"
+                saved ? t("proProfile.removeFromFavourites") : t("proProfile.saveFavourites")
               }
             />
           )}
         </div>
       </section>
       <section className="rounded-2xl border border-line p-6">
-        <h2 className="text-xl font-bold">Shërbimet dhe zona</h2>
+        <h2 className="text-xl font-bold">{t("proProfile.servicesArea")}</h2>
         <p className="mt-2">{pro.serviceCities.join(", ") || pro.user.city}</p>
         {pro.services.map((s) => (
           <p key={s.id} className="mt-2">
-            {s.name} · nga {money(s.price)}
-          </p>
+            {t("proProfile.from2", { name: s.name, amount: money(s.price, t.locale) })}</p>
         ))}
-        <h3 className="mt-5 font-bold">Orari i zakonshëm</h3>
+        <h3 className="mt-5 font-bold">{t("proProfile.usualHours")}</h3>
         <p className="text-sm text-muted">
-          Orari nuk garanton disponueshmëri; konfirmohet në ofertë. Ora e
-          Kosovës.
-        </p>
+          {t("proProfile.hoursDontGuaranteeAvailability")}</p>
         {pro.availability.length ? (
           pro.availability
             .sort((a, b) => a.weekday - b.weekday)
@@ -154,17 +149,15 @@ export default async function Page({
               </p>
             ))
         ) : (
-          <p>Diskutoni orarin me profesionistin.</p>
+          <p>{t("proProfile.discussSchedulePro")}</p>
         )}
       </section>
       <section>
         <h2 className="text-xl font-bold">
-          Vlerësimet nga punë të përfunduara
-        </h2>
+          {t("proProfile.reviewsFromCompletedJobs")}</h2>
         {!pro.reviews.length && (
           <p className="mt-3 text-muted">
-            Ky profesionist nuk ka vlerësime ende.
-          </p>
+            {t("proProfile.proHasNoReviews")}</p>
         )}
         {pro.reviews.map((r) => (
           <article
@@ -179,7 +172,7 @@ export default async function Page({
               . · {r.rating}/5
             </p>
             <p className="mt-2 whitespace-pre-wrap">{r.text}</p>
-            <time className="text-xs text-muted">{dateTime(r.createdAt)}</time>
+            <time className="text-xs text-muted">{dateTime(r.createdAt, t.locale)}</time>
           </article>
         ))}
       </section>

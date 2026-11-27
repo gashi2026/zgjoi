@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/i18n/Link";
 import { db } from "@/lib/server/db";
 import type { Actor } from "@/lib/server/auth";
 import { money, dateTime } from "@/lib/format";
@@ -7,9 +7,11 @@ import { seriesLabel, seriesStatusLabels, GENERATION_HORIZON_DAYS, seriesCommiss
 import { serviceCategory } from "@/lib/service-categories";
 import { Panel } from "./Frame";
 import ApiForm from "./ApiForm";
+import { getT } from "@/lib/i18n/server";
 
 /** Customer and pro view of their recurring Book now schedules. */
 export default async function SeriesList({ actor }: { actor: Actor }) {
+  const t = await getT();
   const pro = actor.role === "PRO";
   const now = new Date();
   const list = await db.recurringSeries.findMany({
@@ -28,59 +30,59 @@ export default async function SeriesList({ actor }: { actor: Actor }) {
   return (
     <>
       <Panel>
-        <h2 className="text-lg font-bold">Si funksionon</h2>
+        <h2 className="text-lg font-bold">{t("seriesList.howWorks")}</h2>
         <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">
-          <li>E njëjta ditë dhe orë çdo javë ose çdo dy javë, ose e njëjta datë çdo muaj (29–31: dita e fundit e muajit kur muaji është më i shkurtër). Çdo vizitë krijohet si rezervim më vete {GENERATION_HORIZON_DAYS} ditë përpara — vizita e radhës është gjithmonë e rezervuar — dhe paguhet paraprakisht (gjatë beta-s e konfirmon Zgjoi).</li>
-          <li>Anulimi i një vizite: falas deri {FREE_CANCEL_HOURS} orë para; më vonë {money(LATE_FEE_CENTS)} (10 € profesionisti, 5 € Zgjoi). Nëse profesionisti anulon vonë ose nuk vjen: rimbursim i plotë.</li>
-          <li>Pauza ose anulimi i serisë anulon falas vizitat që janë më shumë se {FREE_CANCEL_HOURS} orë larg; vizitat brenda {FREE_CANCEL_HOURS} orëve mbeten.</li>
-          {pro && <li>Komisioni i Zgjoi: vizita e parë e serisë ka komisionin e zakonshëm (15%, ose 10% për elitë); çdo vizitë e mëpastajme {seriesCommissionBps("pastrim") / 100}%.</li>}
+          <li>{t("seriesList.sameDayTimeEvery", { GENERATION_HORIZON_DAYS: GENERATION_HORIZON_DAYS })}</li>
+          <li>{t("seriesList.cancellingVisitFreeUp", { FREE_CANCEL_HOURS: FREE_CANCEL_HOURS, amount: money(LATE_FEE_CENTS, t.locale) })}</li>
+          <li>{t("seriesList.pausingCancellingSeriesCancels", { FREE_CANCEL_HOURS: FREE_CANCEL_HOURS, FREE_CANCEL_HOURS2: FREE_CANCEL_HOURS })}</li>
+          {pro && <li>{t("seriesList.zgjoisCommissionFirstVisit", { value: seriesCommissionBps("pastrim") / 100 })}</li>}
         </ul>
       </Panel>
       {!list.length && (
         <Panel>
           <p className="text-sm text-muted">
             {pro
-              ? "Nuk keni rezervime të përsëritura. Mund t’i propozoni klientit një përsëritje nga karta e rezervimit në bisedë."
-              : "Nuk keni rezervime të përsëritura. Zgjidhni “Çdo javë”, “Çdo dy javë” ose “Çdo muaj” kur rezervoni me “Rezervo tani”."}
+              ? t("seriesList.dontHaveAnyRecurring")
+              : t("seriesList.dontHaveAnyRecurring2")}
           </p>
         </Panel>
       )}
       {list.map(s => {
-        const who = pro ? clients?.get(s.clientId) ?? "Klienti" : s.profile.user.name;
+        const who = pro ? clients?.get(s.clientId) ?? t("seriesList.customer") : s.profile.user.name;
         const category = serviceCategory(s.categorySlug)?.name ?? s.categorySlug;
         return (
           <Panel key={s.id}>
-            <article aria-label={`Rezervim i përsëritur me ${who}`}>
+            <article aria-label={t("seriesList.recurringBooking", { who: who })}>
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="text-xs font-semibold uppercase tracking-wide text-gold-dark">{category} · {who}</p>
-                <span className="rounded-full bg-honey px-3 py-1 text-xs font-semibold">{seriesStatusLabels[s.status] ?? s.status}</span>
+                <span className="rounded-full bg-honey px-3 py-1 text-xs font-semibold">{t.tx(seriesStatusLabels[s.status]) ?? s.status}</span>
               </div>
-              <p className="mt-2 text-lg font-bold">{seriesLabel(s)}</p>
-              <p className="text-sm">{hoursLabel(s.minutes)} × {money(s.hourlyRateCents)}/orë = <strong>{money(bookingTotal(s.hourlyRateCents, s.minutes))}</strong> për vizitë</p>
-              <p className="text-xs text-muted">Nga {dateTime(s.firstStartsAt)} · {s.city}{s.proposedBy === "PRO" ? " · propozuar nga profesionisti" : ""}</p>
+              <p className="mt-2 text-lg font-bold">{t.tx(seriesLabel(s))}</p>
+              <p className="text-sm">{t("seriesList.hr", { label: t.tx(hoursLabel(s.minutes)), amount: money(s.hourlyRateCents, t.locale) })}{" "}<strong>{money(bookingTotal(s.hourlyRateCents, s.minutes), t.locale)}</strong> {" "}{t("seriesList.perVisit")}</p>
+              <p className="text-xs text-muted">{t("seriesList.from", { date: dateTime(s.firstStartsAt, t.locale), city: s.city })}{s.proposedBy === "PRO" ? t("seriesList.proposedPro") : ""}</p>
               {s.statusNote && <p className="mt-2 rounded-xl bg-cream p-2 text-sm" role="status">{s.statusNote}</p>}
               {s.bookings.length > 0 && (
                 <ul className="mt-3 space-y-1 text-sm">
                   {s.bookings.map(b => (
                     <li key={b.id}>
-                      <Link className="text-gold-dark underline" href={jobHref(b.requestId)}>{dateTime(b.startsAt)}</Link>
-                      {" · "}{money(b.totalCents)} · {b.status === "CANCELLED" ? "Anuluar" : b.request.payment?.state === "HELD" ? "E paguar" : "Pagesa në pritje"}
+                      <Link className="text-gold-dark underline" href={jobHref(b.requestId)}>{dateTime(b.startsAt, t.locale)}</Link>
+                      {" · "}{money(b.totalCents, t.locale)} · {b.status === "CANCELLED" ? t("seriesList.cancelled") : b.request.payment?.state === "HELD" ? t("seriesList.paid") : t("seriesList.paymentPending")}
                     </li>
                   ))}
                 </ul>
               )}
               <div className="mt-3 flex flex-wrap gap-3">
                 {s.status === "PROPOSED" && !pro && <>
-                  <ApiForm endpoint={`/api/recurring/${s.id}`} values={{ action: "CONFIRM" }} label="Konfirmo përsëritjen"
-                    confirmation={`Konfirmoni ${seriesLabel(s)}? Çdo vizitë paguhet paraprakisht si rezervim.`} />
-                  <ApiForm endpoint={`/api/recurring/${s.id}`} values={{ action: "DECLINE" }} label="Jo, faleminderit" />
+                  <ApiForm endpoint={`/api/recurring/${s.id}`} values={{ action: "CONFIRM" }} label={t("seriesList.confirmRecurringBooking")}
+                    confirmation={t("seriesList.confirmEachVisitPaid", { label: t.tx(seriesLabel(s)) })} />
+                  <ApiForm endpoint={`/api/recurring/${s.id}`} values={{ action: "DECLINE" }} label={t("seriesList.noThanks")} />
                 </>}
-                {s.status === "PROPOSED" && pro && <ApiForm endpoint={`/api/recurring/${s.id}`} values={{ action: "CANCEL" }} label="Tërhiq propozimin" />}
-                {s.status === "ACTIVE" && <ApiForm endpoint={`/api/recurring/${s.id}`} values={{ action: "PAUSE" }} label="Pauzo"
-                  confirmation="Vizitat më shumë se 24 orë larg anulohen falas; ato brenda 24 orëve mbeten. Vazhdoni?" />}
-                {s.status === "PAUSED" && <ApiForm endpoint={`/api/recurring/${s.id}`} values={{ action: "RESUME" }} label="Rifillo" />}
-                {["ACTIVE", "PAUSED"].includes(s.status) && <ApiForm endpoint={`/api/recurring/${s.id}`} values={{ action: "CANCEL" }} label="Anulo serinë"
-                  confirmation="Anuloni rezervimin e përsëritur? Vizitat më shumë se 24 orë larg anulohen falas; ato brenda 24 orëve mbeten me rregullat e zakonshme." />}
+                {s.status === "PROPOSED" && pro && <ApiForm endpoint={`/api/recurring/${s.id}`} values={{ action: "CANCEL" }} label={t("seriesList.withdrawProposal")} />}
+                {s.status === "ACTIVE" && <ApiForm endpoint={`/api/recurring/${s.id}`} values={{ action: "PAUSE" }} label={t("seriesList.pause")}
+                  confirmation={t("seriesList.visitsMoreThan24")} />}
+                {s.status === "PAUSED" && <ApiForm endpoint={`/api/recurring/${s.id}`} values={{ action: "RESUME" }} label={t("seriesList.resume")} />}
+                {["ACTIVE", "PAUSED"].includes(s.status) && <ApiForm endpoint={`/api/recurring/${s.id}`} values={{ action: "CANCEL" }} label={t("seriesList.cancelSeries")}
+                  confirmation={t("seriesList.cancelRecurringBookingVisits")} />}
               </div>
             </article>
           </Panel>
