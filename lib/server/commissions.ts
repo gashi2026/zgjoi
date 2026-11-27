@@ -22,8 +22,9 @@ export async function eliteMonth(tx: Prisma.TransactionClient, now = new Date(),
   const key = `commissionElite:${COMMISSION_POLICY_VERSION}:${testMode ? "test" : "live"}:${period.month}`;
   const saved = await tx.setting.findUnique({ where: { key } });
   if (saved) return snapshotSchema.parse(saved.value);
-  const rows = testMode ? await tx.$queryRaw<Array<{ profileId: string; categorySlug: string; currentCategory: string; gross: string }>>`
-    SELECT r."acceptedProfileId" AS "profileId", r."categorySlug", pp."categorySlug" AS "currentCategory",
+  const rows = testMode ? await tx.$queryRaw<Array<{ profileId: string; categorySlug: string; offered: string[] | null; gross: string }>>`
+    SELECT r."acceptedProfileId" AS "profileId", r."categorySlug",
+      (SELECT array_agg(pc."categorySlug") FROM public."ProCategory" pc WHERE pc."profileId" = pp.id AND pc."approvedAt" IS NOT NULL) AS offered,
       SUM(p.amount)::text AS gross
     FROM public."ServiceRequest" r
     JOIN public."Payment" p ON p."requestId" = r.id
@@ -35,10 +36,11 @@ export async function eliteMonth(tx: Prisma.TransactionClient, now = new Date(),
       AND pp.verification = 'APPROVED' AND u.role = 'PRO' AND u."suspendedAt" IS NULL
       AND r."categorySlug" IN (${Prisma.join(allowedCategorySlugs)})
       AND NOT EXISTS (SELECT 1 FROM public."Dispute" d WHERE d."paymentId" = p.id)
-    GROUP BY r."acceptedProfileId", r."categorySlug", pp."categorySlug"
+    GROUP BY r."acceptedProfileId", r."categorySlug", pp.id
   ` : [];
+  // Elite counts only work in a profession the pro still offers (approved).
   const winners = eliteWinners(rows.filter(row =>
-    serviceCategory(row.categorySlug)?.slug === serviceCategory(row.currentCategory)?.slug)
+    (row.offered ?? []).some(slug => serviceCategory(slug)?.slug === serviceCategory(row.categorySlug)?.slug))
     .map(row => ({ profileId: row.profileId, categorySlug: row.categorySlug, grossCents: Number(row.gross) })));
   const snapshot = { version: COMMISSION_POLICY_VERSION, month: period.month, sourceMonth: period.sourceMonth, winners };
   if (persist) {

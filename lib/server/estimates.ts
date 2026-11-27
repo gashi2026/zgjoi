@@ -7,7 +7,7 @@ import { notify } from "./notifications";
 import { enforceLimit } from "./rate-limit";
 import { hashToken } from "./tokens";
 import { serializable } from "./transaction";
-import { requireActiveCategory } from "./service-catalog";
+import { resolveProCategory } from "./pro-categories";
 import { categoryFlow } from "./bookings";
 import { containsContactDetails } from "../contact-filter";
 import { clientKey, cleanText, entityId } from "../marketplace-validation";
@@ -22,6 +22,7 @@ import { estimateSplit } from "../book-now";
  * commission stays on the full price (see estimateCredit/priceJob in lib/book-now). */
 export const estimateInput = z.object({
   profileId: entityId,
+  categorySlug: cleanText(1, 80).optional(),
   clientKey,
   visitAt: z.string().datetime(),
   detail: cleanText(10, 4000),
@@ -47,7 +48,7 @@ export async function requestEstimate(actor: Actor, input: unknown) {
     if (previous?.requestId) return { ok: true, id: previous.requestId, redirect: `/llogaria/kerkesat/${previous.requestId}` };
     const profile = await tx.proProfile.findFirst({ where: { id: data.profileId, verification: "APPROVED", user: proUserWhere() } });
     invariant(profile && profile.userId !== actor.id, "PRO_UNAVAILABLE", 409, "Ky profesionist nuk pranon kërkesa për momentin.");
-    const category = await requireActiveCategory(profile.categorySlug, tx);
+    const category = await resolveProCategory(tx, profile.id, data.categorySlug);
     const flow = await categoryFlow(tx, category.slug);
     invariant(flow.estimate && flow.estimatePriceCents, "ESTIMATE_UNAVAILABLE", 409, "Vizita e vlerësimit nuk ofrohet në këtë kategori. Filloni një bisedë me profesionistin.");
     const open = await tx.estimate.findFirst({ where: { clientId: actor.id, profileId: profile.id, state: { in: ["PENDING", "PAID"] } } });

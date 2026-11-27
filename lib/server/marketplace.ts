@@ -1,4 +1,5 @@
 import { requireActiveCategory } from "./service-catalog";
+import { resolveProCategory } from "./pro-categories";
 import { bookingCommission } from "./commissions";
 import { readRecurrence } from "../recurring-bookings";
 import { eligibleRecurringBooking } from "./recurring";
@@ -96,7 +97,7 @@ export async function createInquiry(actor: Actor, input: unknown) {
       409,
       "Ky profesionist nuk pranon kërkesa për momentin.",
     );
-    const category = await requireActiveCategory(profile.categorySlug, tx);
+    const category = await resolveProCategory(tx, profile.id, data.categorySlug);
     const request = await tx.serviceRequest.create({
       data: {
         clientId: actor.id,

@@ -98,7 +98,7 @@ function SideSlot({ side, type, picked, onPick, onClear, busy }: { side: IdSide;
   );
 }
 
-export default function IdUploadForm({ resubmit = false }: { resubmit?: boolean }) {
+export default function IdUploadForm({ resubmit = false, afterHref = "/verifikimi" }: { resubmit?: boolean; afterHref?: string }) {
   const t = useT();
   const router = useRouter();
   const [picked, setPicked] = useState<Partial<Record<IdSide, Picked>>>({});
@@ -150,7 +150,7 @@ export default function IdUploadForm({ resubmit = false }: { resubmit?: boolean 
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.message || t("idUploadForm.uploadFailedPleaseTry"));
       setMessage({ text: result.message, error: false });
-      router.replace("/verifikimi", { scroll: true });
+      router.replace(afterHref, { scroll: true });
       router.refresh();
     } catch (err) {
       setMessage({ text: err instanceof Error ? t.any(err.message) : t("idUploadForm.uploadFailed"), error: true });

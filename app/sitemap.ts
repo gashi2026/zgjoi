@@ -24,7 +24,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     where: {
       verification: "APPROVED",
       user: proUserWhere(),
-      categorySlug: { in: categories.flatMap((c) => categorySlugs(c.slug)) },
+      categories: { some: { categorySlug: { in: categories.flatMap((c) => categorySlugs(c.slug)) }, approvedAt: { not: null } } },
     },
     take: 5000,
     orderBy: { id: "asc" },

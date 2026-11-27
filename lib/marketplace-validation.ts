@@ -27,6 +27,9 @@ export const euroAmount = z
     "Çmimi është jashtë kufirit të lejuar.",
   );
 
+/** Sign-up (step 1 for customers; steps 1–2 for pros). No prices here: pros set them later in
+ * their profile panel. Pros pick one or more professions (`categories`; `categorySlug` is still
+ * accepted as a single choice from older clients). */
 export const signupInput = z
   .object({
     role: z.enum(["CLIENT", "PRO"]),
@@ -35,24 +38,24 @@ export const signupInput = z
     password,
     city: cleanText(1, 60),
     phone: z.string().trim().max(30).optional(),
+    categories: z.array(cleanText(1, 80)).max(20).optional(),
     categorySlug: cleanText(1, 80).optional(),
     about: cleanText(30, 4000).optional(),
-    priceFrom: euroAmount.optional(),
     experience: cleanText(1, 80).optional(),
     terms: z.literal(true, {
       error: "Pranoni kushtet për të vazhduar.",
     }),
   })
+  .transform(({ categorySlug, ...value }) => ({
+    ...value,
+    categories: [...(value.categories ?? []), ...(categorySlug ? [categorySlug] : [])],
+  }))
   .superRefine((value, ctx) => {
-    if (value.role === "PRO")
-      for (const key of ["categorySlug", "about", "priceFrom"] as const) {
-        if (!value[key])
-          ctx.addIssue({
-            code: "custom",
-            path: [key],
-            message: "Plotësoni këtë fushë.",
-          });
-      }
+    if (value.role !== "PRO") return;
+    if (!value.categories.length)
+      ctx.addIssue({ code: "custom", path: ["categories"], message: "Zgjidhni të paktën një profesion." });
+    if (!value.about)
+      ctx.addIssue({ code: "custom", path: ["about"], message: "Plotësoni këtë fushë." });
   });
 
 /** Chat-then-hire: the customer's first chat message is the job description.
@@ -68,6 +71,8 @@ export function chatTitle(detail: string) {
 export const inquiryInput = z
   .object({
     profileId: entityId,
+    /** Which of the pro's professions the chat is about (defaults to their main one). */
+    categorySlug: cleanText(1, 80).optional(),
     title: cleanText(5, 120).optional(),
     detail: cleanText(20, 4000),
     city: cleanText(1, 60),
@@ -140,8 +145,6 @@ export const profileInput = z.object({
   city: cleanText(1, 60),
   phone: z.string().trim().max(30),
   about: cleanText(30, 4000).optional(),
-  categorySlug: cleanText(1, 80).optional(),
-  priceFrom: euroAmount.optional(),
   experience: z.string().trim().max(80).optional(),
   serviceCities: z.array(cleanText(1, 60)).min(1).max(20).optional(),
 });

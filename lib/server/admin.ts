@@ -1,4 +1,6 @@
-import { requireActiveCategory } from "./service-catalog";
+import { activeServiceCategories, requireActiveCategory } from "./service-catalog";
+import { serviceCategory } from "../service-categories";
+import { syncProfileSummary } from "./pro-categories";
 import "server-only";
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
@@ -7,7 +9,7 @@ import { hashPassword } from "./auth";
 import { serializable } from "./marketplace";
 import { invariant } from "./errors";
 import { notify } from "./notifications";
-import { entityId, cleanText, euroAmount } from "../marketplace-validation";
+import { entityId, cleanText } from "../marketplace-validation";
 import { email, password } from "../validation";
 import { opaqueToken } from "./tokens";
 
@@ -75,7 +77,6 @@ export async function adminCommand(actor: Actor, input: unknown) {
         phone: z.string().trim().max(30).default(""),
         password: password.optional().or(z.literal("")),
         categorySlug: cleanText(1, 80).optional(),
-        priceFrom: euroAmount.optional(),
       })
       .parse(envelope);
     const passwordHash = data.password
@@ -115,7 +116,9 @@ export async function adminCommand(actor: Actor, input: unknown) {
                       slug: `pro-${opaqueToken().slice(0, 16)}`,
                       categorySlug: data.categorySlug!,
                       about: "Profili duhet të plotësohet para shqyrtimit.",
-                      priceFrom: data.priceFrom ?? 100,
+                      // Prices are set by the pro in their profile panel.
+                      priceFrom: null,
+                      categories: { create: [{ categorySlug: data.categorySlug!, position: 0 }] },
                       serviceCities: [data.city],
                       verification: "PENDING",
                       autoBid: false,
@@ -249,14 +252,24 @@ export async function adminCommand(actor: Actor, input: unknown) {
         400,
         "Shënoni arsyen dhe kontrollet që keni kryer.",
       );
-      if (action === "PRO_APPROVE")
+      // Approving the profile approves every profession it lists that is still active in the
+      // catalogue (including ones added later while the profile was already approved).
+      const rows = await tx.proCategory.findMany({ where: { profileId: profile.id } });
+      const active: string[] = (await activeServiceCategories(tx)).map((c) => c.slug);
+      const approvable = rows.filter((r) => active.includes(serviceCategory(r.categorySlug)?.slug ?? ""));
+      if (action === "PRO_APPROVE") {
         invariant(
-          profile.about.length >= 30 &&
-            (await requireActiveCategory(profile.categorySlug, tx)),
+          profile.about.length >= 30 && approvable.length > 0,
           "PROFILE",
           409,
-          "Plotësoni profilin dhe kategorinë aktive.",
+          "Plotësoni profilin dhe të paktën një profesion aktiv.",
         );
+        await tx.proCategory.updateMany({
+          where: { id: { in: approvable.filter((r) => !r.approvedAt).map((r) => r.id) } },
+          data: { approvedAt: new Date() },
+        });
+        await syncProfileSummary(tx, profile.id);
+      }
       await tx.proProfile.update({
         where: { id: data.id },
         data: {
