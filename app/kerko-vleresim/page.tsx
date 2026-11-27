@@ -9,6 +9,7 @@ import { ESTIMATE_PRO_SHARE_CENTS, ESTIMATE_PLATFORM_SHARE_CENTS } from "@/lib/b
 import { serviceCategory } from "@/lib/service-categories";
 import Frame, { Panel } from "@/components/marketplace/Frame";
 import ApiForm from "@/components/marketplace/ApiForm";
+import { IdGate } from "@/components/verification/IdNotice";
 export const dynamic = "force-dynamic";
 /** Paid estimate visit (Elektricist, Mjeshtër i Ujit): €15, credited in full
  * if the customer hires this pro by any path. Beta: Zgjoi confirms the payment. */
@@ -42,6 +43,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ p
             {open.requestId && <Link className="underline" href={`/llogaria/kerkesat/${open.requestId}`}>Hape bisedën</Link>}
           </p>
         ) : (
+          <IdGate actor={actor}>
           <ApiForm endpoint="/api/estimates" idempotent values={{ profileId: pro.id }} label={`Kërko vlerësim · ${price}`}
             confirmation={`Kërkoni një vizitë vlerësimi nga ${pro.user.name} për ${price}?`}
             fields={[
@@ -52,6 +54,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ p
               { name: "city", label: "Qyteti", value: actor.city ?? "", required: true, maxLength: 60 },
               { name: "address", label: "Adresa", maxLength: 300 },
             ]} />
+          </IdGate>
         )}
         <p className="mt-3 text-sm text-muted"><Link className="text-gold-dark" href={`/profesionisti/${pro.slug}`}>← Kthehu te profili</Link></p>
       </Panel>

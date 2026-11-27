@@ -1,3 +1,4 @@
+import { idUploadsAvailable } from "@/lib/server/id-verification";
 import AuthPage from "@/components/marketplace/AuthPage";
 export default function Page() {
   return (
@@ -44,7 +45,7 @@ export default function Page() {
           required: true,
         },
       ]}
-      text="Zgjidhni një profesionist dhe hapni një bisedë private me të. Lexoni kushtet te lidhja në fund të faqes."
+      text={`Zgjidhni një profesionist dhe hapni një bisedë private me të. ${idUploadsAvailable() ? "Pas regjistrimit ju kërkojmë një foto të letërnjoftimit (para dhe mbrapa), që e shqyrtojmë me dorë dhe e ruajmë privatisht; pa të mund të shfletoni, por jo të rezervoni. " : ""}Lexoni kushtet te lidhja në fund të faqes.`}
     />
   );
 }

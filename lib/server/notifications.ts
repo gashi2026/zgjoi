@@ -27,8 +27,8 @@ export async function notify(
   // Job emails require an operator switch AND the recipient's explicit preference.
   // Their content contains a generic event title and an authenticated account link,
   // never a chat body, identity document, address, or private capability URL.
-  if (process.env.JOB_EMAILS_ENABLED === "true" && base && Object.values(accountEmailSetup()).every(Boolean) &&
-      /^\/(llogaria|pro)\/(kerkesat\/[a-zA-Z0-9_-]+|paneli|njoftimet)$/.test(href)) {
+  if (process.env.JOB_EMAILS_ENABLED === "true" && base && Object.values(accountEmailSetup()).every(Boolean) && (href === "/verifikimi" ||
+      /^\/(llogaria|pro)\/(kerkesat\/[a-zA-Z0-9_-]+|paneli|njoftimet)$/.test(href))) {
     const [user, preferences] = await Promise.all([
       tx.user.findUnique({ where: { id: userId }, select: { email: true, emailVerified: true, suspendedAt: true } }),
       notificationPreferences(tx, userId),

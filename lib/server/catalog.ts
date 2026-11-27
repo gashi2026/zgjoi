@@ -1,6 +1,7 @@
 import { categorySlugs, serviceCategory } from "../service-categories";
 import { activeServiceCategories } from "./service-catalog";
 import "server-only";
+import { proUserWhere } from "./id-verification";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { db } from "./db";
@@ -49,7 +50,7 @@ export async function searchPros(input: Record<string, unknown> = {}) {
   const categories = await activeCategories();
   const where: Prisma.ProProfileWhereInput = {
     verification: "APPROVED",
-    user: { suspendedAt: null, role: "PRO" },
+    user: proUserWhere(),
     categorySlug: {
       in: categories
         .filter((c) => !p.kategoria || c.slug === serviceCategory(p.kategoria)?.slug)
@@ -144,7 +145,7 @@ export async function publicProfile(id: string) {
     where: {
       OR: [{ id }, { slug: id }],
       verification: "APPROVED",
-      user: { suspendedAt: null, role: "PRO" },
+      user: proUserWhere(),
       categorySlug: { in: categories.flatMap((c) => categorySlugs(c.slug)) },
     },
     select: {

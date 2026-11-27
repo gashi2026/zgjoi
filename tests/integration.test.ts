@@ -2332,9 +2332,10 @@ test("database-backed private marketplace and authorization journey", async (t) 
       const checks = await db.$queryRaw<
         { tables: bigint; rls: bigint; exposed: bigint }[]
       >`SELECT count(*) AS tables, count(*) FILTER (WHERE c.relrowsecurity) AS rls, count(*) FILTER (WHERE has_table_privilege('anon',c.oid,'SELECT,INSERT,UPDATE,DELETE') OR has_table_privilege('authenticated',c.oid,'SELECT,INSERT,UPDATE,DELETE')) AS exposed FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind='r'`;
-      // 28 marketplace tables + Booking, BookingChange, Estimate (Book now) + BookingArrival, GeocodeCache (Arrita) + RecurringSeries.
-      assert.equal(Number(checks[0].tables), 34);
-      assert.equal(Number(checks[0].rls), 34);
+      // 28 marketplace tables + Booking, BookingChange, Estimate (Book now) + BookingArrival, GeocodeCache (Arrita) + RecurringSeries
+      // + IdVerification, IdDocumentImage (ID check).
+      assert.equal(Number(checks[0].tables), 36);
+      assert.equal(Number(checks[0].rls), 36);
       assert.equal(Number(checks[0].exposed), 0);
       await assert.rejects(
         db.payment.update({ where: { requestId }, data: { amount: 100 } }),

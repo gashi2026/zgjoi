@@ -3,6 +3,7 @@ import { clientNav, proNav, adminNav } from "@/lib/nav";
 import type { Actor } from "@/lib/server/auth";
 import { initials } from "@/lib/server/catalog";
 import Link from "next/link";
+import { IdNotice } from "@/components/verification/IdNotice";
 export function Panel({ children }: { children: React.ReactNode }) {
   return (
     <section className="min-w-0 break-words rounded-2xl border border-line bg-white p-4 shadow-soft sm:p-6">
@@ -15,11 +16,13 @@ export default function Frame({
   title,
   children,
   subtitle,
+  hideIdNotice = false,
 }: {
   actor: Actor;
   title: string;
   children: React.ReactNode;
   subtitle?: string;
+  hideIdNotice?: boolean;
 }) {
   return (
     <AccountShell
@@ -48,6 +51,7 @@ export default function Frame({
     >
       <div className="space-y-6 pb-16">
         <Link href="/siguria" className="inline-flex min-h-11 items-center text-sm font-semibold text-gold-dark">Siguria e llogarisë</Link>
+        {!hideIdNotice && <IdNotice actor={actor} />}
         {children}
       </div>
     </AccountShell>

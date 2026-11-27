@@ -32,10 +32,12 @@ export default function UploadDocument() {
   }
   return (
     <form onSubmit={submit} className="space-y-3">
+      <p className="text-sm text-muted">
+        Letërnjoftimi ngarkohet te <a className="font-semibold text-gold-dark underline" href="/verifikimi">Verifikimi i ID-së</a>.
+      </p>
       <label className="block text-sm">
         Lloji
         <select name="kind" className={inputClass}>
-          <option value="ID">Dokument identifikimi</option>
           <option value="CERTIFICATE">Certifikatë</option>
           <option value="INSURANCE">Sigurim</option>
         </select>

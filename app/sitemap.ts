@@ -1,3 +1,4 @@
+import { proUserWhere } from "@/lib/server/id-verification";
 import { categorySlugs } from "@/lib/service-categories";
 import type { MetadataRoute } from "next";
 import { db } from "@/lib/server/db";
@@ -10,7 +11,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const profiles = await db.proProfile.findMany({
     where: {
       verification: "APPROVED",
-      user: { suspendedAt: null, role: "PRO" },
+      user: proUserWhere(),
       categorySlug: { in: categories.flatMap((c) => categorySlugs(c.slug)) },
     },
     take: 5000,

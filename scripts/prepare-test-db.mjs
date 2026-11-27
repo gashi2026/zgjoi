@@ -41,6 +41,7 @@ try {
   execute("supabase/staging/arrita-checkin.sql");
   execute("supabase/staging/recurring-estimate.sql");
   execute("supabase/staging/recurring-monthly-split.sql");
+  execute("supabase/staging/id-verification.sql");
   console.log(
     "Disposable Postgres: foundation bootstrap and marketplace upgrade both applied.",
   );
