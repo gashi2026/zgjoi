@@ -1091,7 +1091,7 @@ test("database-backed private marketplace and authorization journey", async (t) 
     // Pause: the visit within 24 h stays; the one a week later is cancelled free.
     await db.booking.update({ where: { id: first.id }, data: { startsAt: new Date(Date.now() + 3 * 3600000) } });
     const paused = ok(await http(`/api/recurring/${series.id}`, cj, { action: "PAUSE" }));
-    assert(paused.message.includes("1 vizita të ardhshme u anuluan falas"));
+    assert(paused.message.includes("1 vizitë e ardhshme u anulua falas"));
     const afterPause = await db.booking.findMany({ where: { seriesId: series.id }, orderBy: { startsAt: "asc" }, include: { changes: true } });
     assert.deepEqual(afterPause.map(b => b.status), ["CONFIRMED", "CANCELLED"]);
     assert.equal(afterPause[1].feeCents, 0);

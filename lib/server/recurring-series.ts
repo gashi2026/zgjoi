@@ -14,7 +14,7 @@ import { proOffers } from "./pro-categories";
 import { checkHours } from "../book-now";
 import {
   SERIES_CADENCES, type SeriesCadence, kosovoSlot, kosovoDay, seriesLabel, plannedOccurrences, occurrenceAt,
-  occurrencesToRelease, GENERATION_HORIZON_DAYS, MIN_LEAD_MINUTES,
+  occurrencesToRelease, upcomingCancelledLabel, GENERATION_HORIZON_DAYS, MIN_LEAD_MINUTES,
 } from "../recurring-series";
 import { bookingTermsFor, insertBookNow, recordCancellation } from "./bookings";
 
@@ -130,13 +130,13 @@ export async function seriesAction(actor: Actor, id: string, input: unknown) {
       const changed = await tx.recurringSeries.updateMany({ where: { id, status: series.status },
         data: action === "PAUSE" ? { status: "PAUSED", pausedAt: now, pausedBy: by } : { status: "CANCELLED", cancelledAt: now, cancelledBy: by } });
       invariant(changed.count === 1, "STALE", 409, "Abonimi ka ndryshuar. Rifreskoni faqen.");
-      const note = action === "PAUSE" ? "Abonimi u pauzua" : "Abonimi u anulua";
+      const note = action === "PAUSE" ? "Abonimi u vu në pauzë" : "Abonimi u anulua";
       const { released, kept } = await releaseUpcoming(tx, id, by, actor.id, now, note);
       await notify(tx, other, "RECURRING", action === "PAUSE" ? "Abonimi u vu në pauzë" : "Abonimi u anulua", otherHref);
       await audit({ released, kept });
       const keptText = kept ? ` ${kept === 1 ? "Vizita" : `${kept} vizita`} brenda 24 orëve ${kept === 1 ? "mbetet" : "mbeten"}; anulimi i saj ndjek rregullat e zakonshme.` : "";
       return { ok: true, generate: false,
-        message: `${action === "PAUSE" ? "U vu në pauzë" : "U anulua"}. ${released ? `${released} vizita të ardhshme u anuluan falas.` : "Nuk kishte vizita për t’u anuluar."}${keptText}` };
+        message: `${action === "PAUSE" ? "U vu në pauzë" : "U anulua"}. ${released ? upcomingCancelledLabel(released) : "Nuk kishte vizita për t’u anuluar."}${keptText}` };
     }
     // RESUME
     if (series.status === "ACTIVE") return { ok: true, generate: false };

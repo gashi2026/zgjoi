@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {
+import { upcomingCancelledLabel,
   occurrenceAt, upcomingOccurrences, plannedOccurrences, kosovoSlot, seriesLabel, firstAfter, seriesCommissionBps, occurrencesToRelease,
   isRecurringVisit, GENERATION_HORIZON_DAYS, MIN_AHEAD_DAYS, cadenceLabels,
 } from "../lib/recurring-series";
@@ -120,4 +120,9 @@ test("paid €15 estimate: Elektricist and Mjeshtër i Ujit only; credited once 
   assert.equal(estimateCredit(paid, "c", "other-pro").creditCents, 0, "only with the same pro");
   const job = priceJob(10000, 1500, 1500);
   assert.deepEqual([job.commissionCents, job.proCents, job.dueCents], [1500, 8500, 8500], "customer pays €100 − €15; commission on €100");
+});
+
+test("pause/cancel copy uses the Albanian singular for one upcoming visit", () => {
+  assert.equal(upcomingCancelledLabel(1), "1 vizitë e ardhshme u anulua falas.");
+  assert.equal(upcomingCancelledLabel(2), "2 vizita të ardhshme u anuluan falas.");
 });
