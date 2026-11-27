@@ -9,6 +9,30 @@ import { emailRecipientAllowed, maskEmail } from "../email-allowlist";
 import { tFor } from "../i18n/dictionaries";
 import { isLocale, localizePath, type Locale } from "../i18n/config";
 
+/** Replies go to the public contact address, not the no-reply sender. */
+export const EMAIL_REPLY_TO = "info@zgjoi.com";
+
+const JOB_NOTICE_HREF =
+  /^\/(llogaria|pro)\/(kerkesat\/[a-zA-Z0-9_-]+|paneli|njoftimet)$/;
+
+/** In-app notices that also always email when delivery is configured, even if job emails are off. */
+const TRANSACTIONAL_NOTICE_KINDS = new Set(["ID_APPROVED", "ID_DECLINED"]);
+
+export function jobNoticeHrefAllowed(href: string) {
+  return href === "/verifikimi" || JOB_NOTICE_HREF.test(href);
+}
+
+/** Body posted to https://api.resend.com/emails. Never include secrets here. */
+export function resendEmailPayload(message: { to: string; subject: string; text: string }) {
+  return {
+    from: process.env.EMAIL_FROM,
+    to: [message.to],
+    reply_to: EMAIL_REPLY_TO,
+    subject: message.subject,
+    text: message.text,
+  };
+}
+
 /** The recipient's saved language; Albanian when never chosen. */
 export const userLocale = (value: string | null | undefined): Locale => (isLocale(value) ? value : "sq");
 
@@ -30,15 +54,25 @@ export async function notify(
   const notice = await tx.notification.create({ data: { userId, kind, title, href } });
   const base = applicationUrl();
   // Job emails require an operator switch AND the recipient's explicit preference.
-  // Their content contains a generic event title and an authenticated account link,
-  // never a chat body, identity document, address, or private capability URL.
-  if (process.env.JOB_EMAILS_ENABLED === "true" && base && Object.values(accountEmailSetup()).every(Boolean) && (href === "/verifikimi" ||
-      /^\/(llogaria|pro)\/(kerkesat\/[a-zA-Z0-9_-]+|paneli|njoftimet)$/.test(href))) {
+  // ID approve/decline emails are transactional: they send whenever delivery is
+  // configured, without that switch or opt-in. Content is a generic event title
+  // and an authenticated account link, never a chat body, identity document,
+  // address, or private capability URL.
+  const transactional = TRANSACTIONAL_NOTICE_KINDS.has(kind);
+  if (
+    (transactional || process.env.JOB_EMAILS_ENABLED === "true") &&
+    base &&
+    Object.values(accountEmailSetup()).every(Boolean) &&
+    jobNoticeHrefAllowed(href)
+  ) {
     const [user, preferences] = await Promise.all([
       tx.user.findUnique({ where: { id: userId }, select: { email: true, emailVerified: true, suspendedAt: true, locale: true } }),
       notificationPreferences(tx, userId),
     ]);
-    if (user?.emailVerified && !user.suspendedAt && preferences.jobEmail) {
+    const allow = user && !user.suspendedAt && (
+      transactional ? Boolean(user.email) : user.emailVerified && preferences.jobEmail
+    );
+    if (allow) {
       const key = kind === "MESSAGE"
         ? `job-email:${hashToken(`${userId}:${href}:${Math.floor(Date.now() / 300_000)}`)}`
         : `job-email:${notice.id}`;
@@ -48,7 +82,7 @@ export async function notify(
       const subjectTitle = t.tx(title);
       const link = localizePath(href, locale);
       await tx.outbox.createMany({ skipDuplicates: true, data: [{ key, kind: "EMAIL", payloadEnc: encrypt(JSON.stringify({
-        type: "JOB_NOTICE", userId, notificationId: notice.id, to: user.email,
+        type: "JOB_NOTICE", kind, userId, notificationId: notice.id, to: user.email,
         expiresAt: new Date(Date.now() + 23 * 3600_000).toISOString(),
         subject: `${subjectTitle} — Zgjoi`, text: t("server.notifications.logAccountDetailsNotification", { title: subjectTitle, base, href: link, base2: locale === "en" ? `${base}/en` : base }),
       })) }] });
@@ -239,16 +273,20 @@ async function submitEmailJobs(jobs: EmailJob[]) {
         tokenId?: string;
         expiresAt?: string;
         type?: string;
+        kind?: string;
         userId?: string;
         notificationId?: string;
       };
       if (message.type === "JOB_NOTICE") {
+        const transactional = TRANSACTIONAL_NOTICE_KINDS.has(message.kind ?? "");
         const user = message.userId && await db.user.findUnique({ where: { id: message.userId }, select: { email: true, emailVerified: true, suspendedAt: true } });
         const notice = message.notificationId && await db.notification.findUnique({ where: { id: message.notificationId }, select: { userId: true } });
-        const preference = message.userId && await notificationPreferences(db, message.userId);
-        if (process.env.JOB_EMAILS_ENABLED !== "true" || !user || !user.emailVerified || user.suspendedAt ||
-            user.email !== message.to || !notice || notice.userId !== message.userId || !preference || !preference.jobEmail)
-          throw new Error("MESSAGE_SUPPRESSED");
+        const preference = !transactional && message.userId ? await notificationPreferences(db, message.userId) : null;
+        const recipientOk = !!user && !user.suspendedAt && user.email === message.to && !!notice && notice.userId === message.userId;
+        const allowed = transactional
+          ? recipientOk
+          : recipientOk && process.env.JOB_EMAILS_ENABLED === "true" && user.emailVerified && preference?.jobEmail;
+        if (!allowed) throw new Error("MESSAGE_SUPPRESSED");
       }
       if (message.tokenId) {
         const token = await db.authToken.findUnique({
@@ -284,12 +322,7 @@ async function submitEmailJobs(jobs: EmailJob[]) {
           "Content-Type": "application/json",
           "Idempotency-Key": job.key,
         },
-        body: JSON.stringify({
-          from: process.env.EMAIL_FROM,
-          to: [message.to],
-          subject: message.subject,
-          text: message.text,
-        }),
+        body: JSON.stringify(resendEmailPayload(message)),
       });
       if (!response.ok) throw new Error(`EMAIL_STATUS_${response.status}`);
       const result = await response.json();

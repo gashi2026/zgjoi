@@ -33,6 +33,12 @@ staging existed), `ENCRYPTION_KEY` (keep it; rotating breaks encrypted data), `C
 Optional, safe defaults when unset: `PAYMENTS_MODE` (unset = payments off), `EMAIL_DELIVERY_ENABLED`
 (unset = no email), `APP_URL` (unset = no email links; set `https://zgjoi.com` before enabling email),
 `DOCUMENT_UPLOADS_ENABLED` (unset = off), `ZGJOI_HELPLINE_WHATSAPP` (Arrita; unset = on-site alert only).
+To turn on transactional email (sign-up verification, password reset, and ID approve/decline): set
+Production `APP_URL=https://zgjoi.com`, `EMAIL_FROM=Zgjoi <noreply@zgjoi.com>`, `RESEND_API_KEY`,
+and `EMAIL_DELIVERY_ENABLED=true` only after the Resend domain is verified. Reply-To is hard-coded
+to `info@zgjoi.com`. Booking and other job notices also need `JOB_EMAILS_ENABLED=true` and an opt-in
+under `/siguria` (default is off). DNS for zgjoi.com is at Cloudflare, not Vercel; do not replace the
+apex MX (Google) or existing `send.zgjoi.com` / `resend._domainkey` records without comparing values.
 `ZGJOI_PASSWORD` keeps the coming-soon lock on; remove it only when opening the site publicly.
 
 ## 3. Code
