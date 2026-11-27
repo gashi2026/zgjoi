@@ -4,6 +4,8 @@ import { kosovoLocalToIso } from "@/lib/scheduling";
 import { useLocale, useRouter } from "@/lib/i18n/client";
 import { isLocale, localizePath, stripLocale } from "@/lib/i18n/config";
 import { useT } from "@/lib/i18n/client";
+import MunicipalitySelect from "./MunicipalitySelect";
+import MunicipalityMultiSelect from "./MunicipalityMultiSelect";
 
 export type Field = {
   name: string;
@@ -16,7 +18,9 @@ export type Field = {
     | "select"
     | "checkbox"
     | "number"
-    | "datetime-local";
+    | "datetime-local"
+    | "municipality"
+    | "municipalities";
   value?: string | number;
   checked?: boolean;
   required?: boolean;
@@ -79,6 +83,12 @@ export default function ApiForm({
       const body: Record<string, unknown> = { ...values };
       for (const field of fields) {
         const raw = String(data.get(field.name) ?? "");
+        if (field.type === "municipalities") {
+          const list = data.getAll(field.name).map(String).filter(Boolean);
+          if (!list.length && !field.required) continue;
+          body[field.name] = list;
+          continue;
+        }
         if (!raw && !field.required && field.type !== "checkbox") continue;
         body[field.name] =
           field.type === "checkbox"
@@ -166,7 +176,15 @@ export default function ApiForm({
             {field.label}
             {field.required ? " *" : ""}
           </span>
-          {field.type === "textarea" ? (
+          {field.type === "municipality" ? (
+            <div className="mt-1 font-normal">
+              <MunicipalitySelect name={field.name} value={String(field.value ?? "")} required={field.required} />
+            </div>
+          ) : field.type === "municipalities" ? (
+            <div className="mt-1 font-normal">
+              <MunicipalityMultiSelect name={field.name} values={String(field.value ?? "").split(",").map((s) => s.trim()).filter(Boolean)} required={field.required} />
+            </div>
+          ) : field.type === "textarea" ? (
             <textarea
               name={field.name}
               defaultValue={field.value}

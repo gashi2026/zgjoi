@@ -11,6 +11,7 @@ import { resolveProCategory } from "./pro-categories";
 import { categoryFlow } from "./bookings";
 import { containsContactDetails } from "../contact-filter";
 import { clientKey, cleanText, entityId } from "../marketplace-validation";
+import { municipalityName } from "../kosovo-municipalities";
 import { money, dateTime } from "../format";
 import { estimateSplit } from "../book-now";
 
@@ -26,7 +27,7 @@ export const estimateInput = z.object({
   clientKey,
   visitAt: z.string().datetime(),
   detail: cleanText(10, 4000),
-  city: cleanText(1, 60),
+  city: municipalityName,
   address: z.string().trim().max(300).optional(),
 });
 

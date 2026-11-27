@@ -57,7 +57,7 @@ export default async function ProfileEditor({ pro }: { pro: boolean }) {
       label: t("profileEditor.city"),
       value: user.city ?? "",
       required: true,
-      maxLength: 60,
+      type: "municipality",
     },
     {
       name: "phone",
@@ -88,8 +88,8 @@ export default async function ProfileEditor({ pro }: { pro: boolean }) {
         label: t("profileEditor.citiesWork"),
         value: profile.serviceCities.join(", "),
         required: true,
-        as: "list",
-        hint: t("profileEditor.separateCitiesCommas"),
+        type: "municipalities",
+        hint: t("municipality.serviceCitiesHint"),
       },
     );
   return (

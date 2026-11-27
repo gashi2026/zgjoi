@@ -5,6 +5,7 @@ import { useRouter, useT } from "@/lib/i18n/client";
 import { buttonClass, inputClass } from "@/components/marketplace/ApiForm";
 import CategoryIcon from "@/components/CategoryIcon";
 import SignupSteps from "./SignupSteps";
+import MunicipalitySelect from "@/components/marketplace/MunicipalitySelect";
 
 export type WizardCategory = { slug: string; label: string; icon: string };
 
@@ -95,7 +96,13 @@ export default function SignupWizard({ role, categories = [], idStep, maxCategor
             {field("name", t("signupWizard.fullName"), { maxLength: 120, autoComplete: "name" })}
             {field("email", t("signupWizard.email"), { type: "email", autoComplete: "email" })}
             {field("password", t("signupWizard.password"), { type: "password", minLength: 12, autoComplete: "new-password", title: t("signupWizard.passwordHint") })}
-            {field("city", t("signupWizard.city"), { maxLength: 60, autoComplete: "address-level2" })}
+            <label className="block text-sm font-semibold text-ink">
+              <span>{t("signupWizard.city")} *</span>
+              <div className="mt-1 font-normal">
+                <MunicipalitySelect name="city" value={account.city} required onChange={(city) => setAccount((a) => ({ ...a, city }))} />
+              </div>
+              {err("city")}
+            </label>
             <label className="flex items-start gap-3 text-sm">
               <input type="checkbox" name="terms" checked={account.terms} onChange={set("terms")} required className="mt-1 h-5 w-5 accent-[#E0A800]" />
               <span>{t("signupWizard.iAccept")}{" "}

@@ -16,6 +16,8 @@ import { serializable } from "./transaction";
 import { queueAccountEmail, userLocale } from "./notifications";
 import { getLocale } from "../i18n/server";
 import { verifyLoginFactor } from "./mfa";
+import { liftExpiredSuspension } from "./suspension";
+import { suspensionIsActive } from "../suspension";
 
 const dummyHash = bcrypt.hashSync(opaqueToken(), 12);
 
@@ -28,8 +30,9 @@ export async function authenticate(input: unknown, ip: string) {
     data.password,
     user?.passwordHash ?? dummyHash,
   );
+  if (user) await liftExpiredSuspension(db, user);
   invariant(
-    user && matches && !user.suspendedAt,
+    user && matches && !suspensionIsActive(user),
     "CREDENTIALS",
     401,
     "Email ose fjalëkalim i pasaktë.",
@@ -163,9 +166,10 @@ export async function forgotPassword(input: unknown, ip: string) {
   await enforceLimit(`recovery-email:${data.email}`, 3, 60 * 60_000);
   const user = await db.user.findUnique({
     where: { email: data.email },
-    select: { id: true, suspendedAt: true },
+    select: { id: true, suspendedAt: true, suspendedUntil: true, deletedAt: true },
   });
-  const queued = user && !user.suspendedAt ? await requestAccountToken(user.id, "PASSWORD_RESET") : undefined;
+  if (user) await liftExpiredSuspension(db, user);
+  const queued = user && !suspensionIsActive(user) ? await requestAccountToken(user.id, "PASSWORD_RESET") : undefined;
   return {
     ok: true,
     emailJobId: queued?.jobId,
@@ -193,14 +197,14 @@ export async function consumeAccountToken(
   await serializable(async (tx) => {
     const token = await tx.authToken.findUnique({
       where: { tokenHash: hashToken(data.token) },
-      include: { user: { select: { suspendedAt: true } } },
+      include: { user: { select: { suspendedAt: true, suspendedUntil: true, deletedAt: true } } },
     });
     invariant(
       token &&
         token.purpose === purpose &&
         !token.usedAt &&
         token.expiresAt > new Date() &&
-        !token.user.suspendedAt,
+        (await liftExpiredSuspension(tx, { id: token.userId, ...token.user }), !suspensionIsActive(token.user)),
       "TOKEN",
       400,
       "Lidhja është e pavlefshme ose ka skaduar.",
@@ -294,6 +298,7 @@ export async function changePassword(actor: Actor, input: unknown) {
       where: {
         id: actor.id,
         passwordHash: user.passwordHash,
+        deletedAt: null,
         suspendedAt: null,
       },
       data: { passwordHash: nextHash },
@@ -322,10 +327,11 @@ export async function revokeOtherSessions(actor: Actor, sessionHash: string, inp
   invariant(await verifyPassword(data.currentPassword, user.passwordHash), "CREDENTIALS", 400, "Fjalëkalimi aktual nuk është i saktë.");
   return serializable(async (tx) => {
     const current = await tx.session.findUnique({
-      where: { token: sessionHash }, include: { user: { select: { passwordHash: true, suspendedAt: true } } },
+      where: { token: sessionHash }, include: { user: { select: { passwordHash: true, suspendedAt: true, suspendedUntil: true, deletedAt: true } } },
     });
+    if (current) await liftExpiredSuspension(tx, { id: current.userId, ...current.user });
     invariant(current && current.userId === actor.id && current.expiresAt > new Date() &&
-      current.user.passwordHash === user.passwordHash && !current.user.suspendedAt,
+      current.user.passwordHash === user.passwordHash && !suspensionIsActive(current.user),
       "UNAUTHENTICATED", 401, "Hyni përsëri në llogari.");
     const removed = await tx.session.deleteMany({ where: { userId: actor.id, token: { not: sessionHash } } });
     await tx.auditLog.create({ data: { actorId: actor.id, action: "OTHER_SESSIONS_REVOKED", target: actor.id, meta: { count: removed.count } } });

@@ -12,39 +12,23 @@ import { notify } from "./notifications";
 import { entityId, cleanText } from "../marketplace-validation";
 import { email, password } from "../validation";
 import { opaqueToken } from "./tokens";
+import { municipalityName } from "../kosovo-municipalities";
+import { SUSPEND_DURATIONS } from "../suspension";
+import {
+  activeAccountWhere, afterEraseAccount, eraseAccount, preserveAdmin, setAdminProfessions,
+  resolveSuspendedUntil,
+} from "./admin-accounts";
 
 async function adminAccess(actor: Actor, tx: Prisma.TransactionClient) {
   invariant(
     actor.role === "ADMIN" &&
       (await tx.user.findFirst({
-        where: { id: actor.id, role: "ADMIN", suspendedAt: null },
+        where: { id: actor.id, role: "ADMIN", ...activeAccountWhere() },
       })),
     "FORBIDDEN",
     403,
     "Nuk keni qasje.",
   );
-}
-async function preserveAdmin(
-  tx: Prisma.TransactionClient,
-  target: { id: string; role: string; suspendedAt: Date | null },
-  actor: Actor,
-  losesAdmin: boolean,
-) {
-  if (!losesAdmin) return;
-  invariant(
-    target.id !== actor.id,
-    "SELF",
-    409,
-    "Nuk mund të hiqni qasjen tuaj administrative.",
-  );
-  if (target.role === "ADMIN" && !target.suspendedAt)
-    invariant(
-      (await tx.user.count({ where: { role: "ADMIN", suspendedAt: null } })) >
-        1,
-      "LAST_ADMIN",
-      409,
-      "Duhet të mbetet një administrator aktiv.",
-    );
 }
 export async function adminCommand(actor: Actor, input: unknown) {
   invariant(actor.role === "ADMIN", "FORBIDDEN", 403, "Nuk keni qasje.");
@@ -55,6 +39,8 @@ export async function adminCommand(actor: Actor, input: unknown) {
         "USER_UPDATE",
         "USER_SUSPEND",
         "USER_RESTORE",
+        "USER_SET_PROFESSIONS",
+        "USER_DELETE",
         "PRO_APPROVE",
         "PRO_REJECT",
         "DOCUMENT_REVIEW",
@@ -73,7 +59,7 @@ export async function adminCommand(actor: Actor, input: unknown) {
         name: cleanText(2, 120),
         email,
         role: z.enum(["CLIENT", "PRO", "ADMIN", "SUPPORT"]),
-        city: cleanText(1, 60),
+        city: municipalityName,
         phone: z.string().trim().max(30).default(""),
         password: password.optional().or(z.literal("")),
         categorySlug: cleanText(1, 80).optional(),
@@ -144,6 +130,7 @@ export async function adminCommand(actor: Actor, input: unknown) {
           include: { proProfile: true },
         });
         invariant(target, "NOT_FOUND", 404, "Llogaria nuk u gjet.");
+        invariant(!target.deletedAt, "DELETED", 409, "Kjo llogari është fshirë tashmë.");
         await preserveAdmin(
           tx,
           target,
@@ -215,24 +202,62 @@ export async function adminCommand(actor: Actor, input: unknown) {
       return { ok: true };
     });
   }
+  if (action === "USER_SET_PROFESSIONS") {
+    const data = z.object({ id: entityId, categories: z.array(cleanText(1, 80)).min(1).max(20) }).parse(envelope);
+    return serializable(async (tx) => {
+      await adminAccess(actor, tx);
+      const target = await tx.user.findUnique({ where: { id: data.id }, include: { proProfile: true } });
+      invariant(target && !target.deletedAt && target.proProfile, "NOT_FOUND", 404, "Profili profesional nuk u gjet.");
+      const result = await setAdminProfessions(tx, target.proProfile.id, data.categories);
+      await tx.auditLog.create({ data: { actorId: actor.id, action, target: target.id, meta: { profileId: target.proProfile.id, ...result } } });
+      return { ok: true, message: "Profesionet u ruajtën dhe u miratuan." };
+    });
+  }
+  if (action === "USER_DELETE") {
+    const data = z.object({ id: entityId, confirmation: cleanText(3, 200) }).parse(envelope);
+    const passwordHash = await hashPassword(opaqueToken());
+    const erased = await serializable(async (tx) => {
+      await adminAccess(actor, tx);
+      const result = await eraseAccount(tx, actor, data.id, data.confirmation, passwordHash);
+      await tx.auditLog.create({
+        data: { actorId: actor.id, action, target: data.id, meta: { email: result.email, name: result.name, profileId: result.profileId } },
+      });
+      return result;
+    });
+    await afterEraseAccount(erased.storagePaths);
+    return { ok: true, message: "Llogaria u hoq. Rezervimet dhe bisedat mbeten të anonimizuara." };
+  }
   const data = z
-    .object({ id: entityId, reason: cleanText(5, 1000).optional() })
+    .object({
+      id: entityId,
+      reason: z.preprocess((v) => (v === "" || v == null ? undefined : v), cleanText(5, 1000).optional()),
+      duration: z.enum(SUSPEND_DURATIONS).optional(),
+      untilDate: z.string().trim().max(32).optional(),
+    })
     .parse(envelope);
   return serializable(async (tx) => {
     await adminAccess(actor, tx);
     if (action === "USER_SUSPEND" || action === "USER_RESTORE") {
       const target = await tx.user.findUnique({ where: { id: data.id } });
       invariant(target, "NOT_FOUND", 404, "Llogaria nuk u gjet.");
+      invariant(!target.deletedAt, "DELETED", 409, "Kjo llogari është fshirë tashmë.");
       await preserveAdmin(tx, target, actor, action === "USER_SUSPEND");
-      await tx.user.update({
-        where: { id: data.id },
-        data: { suspendedAt: action === "USER_SUSPEND" ? new Date() : null },
-      });
       if (action === "USER_SUSPEND") {
+        const duration = data.duration ?? "permanent";
+        const suspendedUntil = resolveSuspendedUntil(duration, data.untilDate);
+        await tx.user.update({
+          where: { id: data.id },
+          data: { suspendedAt: new Date(), suspendedUntil, suspensionReason: data.reason ?? null },
+        });
         await tx.session.deleteMany({ where: { userId: data.id } });
         await tx.authToken.updateMany({
           where: { userId: data.id, usedAt: null },
           data: { usedAt: new Date() },
+        });
+      } else {
+        await tx.user.update({
+          where: { id: data.id },
+          data: { suspendedAt: null, suspendedUntil: null, suspensionReason: null },
         });
       }
     } else if (action === "PRO_APPROVE" || action === "PRO_REJECT") {

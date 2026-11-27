@@ -5,7 +5,13 @@ import { activeCategories } from "@/lib/server/catalog";
 import Frame, { Panel } from "@/components/marketplace/Frame";
 import ApiForm, { type Field } from "@/components/marketplace/ApiForm";
 import { getT } from "@/lib/i18n/server";
-import { money } from "@/lib/format";
+import { dateTime, money } from "@/lib/format";
+import AdminProfessionsForm from "@/components/admin/AdminProfessionsForm";
+import AdminSuspendForm from "@/components/admin/AdminSuspendForm";
+import AdminDeleteForm from "@/components/admin/AdminDeleteForm";
+import { suspensionIsActive } from "@/lib/suspension";
+import { MAX_PRO_CATEGORIES } from "@/lib/pro-categories";
+import { serviceCategory } from "@/lib/service-categories";
 export default async function Page({
   searchParams,
 }: {
@@ -21,14 +27,17 @@ export default async function Page({
     );
   const [users, categories] = await Promise.all([
     db.user.findMany({
-      where: q
-        ? {
-            OR: [
-              { name: { contains: q, mode: "insensitive" } },
-              { email: { contains: q, mode: "insensitive" } },
-            ],
-          }
-        : {},
+      where: {
+        deletedAt: null,
+        ...(q
+          ? {
+              OR: [
+                { name: { contains: q, mode: "insensitive" } },
+                { email: { contains: q, mode: "insensitive" } },
+              ],
+            }
+          : {}),
+      },
       orderBy: { createdAt: "desc" },
       take: 30,
       skip: (page - 1) * 30,
@@ -40,6 +49,8 @@ export default async function Page({
         city: true,
         phone: true,
         suspendedAt: true,
+        suspendedUntil: true,
+        suspensionReason: true,
         proProfile: {
           select: {
             id: true,
@@ -59,7 +70,7 @@ export default async function Page({
   const userFields: Field[] = [
     { name: "name", label: t("admin.name"), required: true, maxLength: 120 },
     { name: "email", label: t("admin.email2"), type: "email", required: true },
-    { name: "city", label: t("admin.city"), required: true, maxLength: 60 },
+    { name: "city", label: t("admin.city"), required: true, type: "municipality" },
     { name: "phone", label: t("admin.phone"), maxLength: 30 },
     {
       name: "role",
@@ -124,17 +135,25 @@ export default async function Page({
           <h2 className="text-lg font-bold">{user.name}</h2>
           <p className="text-sm text-muted">
             {user.email} · {user.role} ·{" "}
-            {user.suspendedAt ? t("admin.suspended") : t("admin.active")}
+            {suspensionIsActive(user)
+              ? user.suspendedUntil
+                ? t("adminPros.suspendedUntil", { date: dateTime(user.suspendedUntil, t.locale) })
+                : t("adminPros.suspendedPermanent")
+              : t("admin.active")}
           </p>
-          <div className="mt-4 flex gap-3">
-            <ApiForm
-              endpoint="/api/admin/commands"
-              values={{
-                id: user.id,
-                action: user.suspendedAt ? "USER_RESTORE" : "USER_SUSPEND",
-              }}
-              label={user.suspendedAt ? t("admin.reactivate") : t("admin.suspendAccount")}
-              confirmation={t("admin.changeAccountsAccessIts")}
+          <div className="mt-4">
+            <AdminSuspendForm
+              userId={user.id}
+              suspended={suspensionIsActive(user)}
+              until={user.suspendedUntil ? user.suspendedUntil.toISOString() : null}
+              reason={user.suspensionReason}
+              statusLabel={
+                suspensionIsActive(user)
+                  ? user.suspendedUntil
+                    ? t("adminPros.suspendedUntil", { date: dateTime(user.suspendedUntil, t.locale) })
+                    : t("adminPros.suspendedPermanent")
+                  : t("admin.active")
+              }
             />
           </div>
           <details className="mt-4">
@@ -181,6 +200,15 @@ export default async function Page({
                   <li className="text-sm text-red-700">{t("admin.noValidProfession", { slug: user.proProfile.categorySlug })}</li>
                 )}
               </ul>
+              <AdminProfessionsForm
+                userId={user.id}
+                max={MAX_PRO_CATEGORIES}
+                options={categories.map((c) => ({ slug: c.slug, label: t.tx(c.name) }))}
+                selected={user.proProfile.categories.flatMap((c) => {
+                  const slug = serviceCategory(c.categorySlug)?.slug;
+                  return slug && categories.some((x) => x.slug === slug) ? [slug] : [];
+                })}
+              />
               <p className="my-3 whitespace-pre-wrap text-sm">
                 {user.proProfile.about}
               </p>
@@ -242,6 +270,7 @@ export default async function Page({
               </div>
             </div>
           )}
+          <AdminDeleteForm userId={user.id} email={user.email} />
         </Panel>
       ))}
       <nav className="flex gap-4">

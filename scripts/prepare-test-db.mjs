@@ -44,6 +44,7 @@ try {
   execute("supabase/staging/id-verification.sql");
   execute("supabase/staging/user-locale.sql");
   execute("supabase/staging/pro-categories-signup.sql");
+  execute("supabase/staging/admin-pro-controls.sql");
   console.log(
     "Disposable Postgres: foundation bootstrap and marketplace upgrade both applied.",
   );

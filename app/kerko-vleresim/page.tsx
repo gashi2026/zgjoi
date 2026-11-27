@@ -58,7 +58,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ p
                 hint: t("estimate.proConfirmsSuggestsAnother") },
               { name: "detail", label: t("estimate.whatNeedsLooking"), type: "textarea", required: true, minLength: 10, maxLength: 4000,
                 hint: t("estimate.noPhoneNumbersEmails") },
-              { name: "city", label: t("estimate.city"), value: actor.city ?? "", required: true, maxLength: 60 },
+              { name: "city", label: t("estimate.city"), value: actor.city ?? "", required: true, type: "municipality" },
               { name: "address", label: t("estimate.address"), maxLength: 300 },
             ]} />
           </IdGate>

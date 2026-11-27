@@ -98,6 +98,13 @@ model User {
   locale          String?
   emailVerified   DateTime?
   suspendedAt     DateTime?
+  /// When the current suspension ends. Null with suspendedAt set means permanent, until an admin unsuspends.
+  suspendedUntil  DateTime?
+  /// Optional admin note for the current suspension.
+  suspensionReason String?
+  /// Set when an admin erases the account. The row is kept as a tombstone so bookings, chats,
+  /// reviews and payments stay intact; personal data is cleared and ID photos are deleted.
+  deletedAt       DateTime?
   /// SUPPORT only: the owner can grant/revoke reviewing ID documents. Ignored for other roles.
   canReviewIds    Boolean   @default(false)
   /// Sign-up wizard step still to finish. "ID" = account created, ID photos not yet uploaded
@@ -122,6 +129,8 @@ model User {
 
   @@index([role])
   @@index([email])
+  @@index([deletedAt])
+  @@index([suspendedUntil])
 }
 
 model Session {

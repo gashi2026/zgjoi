@@ -2,6 +2,7 @@ import { z } from "zod";
 import "./zod-sq";
 import { email, password } from "./validation";
 import { appointmentMinutes } from "./appointments";
+import { municipalityName, municipalityNames } from "./kosovo-municipalities";
 
 export const entityId = z
   .string()
@@ -36,7 +37,7 @@ export const signupInput = z
     name: cleanText(2, 120),
     email,
     password,
-    city: cleanText(1, 60),
+    city: municipalityName,
     phone: z.string().trim().max(30).optional(),
     categories: z.array(cleanText(1, 80)).max(20).optional(),
     categorySlug: cleanText(1, 80).optional(),
@@ -75,7 +76,7 @@ export const inquiryInput = z
     categorySlug: cleanText(1, 80).optional(),
     title: cleanText(5, 120).optional(),
     detail: cleanText(20, 4000),
-    city: cleanText(1, 60),
+    city: municipalityName,
     timing: z.string().trim().max(120).optional(),
     address: z.string().trim().max(200).optional(),
     clientKey,
@@ -142,11 +143,11 @@ export const reviewInput = z.object({
 });
 export const profileInput = z.object({
   name: cleanText(2, 120),
-  city: cleanText(1, 60),
+  city: municipalityName,
   phone: z.string().trim().max(30),
   about: cleanText(30, 4000).optional(),
   experience: z.string().trim().max(80).optional(),
-  serviceCities: z.array(cleanText(1, 60)).min(1).max(20).optional(),
+  serviceCities: municipalityNames.optional(),
 });
 export const availabilityInput = z
   .object({
