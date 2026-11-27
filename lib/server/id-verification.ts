@@ -4,6 +4,7 @@ import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { db } from "./db";
 import type { Actor } from "./auth";
+import { activeAccountWhere } from "../suspension";
 import { AppError, invariant } from "./errors";
 import { enforceLimit } from "./rate-limit";
 import { encryptBytes, decryptBytes, encrypt, decrypt } from "./crypto";
@@ -27,10 +28,10 @@ export function idUploadsAvailable() {
 export const idVerificationEnforced = idUploadsAvailable;
 
 /** Where-clause for a pro's user who may appear publicly and receive work. */
-export function proUserWhere(): Prisma.UserWhereInput {
+export function proUserWhere(now = new Date()): Prisma.UserWhereInput {
   return {
-    suspendedAt: null,
     role: "PRO",
+    ...activeAccountWhere(now),
     ...(idVerificationEnforced() ? { idVerification: { is: { status: "APPROVED" } } } : {}),
   };
 }
@@ -320,4 +321,17 @@ export async function identityRecordFor(actor: Actor, userId: string, mode: "VIE
     verification: user.idVerification,
     history,
   };
+}
+
+
+/** Immediately deletes a user's ID photos (encrypted bytes in the database). Used when an admin erases an account. */
+export async function deleteIdPhotosForUser(tx: Prisma.TransactionClient, userId: string, actorId: string | null, reason: string) {
+  const row = await tx.idVerification.findUnique({ where: { userId }, select: { id: true } });
+  if (!row) return 0;
+  const removed = await tx.idDocumentImage.deleteMany({ where: { verificationId: row.id } });
+  await tx.idVerification.update({ where: { id: row.id }, data: { imagesDeletedAt: new Date() } });
+  await tx.auditLog.create({
+    data: { actorId, action: "ID_IMAGES_DELETED", target: row.id, meta: { reason, userId, count: removed.count } },
+  });
+  return removed.count;
 }

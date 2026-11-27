@@ -1,19 +1,30 @@
+import type { T } from "./i18n/translate";
 /**
- * Live support runs 09:00–17:00, Monday to Friday, Kosovo time.
- * Kosovo uses Europe/Belgrade (CET/CEST) — the same offset year-round rules,
- * so we let Intl handle daylight saving rather than hardcoding +1/+2.
+ * Live support runs 09:00–17:00 every day.
+ * Times are computed in Europe/Belgrade (Kosovo, CET/CEST) so Intl handles
+ * daylight saving rather than hardcoding +1/+2. That zone is not shown in the UI.
  */
 export const SUPPORT_TZ = "Europe/Belgrade";
 export const OPEN_HOUR = 9;
 export const CLOSE_HOUR = 17;
-export const OPEN_DAYS = [1, 2, 3, 4, 5]; // Monday–Friday
+/** Every day of the week. */
+export const OPEN_DAYS = [0, 1, 2, 3, 4, 5, 6];
+
+export type SupportReopen = "online" | "today" | "tomorrow" | "weekday";
 
 export type SupportStatus = {
   online: boolean;
-  /** Local time in Kosovo, e.g. "14:32" */
+  /** Local time in Europe/Belgrade, e.g. "14:32" */
   localTime: string;
-  /** Albanian sentence describing when we are back */
+  /**
+   * Albanian sentence describing when we are back. Kept for the support API
+   * and the English catalog translator (`t.tx`).
+   */
   nextOpenLabel: string;
+  /** How the next opening should be phrased. */
+  reopen: SupportReopen;
+  /** Weekday (0=Sun) of the next opening when `reopen` is `weekday`. */
+  nextWeekday: number | null;
 };
 
 function kosovoParts(now = new Date()) {
@@ -48,24 +59,58 @@ export function supportStatus(now = new Date()): SupportStatus {
   const isWorkday = OPEN_DAYS.includes(weekday);
   const online = isWorkday && hour >= OPEN_HOUR && hour < CLOSE_HOUR;
 
-  let nextOpenLabel: string;
+  let reopen: SupportReopen;
+  let nextWeekday: number | null = null;
   if (online) {
-    nextOpenLabel = `Jemi online deri në ora ${CLOSE_HOUR}:00`;
+    reopen = "online";
   } else if (isWorkday && hour < OPEN_HOUR) {
-    nextOpenLabel = `Kthehemi sot në ora ${OPEN_HOUR}:00`;
+    reopen = "today";
   } else {
-    // find the next working day
     let d = (weekday + 1) % 7;
     let steps = 1;
     while (!OPEN_DAYS.includes(d) && steps < 8) {
       d = (d + 1) % 7;
       steps += 1;
     }
-    const when = steps === 1 ? "nesër" : dayNames[d];
-    nextOpenLabel = `Kthehemi ${when} në ora ${OPEN_HOUR}:00`;
+    nextWeekday = d;
+    reopen = steps === 1 ? "tomorrow" : "weekday";
   }
 
-  return { online, localTime: label, nextOpenLabel };
+  const open = String(OPEN_HOUR).padStart(2, "0");
+  const close = String(CLOSE_HOUR).padStart(2, "0");
+  const nextOpenLabel =
+    reopen === "online"
+      ? `Jemi online deri në ora ${close}:00`
+      : reopen === "today"
+        ? `Kthehemi sot në ora ${open}:00`
+        : `Kthehemi ${reopen === "tomorrow" ? "nesër" : dayNames[nextWeekday ?? 1]} në ora ${open}:00`;
+
+  return { online, localTime: label, nextOpenLabel, reopen, nextWeekday };
 }
 
-export const SUPPORT_HOURS_LABEL = "E hënë – e premte, 09:00–17:00 (koha e Kosovës)";
+const WEEKDAY_KEYS = [
+  "supportChat.sunday",
+  "supportChat.monday",
+  "supportChat.tuesday",
+  "supportChat.wednesday",
+  "supportChat.thursday",
+  "supportChat.friday",
+  "supportChat.saturday",
+] as const;
+
+/** Locale-aware sentence for the open-panel status line. */
+export function formatSupportStatus(status: SupportStatus, t: T): string {
+  const hour = {
+    OPEN_HOUR: String(OPEN_HOUR).padStart(2, "0"),
+    CLOSE_HOUR: String(CLOSE_HOUR).padStart(2, "0"),
+  };
+  if (status.reopen === "online") return t("supportChat.wereOnlineUntil", hour);
+  if (status.reopen === "today") return t("supportChat.wereBackToday", hour);
+  const when =
+    status.reopen === "tomorrow"
+      ? t("supportChat.tomorrow")
+      : t(WEEKDAY_KEYS[status.nextWeekday ?? 1]);
+  return t("supportChat.wereBackWhen", { ...hour, when });
+}
+
+export const SUPPORT_HOURS_LABEL = "Çdo ditë, 09:00–17:00";

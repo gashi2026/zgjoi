@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { activeAccountWhere } from "../lib/suspension";
 import { readFileSync } from "node:fs";
 import {
   readImageInfo, isHeic, idPurgeAfter, declineText, needsIdCheck, ID_DECLINE_REASONS, asDocumentType, backRequired, sideLabel, ID_DOCUMENT_TYPES,
@@ -97,10 +98,11 @@ test("enforcement follows the owner's identity-upload switch, so a deploy never 
     process.env.ENCRYPTION_KEY = "cd".repeat(32);
     process.env.DOCUMENT_UPLOADS_ENABLED = "false";
     assert.equal(idVerificationEnforced(), false);
-    assert.deepEqual(proUserWhere(), { suspendedAt: null, role: "PRO" });
+    const now = new Date("2026-11-27T12:00:00.000Z");
+    assert.deepEqual(proUserWhere(now), { role: "PRO", ...activeAccountWhere(now) });
     process.env.DOCUMENT_UPLOADS_ENABLED = "true";
     assert.equal(idVerificationEnforced(), true);
-    assert.deepEqual(proUserWhere(), { suspendedAt: null, role: "PRO", idVerification: { is: { status: "APPROVED" } } });
+    assert.deepEqual(proUserWhere(now), { role: "PRO", ...activeAccountWhere(now), idVerification: { is: { status: "APPROVED" } } });
     process.env.ENCRYPTION_KEY = "short";
     assert.equal(idVerificationEnforced(), false, "no valid key, no uploads, no enforcement");
   } finally {

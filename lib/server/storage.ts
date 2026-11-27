@@ -193,3 +193,20 @@ export async function signedDocument(actor: Actor, id: string) {
   });
   return url.href;
 }
+
+/** Best-effort removal of private pro documents. Missing storage config is ignored. */
+export async function tryDeleteStoredPaths(paths: string[]) {
+  const valid = paths.filter((path) => /^[a-zA-Z0-9_-]+\/[a-f0-9-]+\.(pdf|png|jpg)$/.test(path));
+  if (!valid.length) return 0;
+  try {
+    const { bucket } = storageConfig();
+    const response = await storage(`object/${bucket}`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prefixes: valid }),
+    });
+    return response.ok ? valid.length : 0;
+  } catch {
+    return 0;
+  }
+}

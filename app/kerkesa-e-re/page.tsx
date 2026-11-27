@@ -92,6 +92,7 @@ export default async function Page({
             },
             {
               name: "city",
+              type: "municipality",
               label: t("newChat.city"),
               value: actor.city ?? "",
               required: true,
