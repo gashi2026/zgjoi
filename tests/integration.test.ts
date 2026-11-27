@@ -1969,6 +1969,8 @@ test("database-backed private marketplace and authorization journey", async (t) 
         assert.equal(new Headers(init?.headers).get("Idempotency-Key"), before.key);
         const payload = JSON.parse(String(init?.body));
         assert.deepEqual(payload.to, [recipient]);
+        assert.equal(payload.reply_to, "info@zgjoi.com");
+        assert.equal(payload.from, process.env.EMAIL_FROM);
         assert(payload.text.includes("/rivendos-fjalekalimin#token="));
         calls++;
         return new Response(JSON.stringify({ id: "mock-account-receipt" }));
@@ -2020,6 +2022,7 @@ test("database-backed private marketplace and authorization journey", async (t) 
       assert.equal(String(url), "https://api.resend.com/emails");
       const payload = JSON.parse(String(init?.body));
       assert.equal(payload.to[0], "recipient@example.test");
+      assert.equal(payload.reply_to, "info@zgjoi.com");
       calls.push(new Headers(init?.headers).get("Idempotency-Key")!);
       return new Response(JSON.stringify(mode === "failure" ? { error: "temporary" } : { id: "synthetic-receipt" }), { status: mode === "failure" ? 503 : 200 });
     };
@@ -2115,7 +2118,9 @@ test("database-backed private marketplace and authorization journey", async (t) 
       const before = await snapshot();
       globalThis.fetch = async (url, init) => {
         assert.equal(String(url), "https://api.resend.com/emails");
-        assert.deepEqual(JSON.parse(String(init?.body)).to, [recipient]);
+        const payload = JSON.parse(String(init?.body));
+        assert.deepEqual(payload.to, [recipient]);
+        assert.equal(payload.reply_to, "info@zgjoi.com");
         assert.equal(new Headers(init?.headers).get("Idempotency-Key"), target.key);
         calls++;
         return new Response(JSON.stringify({ id: "synthetic-single-receipt" }));
@@ -2180,7 +2185,9 @@ test("database-backed private marketplace and authorization journey", async (t) 
       await saveNotificationPreferences(user.id, { jobEmail: false });
       globalThis.fetch = async (url, init) => {
         assert.equal(String(url), "https://api.resend.com/emails");
-        assert.deepEqual(JSON.parse(String(init?.body)).to, [address]);
+        const payload = JSON.parse(String(init?.body));
+        assert.deepEqual(payload.to, [address]);
+        assert.equal(payload.reply_to, "info@zgjoi.com");
         calls++;
         keys.push(new Headers(init?.headers).get("Idempotency-Key")!);
         bodies.push(String(init?.body));

@@ -338,6 +338,39 @@ test("maintenance status detects missing, stale and implausible heartbeat values
   assert.equal(maintenanceState({ ranAt: "2026-09-07T11:00:00Z" }, now), "LATE");
 });
 
+test("Resend payload sets reply-to and never includes the API key", async (t) => {
+  const { resendEmailPayload, EMAIL_REPLY_TO, jobNoticeHrefAllowed } = await import("../lib/server/notifications");
+  const names = ["EMAIL_FROM", "RESEND_API_KEY"];
+  const previous = Object.fromEntries(names.map((name) => [name, process.env[name]]));
+  t.after(() => {
+    for (const name of names) {
+      if (previous[name] === undefined) delete process.env[name];
+      else process.env[name] = previous[name];
+    }
+  });
+  process.env.EMAIL_FROM = "Zgjoi <noreply@zgjoi.com>";
+  process.env.RESEND_API_KEY = "synthetic-private-api-value";
+  const payload = resendEmailPayload({
+    to: "user@example.test",
+    subject: "Verify your email — Zgjoi",
+    text: "https://zgjoi.com/verifiko-emailin#token=example",
+  });
+  assert.deepEqual(payload, {
+    from: "Zgjoi <noreply@zgjoi.com>",
+    to: ["user@example.test"],
+    reply_to: "info@zgjoi.com",
+    subject: "Verify your email — Zgjoi",
+    text: "https://zgjoi.com/verifiko-emailin#token=example",
+  });
+  assert.equal(EMAIL_REPLY_TO, "info@zgjoi.com");
+  assert(!JSON.stringify(payload).includes(process.env.RESEND_API_KEY!));
+  assert.equal(jobNoticeHrefAllowed("/verifikimi"), true);
+  assert.equal(jobNoticeHrefAllowed("/llogaria/kerkesat/abc"), true);
+  assert.equal(jobNoticeHrefAllowed("/pro/kerkesat/abc"), true);
+  assert.equal(jobNoticeHrefAllowed("/admin/verifikimi"), false);
+  assert.equal(jobNoticeHrefAllowed("/siguria"), false);
+});
+
 test("account email readiness requires queue prerequisites and never exposes configured values", async (t) => {
   const { accountEmailSetup } = await import("../lib/server/notifications");
   const names = ["EMAIL_DELIVERY_ENABLED", "RESEND_API_KEY", "EMAIL_FROM", "APP_URL", "ENCRYPTION_KEY"];
