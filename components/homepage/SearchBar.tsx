@@ -63,8 +63,8 @@ function SearchField({ value, onChange, label, options, icon: Icon }: {
   );
 }
 
-export default function SearchBar({ initialQuery = "", initialCity = "", compact = false }: {
-  initialQuery?: string; initialCity?: string; compact?: boolean;
+export default function SearchBar({ initialQuery = "", initialCity = "", compact = false, subjectNames = [] }: {
+  initialQuery?: string; initialCity?: string; compact?: boolean; subjectNames?: string[];
 }) {
   const t = useT();
   const router = useRouter();
@@ -80,7 +80,7 @@ export default function SearchBar({ initialQuery = "", initialCity = "", compact
           if (city.trim()) params.set("qyteti", city.trim());
           router.push(`/kerko${params.size ? `?${params}` : ""}`);
         }}>
-        <SearchField value={query} onChange={setQuery} label={t("searchBar.whatServiceDoNeed")} options={categories.map((category) => t.tx(category.name))} icon={Search} />
+        <SearchField value={query} onChange={setQuery} label={t("searchBar.whatServiceDoNeed")} options={[...categories.map((category) => t.tx(category.name)), ...subjectNames]} icon={Search} />
         <div className="hidden h-7 w-px bg-line sm:block" aria-hidden="true" />
         <div className="border-t border-line sm:border-0 sm:contents">
           <MunicipalitySelect variant="plain" name="qyteti" value={city} onChange={setCity} />

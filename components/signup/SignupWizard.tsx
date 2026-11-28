@@ -6,8 +6,10 @@ import { buttonClass, inputClass } from "@/components/marketplace/ApiForm";
 import CategoryIcon from "@/components/CategoryIcon";
 import SignupSteps from "./SignupSteps";
 import MunicipalitySelect from "@/components/marketplace/MunicipalitySelect";
+import { MAX_PRO_PROFESSIONS, categoryCount } from "@/lib/pro-categories";
 
-export type WizardCategory = { slug: string; label: string; icon: string };
+/** A category with `subjects` (Kurse) opens into them: the pro picks subjects, not the category itself. */
+export type WizardCategory = { slug: string; label: string; icon: string; subjects?: { slug: string; label: string }[] };
 
 type Account = { name: string; email: string; password: string; city: string; terms: boolean };
 const ACCOUNT_FIELDS = ["name", "email", "password", "city", "terms"];
@@ -25,6 +27,7 @@ export default function SignupWizard({ role, categories = [], idStep, maxCategor
   const [step, setStep] = useState(0);
   const [account, setAccount] = useState<Account>({ name: "", email: "", password: "", city: "", terms: false });
   const [picked, setPicked] = useState<string[]>([]);
+  const [opened, setOpened] = useState<string[]>([]);
   const [about, setAbout] = useState("");
   const [experience, setExperience] = useState("");
   const [pending, setPending] = useState(false);
@@ -36,7 +39,17 @@ export default function SignupWizard({ role, categories = [], idStep, maxCategor
   function toggle(slug: string) {
     setMessage("");
     setPicked((list) => list.includes(slug) ? list.filter((s) => s !== slug)
-      : list.length >= maxCategories ? (setMessage(t("signupWizard.upToProfessions", { count: maxCategories })), list) : [...list, slug]);
+      : categoryCount([...list, slug]) > maxCategories || list.length >= MAX_PRO_PROFESSIONS ? (setMessage(t("signupWizard.upToProfessions", { count: maxCategories })), list) : [...list, slug]);
+  }
+  /** Tapping a category that has subjects (Kurse) opens or closes its subject list; closing clears them. */
+  function toggleGroup(c: WizardCategory) {
+    setMessage("");
+    const subjects = (c.subjects ?? []).map((x) => x.slug);
+    if (opened.includes(c.slug) || picked.some((s) => subjects.includes(s))) {
+      setOpened((list) => list.filter((s) => s !== c.slug));
+      setPicked((list) => list.filter((s) => !subjects.includes(s)));
+    } else if (categoryCount([...picked, c.slug]) > maxCategories) setMessage(t("signupWizard.upToProfessions", { count: maxCategories }));
+    else setOpened((list) => [...list, c.slug]);
   }
 
   async function create() {
@@ -69,6 +82,8 @@ export default function SignupWizard({ role, categories = [], idStep, maxCategor
     e.preventDefault();
     if (pending) return;
     if (pro && step === 0) { setMessage(""); setStep(1); window.scrollTo({ top: 0 }); return; }
+    if (pro && opened.some((slug) => !(categories.find((c) => c.slug === slug)?.subjects ?? []).some((x) => picked.includes(x.slug))))
+      return setMessage(t("signupWizard.chooseLeastOneSubject"));
     if (pro && !picked.length) return setMessage(t("signupWizard.chooseLeastOneProfession"));
     void create();
   }
@@ -120,22 +135,43 @@ export default function SignupWizard({ role, categories = [], idStep, maxCategor
               <p className="mb-3 text-sm text-muted">{t("signupWizard.pickOneOrMore", { count: maxCategories })}</p>
               <div className="grid grid-cols-3 gap-2 sm:grid-cols-4" data-testid="profession-picker">
                 {categories.map((c) => {
-                  const on = picked.includes(c.slug);
+                  const group = Boolean(c.subjects?.length);
+                  const open = group && (opened.includes(c.slug) || picked.some((s) => c.subjects!.some((x) => x.slug === s)));
+                  const on = group ? open : picked.includes(c.slug);
                   return (
                     <label key={c.slug} className="group cursor-pointer">
-                      <input type="checkbox" className="peer sr-only" name="categories" value={c.slug} checked={on} onChange={() => toggle(c.slug)} />
+                      <input type="checkbox" className="peer sr-only" name={group ? undefined : "categories"} value={c.slug} checked={on}
+                        onChange={() => (group ? toggleGroup(c) : toggle(c.slug))} aria-expanded={group ? open : undefined} />
                       <span className={`hexframe mx-auto block p-[2px] transition peer-focus-visible:ring-2 ${on ? "bg-gold" : "bg-line group-hover:bg-gold/60"}`} style={{ width: "100%", maxWidth: 104, aspectRatio: "0.866" }}>
                         <span className={`hexframe flex h-full w-full flex-col items-center justify-center gap-1 px-2 text-center ${on ? "bg-honey" : "bg-white"}`}>
                           <CategoryIcon name={c.icon} size={22} className={on ? "text-ink" : "text-gold-dark"} />
-                          <span className="text-[11px] font-semibold leading-tight sm:text-xs">{c.label}</span>
-                          {on && <span aria-hidden className="text-xs font-bold">✓</span>}
+                          <span className="text-[11px] font-semibold leading-tight sm:text-xs">{c.label}{group && <span aria-hidden> {open ? "▴" : "▾"}</span>}</span>
+                          {on && !group && <span aria-hidden className="text-xs font-bold">✓</span>}
                         </span>
                       </span>
                     </label>
                   );
                 })}
               </div>
-              <p className="mt-2 text-sm" role="status">{t("signupWizard.selectedCount", { count: picked.length, max: maxCategories })}</p>
+              {categories.filter((c) => c.subjects?.length && (opened.includes(c.slug) || picked.some((s) => c.subjects!.some((x) => x.slug === s)))).map((c) => (
+                <div key={c.slug} className="mt-3 rounded-2xl border border-gold/60 bg-[#FFFDF5] p-3" data-testid={`subject-picker-${c.slug}`}>
+                  <p className="mb-2 text-sm font-semibold">{c.label}: {t("signupWizard.chooseSubjects")}</p>
+                  <div className="flex flex-wrap gap-2">
+                    {c.subjects!.map((x) => {
+                      const sel = picked.includes(x.slug);
+                      return (
+                        <label key={x.slug} className="cursor-pointer">
+                          <input type="checkbox" className="peer sr-only" name="categories" value={x.slug} checked={sel} onChange={() => toggle(x.slug)} />
+                          <span className={`inline-flex min-h-11 items-center rounded-full border px-3 text-sm font-medium transition peer-focus-visible:ring-2 ${sel ? "border-gold bg-gold" : "border-line bg-white hover:border-gold"}`}>
+                            {sel && <span aria-hidden className="mr-1 text-xs font-bold">✓</span>}{x.label}
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+              <p className="mt-2 text-sm" role="status">{t("signupWizard.selectedCount", { count: categoryCount(picked), max: maxCategories })}</p>
               {err("categories")}
             </fieldset>
             <label className="block text-sm font-semibold text-ink">

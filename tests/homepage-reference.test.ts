@@ -60,12 +60,12 @@ async function render(node: React.ReactNode, pathname = "/") {
   }, React.createElement(PathnameContext.Provider, { value: pathname }, tree)));
 }
 
-test("original presentation keeps its title while the hive uses only the 14 approved categories", () => {
+test("original presentation keeps its title while the hive uses only the 13 approved categories", () => {
   assert.deepEqual(Object.keys(presentation), ["site"]);
   assert.equal(presentation.site.heroTitle, "Gjej profesionist për çdo shërbim.");
   assert.equal(presentation.site.heroAccent, "Lehtë.");
   const slugs = serviceCategories.map(c => c.slug);
-  assert.equal(new Set(Object.values(DEFAULT_SERVICES)).size, 14);
+  assert.equal(new Set(Object.values(DEFAULT_SERVICES)).size, 13);
   for (const slug of Object.values(DEFAULT_SERVICES)) assert(slugs.includes(slug as typeof slugs[number]));
 });
 

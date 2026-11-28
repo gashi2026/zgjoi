@@ -1,5 +1,5 @@
 import { activeServiceCategories, requireActiveCategory } from "./service-catalog";
-import { serviceCategory } from "../service-categories";
+import { professionSlug, serviceCategory } from "../service-categories";
 import { syncProfileSummary } from "./pro-categories";
 import "server-only";
 import { z } from "zod";
@@ -79,7 +79,8 @@ export async function adminCommand(actor: Actor, input: unknown) {
       if (action === "USER_CREATE") {
         if (data.role === "PRO") {
           invariant(data.categorySlug, "CATEGORY", 400, "Zgjidhni kategorinë e profesionistit.");
-          data.categorySlug = (await requireActiveCategory(data.categorySlug, tx)).slug;
+          await requireActiveCategory(data.categorySlug, tx);
+          data.categorySlug = professionSlug(data.categorySlug)!;
         }
         invariant(
           !(await tx.user.findUnique({ where: { email: data.email } })),

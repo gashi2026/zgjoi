@@ -7,7 +7,7 @@ import { publicProfile } from "@/lib/server/catalog";
 import { db } from "@/lib/server/db";
 import { categoryFlow, bookableTerms } from "@/lib/server/bookings";
 import { money } from "@/lib/format";
-import { serviceCategory } from "@/lib/service-categories";
+import { professionLabel, sameProfession } from "@/lib/service-categories";
 import { bookingTotal, hourOptions, hoursLabel, estimateCredit, LATE_FEE_CENTS, FREE_CANCEL_HOURS } from "@/lib/book-now";
 import Frame, { Panel } from "@/components/marketplace/Frame";
 import ApiForm from "@/components/marketplace/ApiForm";
@@ -29,12 +29,12 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ p
   // Book now is per profession: the one asked for when it offers Book now, else the first that does.
   const flows = await Promise.all(pro.categories.map((c) => categoryFlow(db, c.categorySlug)));
   const bookable = pro.categories.flatMap((c, i) => { const tm = bookableTerms(pro, flows[i], c); return tm ? [{ slug: c.categorySlug, terms: tm }] : []; });
-  const chosen = bookable.find((b) => b.slug === serviceCategory(kategoria ?? "")?.slug) ?? bookable[0];
+  const chosen = bookable.find((b) => kategoria && sameProfession(b.slug, kategoria)) ?? bookable[0];
   if (!chosen) return localRedirect(`/kerkesa-e-re?pro=${pro.id}${kategoria ? `&kategoria=${encodeURIComponent(kategoria)}` : ""}`);
   const terms = chosen.terms;
   const estimates = await db.estimate.findMany({ where: { clientId: actor.id, profileId: pro.id, state: "PAID", creditedRequestId: null } });
   const credit = estimateCredit(estimates, actor.id, pro.id);
-  const category = t.tx(serviceCategory(chosen.slug)?.name ?? chosen.slug);
+  const category = professionLabel(chosen.slug, t.tx);
   return (
     <Frame actor={actor} title={t("bookNow.bookNow", { name: pro.user.name })}
       subtitle={t("bookNow.hrMinimumTotalRate", { category: category, amount: money(terms.rateCents, t.locale), label: t.tx(hoursLabel(terms.minMinutes)) })}>

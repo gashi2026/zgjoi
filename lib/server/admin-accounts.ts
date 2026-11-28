@@ -2,7 +2,7 @@ import "server-only";
 import type { Prisma } from "@prisma/client";
 import type { Actor } from "./auth";
 import { invariant } from "./errors";
-import { serviceCategory } from "../service-categories";
+import { professionSlug } from "../service-categories";
 import { requireActiveCategories, syncProfileSummary } from "./pro-categories";
 import { deleteIdPhotosForUser } from "./id-verification";
 import { tryDeleteStoredPaths } from "./storage";
@@ -41,11 +41,11 @@ export async function preserveAdmin(
 export async function setAdminProfessions(tx: Tx, profileId: string, slugs: readonly string[]) {
   const canonical = await requireActiveCategories(slugs, tx);
   const before = await tx.proCategory.findMany({ where: { profileId } });
-  const removed = before.filter((row) => !canonical.includes(serviceCategory(row.categorySlug)?.slug ?? ""));
+  const removed = before.filter((row) => !canonical.includes(professionSlug(row.categorySlug) ?? ""));
   if (removed.length) await tx.proCategory.deleteMany({ where: { id: { in: removed.map((row) => row.id) } } });
   const now = new Date();
   for (const [position, slug] of canonical.entries()) {
-    const existing = before.find((row) => serviceCategory(row.categorySlug)?.slug === slug);
+    const existing = before.find((row) => professionSlug(row.categorySlug) === slug);
     if (existing)
       await tx.proCategory.update({
         where: { id: existing.id },
@@ -56,7 +56,7 @@ export async function setAdminProfessions(tx: Tx, profileId: string, slugs: read
       await tx.proCategory.create({ data: { profileId, categorySlug: slug, position, approvedAt: now } });
   }
   await syncProfileSummary(tx, profileId);
-  return { added: canonical.filter((slug) => !before.some((row) => serviceCategory(row.categorySlug)?.slug === slug)), removed: removed.map((row) => row.categorySlug), kept: canonical.filter((slug) => before.some((row) => serviceCategory(row.categorySlug)?.slug === slug)) };
+  return { added: canonical.filter((slug) => !before.some((row) => professionSlug(row.categorySlug) === slug)), removed: removed.map((row) => row.categorySlug), kept: canonical.filter((slug) => before.some((row) => professionSlug(row.categorySlug) === slug)) };
 }
 
 /**
