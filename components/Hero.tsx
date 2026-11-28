@@ -2,7 +2,8 @@ import SearchBar from "./SearchBar";
 import { Bee, FlightPath } from "./Brand";
 import Honeycomb from "./Honeycomb";
 import MobileHexBelt from "./MobileHexBelt";
-import { activeCategories } from "@/lib/server/catalog";
+import { activeCategories, offeredSubjectSlugs } from "@/lib/server/catalog";
+import { visibleSubjects } from "@/lib/service-categories";
 import { getHoneycombMap, getSiteSettings } from "@/lib/server/settings";
 import { categories as baseCategories } from "@/lib/data";
 import { getT } from "@/lib/i18n/server";
@@ -15,18 +16,21 @@ export default async function Hero() {
     t("hero.findVettedLocalPros");
   let services: Record<string, string> | undefined;
   let catalog: { slug: string; name: string; icon: string }[] | undefined;
+  let subjectNames: string[] = [];
 
   try {
-    const [site, comb, cats] = await Promise.all([
+    const [site, comb, cats, offered] = await Promise.all([
       getSiteSettings(),
       getHoneycombMap(),
       activeCategories(),
+      offeredSubjectSlugs(),
     ]);
     if (site?.heroTitle) title = t.tx(site.heroTitle);
     if (site?.heroAccent) accent = t.tx(site.heroAccent);
     if (site?.heroSubtitle) subtitle = t.tx(site.heroSubtitle);
     if (comb && Object.keys(comb).length > 0) services = comb;
     if (cats.length > 0) catalog = cats.map((c) => ({ slug: c.slug, name: t.tx(c.name), icon: c.icon }));
+    subjectNames = visibleSubjects("kurse", offered).map((x) => t.tx(x.name));
   } catch {
     /* fall back to defaults */
   }
@@ -90,7 +94,7 @@ export default async function Hero() {
           </p>
 
           <div className="zg-hero-search mt-6 max-w-xl sm:mt-8">
-            <SearchBar />
+            <SearchBar subjectNames={subjectNames} />
           </div>
 
           {/* touch devices: the hex belt, tucked under the search box */}

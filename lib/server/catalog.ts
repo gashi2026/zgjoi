@@ -1,4 +1,5 @@
-import { categorySlugs, kurseSubjects, professionSlug, sameProfession, serviceCategory, serviceSubject } from "../service-categories";
+import { cache } from "react";
+import { categorySlugs, kurseSubjects, professionSlug, sameProfession, serviceCategory, serviceSubject, visibleSubjects } from "../service-categories";
 import { activeServiceCategories } from "./service-catalog";
 import "server-only";
 import { proUserWhere } from "./id-verification";
@@ -39,6 +40,24 @@ export const publicProSelect = {
 } satisfies Prisma.ProProfileSelect;
 
 export const activeCategories = activeServiceCategories;
+
+/** Canonical slugs of Kurse subjects that at least one publicly listed pro offers.
+ * Same rule as search: approved profile, active unsuspended account (and an approved ID when that check is on).
+ * Cached once per request so the home, /kategorite and /kerko share the query. */
+export const offeredSubjectSlugs = cache(async () => {
+  const slugs = kurseSubjects.flatMap((s) => categorySlugs(s.slug));
+  const rows = await db.proCategory.findMany({
+    where: {
+      categorySlug: { in: slugs },
+      approvedAt: { not: null },
+      profile: { verification: "APPROVED", user: proUserWhere() },
+    },
+    select: { categorySlug: true },
+    distinct: ["categorySlug"],
+  });
+  return visibleSubjects("kurse", rows.map((r) => r.categorySlug)).map((s) => s.slug);
+});
+
 const searchable = (text: string) => text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
 export async function searchPros(input: Record<string, unknown> = {}) {
@@ -123,7 +142,7 @@ export async function searchPros(input: Record<string, unknown> = {}) {
       : p.sort === "reviews"
         ? [{ ratingCount: "desc" }, { id: "asc" }]
         : [{ ratingAvg: "desc" }, { ratingCount: "desc" }, { id: "asc" }];
-  const [pros, count] = await Promise.all([
+  const [pros, count, offeredSubjects] = await Promise.all([
     db.proProfile.findMany({
       where,
       select: publicProSelect,
@@ -132,6 +151,7 @@ export async function searchPros(input: Record<string, unknown> = {}) {
       take: 18,
     }),
     db.proProfile.count({ where }),
+    offeredSubjectSlugs(),
   ]);
   return {
     pros: pros.map(pro => withDisplayCategory(pro, active, p.kategoria)),
@@ -139,6 +159,7 @@ export async function searchPros(input: Record<string, unknown> = {}) {
     page: p.page,
     pages: Math.ceil(count / 18),
     categories,
+    offeredSubjects,
   };
 }
 

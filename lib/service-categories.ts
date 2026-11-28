@@ -33,7 +33,9 @@ export const kurseSubjects = [
   { slug: "kurse-fizike-kimi", name: "Fizikë & Kimi", parent: "kurse", legacy: [] },
   { slug: "kurse-programim", name: "Programim", parent: "kurse", legacy: [] },
   { slug: "kurse-provime", name: "Përgatitje për provime (Matura)", parent: "kurse", legacy: [] },
-  { slug: "kurse-muzike", name: "Muzikë (piano, kitarë, violinë)", parent: "kurse", legacy: [] },
+  { slug: "kurse-piano", name: "Piano", parent: "kurse", legacy: [] },
+  { slug: "kurse-kitare", name: "Kitarë", parent: "kurse", legacy: [] },
+  { slug: "kurse-violin", name: "Violinë", parent: "kurse", legacy: [] },
   { slug: "kurse-kendim", name: "Këndim", parent: "kurse", legacy: [] },
   { slug: "kurse-vallezim", name: "Vallëzim", parent: "kurse", legacy: ["vallezim", "vallzim"] },
   { slug: "kurse-balet", name: "Balet", parent: "kurse", legacy: ["balet"] },
@@ -44,13 +46,28 @@ export const kurseSubjects = [
 ] as const;
 export type KurseSubjectSlug = (typeof kurseSubjects)[number]["slug"];
 
-/** The subject a slug names: a subject slug itself, or a legacy Valle slug. Plain `kurse` is none. */
+/** Retired combined subject: "Muzikë (piano, kitarë, violinë)" was split into three instruments.
+ * A stored `kurse-muzike` row stays labelled "Kurse · Muzikë" and is not offered as a new pick.
+ * A search for that slug also matches Piano, Kitarë and Violinë teachers. */
+export const retiredKurseSubjects = [
+  { slug: "kurse-muzike", name: "Muzikë", parent: "kurse", legacy: [] as const, mapsTo: ["kurse-piano", "kurse-kitare", "kurse-violin"] as const },
+] as const;
+
+/** The subject a slug names: a current subject, a legacy Valle slug, or the retired music slug. Plain `kurse` is none. */
 export function serviceSubject(slug: string) {
   const s = String(slug ?? "").trim();
-  return kurseSubjects.find(x => x.slug === s) ?? kurseSubjects.find(x => (x.legacy as readonly string[]).includes(s));
+  return kurseSubjects.find(x => x.slug === s)
+    ?? kurseSubjects.find(x => (x.legacy as readonly string[]).includes(s))
+    ?? retiredKurseSubjects.find(x => x.slug === s);
 }
 export function subjectsOf(parentSlug: string) {
   return kurseSubjects.filter(x => x.parent === parentSlug);
+}
+/** Subjects the public may see in menus: only those a visible pro actually offers.
+ * `offered` is the canonical profession slugs of public, approved profession rows. */
+export function visibleSubjects(parentSlug: string, offered: readonly string[]) {
+  const have = new Set(offered.map(s => professionSlug(s)).filter((s): s is string => !!s));
+  return subjectsOf(parentSlug).filter(x => have.has(x.slug));
 }
 /** The top-level category of a slug: canonical, alias or subject. */
 export function serviceCategory(slug: string) {
@@ -73,16 +90,24 @@ export function professionLabel(slug: string, tx: (text: string) => string = (x)
 /** True when the row (any slug form) falls under the searched/requested slug: the same subject when
  * a subject was asked for, otherwise anywhere under the same top-level category. */
 export function sameProfession(row: string, wanted: string): boolean {
-  if (serviceSubject(wanted)) return professionSlug(row) === professionSlug(wanted);
+  const want = serviceSubject(wanted);
+  if (want) {
+    const rowSlug = professionSlug(row);
+    if (rowSlug === want.slug) return true;
+    return "mapsTo" in want && (want.mapsTo as readonly string[]).includes(rowSlug ?? "");
+  }
   const a = serviceCategory(row)?.slug;
   return !!a && a === serviceCategory(wanted)?.slug;
 }
 /** Every stored slug that a search for this slug should match. */
 export function categorySlugs(slug: string): string[] {
   const subject = serviceSubject(slug);
-  if (subject) return [subject.slug, ...subject.legacy];
+  if (subject) {
+    const extra = "mapsTo" in subject ? [...subject.mapsTo] : [];
+    return [subject.slug, ...subject.legacy, ...extra];
+  }
   const category = serviceCategory(slug);
-  return category ? [category.slug, ...category.aliases, ...subjectsOf(category.slug).map(x => x.slug)] : [];
+  return category ? [category.slug, ...category.aliases, ...subjectsOf(category.slug).map(x => x.slug), ...retiredKurseSubjects.filter(x => x.parent === category.slug).map(x => x.slug)] : [];
 }
 export const allowedCategorySlugs = serviceCategories.flatMap(c => [c.slug, ...c.aliases]);
 
@@ -103,8 +128,10 @@ export function professionOptions(cats: readonly { slug: string; name: string; i
   return cats.flatMap((c) => {
     const subjects = subjectsOf(c.slug);
     if (!subjects.length) return [{ slug: c.slug, label: tx(c.name), short: tx(c.name), icon: c.icon }];
+    const retired = retiredKurseSubjects.filter(x => x.parent === c.slug);
     return [
       { slug: c.slug, label: tx(c.name), short: tx(c.name), icon: c.icon, hidden: true },
+      ...retired.map((x) => ({ slug: x.slug, label: `${tx(c.name)} · ${tx(x.name)}`, short: tx(x.name), icon: c.icon, group: tx(c.name), hidden: true })),
       ...subjects.map((x) => ({ slug: x.slug, label: `${tx(c.name)} · ${tx(x.name)}`, short: tx(x.name), icon: c.icon, group: tx(c.name) })),
     ];
   });

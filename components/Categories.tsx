@@ -1,17 +1,17 @@
 import Link from "@/components/i18n/Link";
-import { activeCategories } from "@/lib/server/catalog";
+import { activeCategories, offeredSubjectSlugs } from "@/lib/server/catalog";
 import { getT } from "@/lib/i18n/server";
-import { subjectsOf } from "@/lib/service-categories";
+import { visibleSubjects } from "@/lib/service-categories";
 export default async function Categories() {
   const t = await getT();
-  const categories = await activeCategories();
+  const [categories, offered] = await Promise.all([activeCategories(), offeredSubjectSlugs()]);
   return (
     <section id="kategorite" className="mx-auto max-w-7xl px-4 py-10">
       <h2 className="text-3xl font-bold">{t("categories.whatServiceDoNeed")}</h2>
       <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
         {categories.map((c) => {
-          const subjects = subjectsOf(c.slug);
-          // Kurse is a dropdown: tap it to pick English, Math, Ballet, Traditional dance...
+          const subjects = visibleSubjects(c.slug, offered);
+          // Kurse is a dropdown of subjects that already have a public pro. With none, it is a plain link.
           return subjects.length ? (
             <details key={c.id} data-testid={`category-menu-${c.slug}`} className="group rounded-2xl border border-line bg-cream p-4 font-semibold open:col-span-full open:border-gold">
               <summary className="flex min-h-6 cursor-pointer list-none items-center justify-between gap-2 [&::-webkit-details-marker]:hidden">

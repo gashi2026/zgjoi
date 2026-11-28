@@ -3,7 +3,7 @@ import { searchPros } from "@/lib/server/catalog";
 import CatalogCard from "@/components/marketplace/CatalogCard";
 import MunicipalitySelect from "@/components/marketplace/MunicipalitySelect";
 import { getT, pageMetadata } from "@/lib/i18n/server";
-import { professionSlug, serviceCategory, subjectsOf } from "@/lib/service-categories";
+import { professionSlug, serviceCategory, serviceSubject, visibleSubjects } from "@/lib/service-categories";
 export const dynamic = "force-dynamic";
 export const generateMetadata = () => pageMetadata({ title: "meta.searchTitle", canonical: "/kerko" });
 export default async function Page({
@@ -58,12 +58,15 @@ export default async function Page({
           >
             <option value="">{t("search.all")}</option>
             {result.categories.map((c) => {
-              const subjects = subjectsOf(c.slug);
-              // Kurse opens into its subjects (English, Math, Ballet...): one dropdown, grouped.
-              return subjects.length ? (
+              const selected = professionSlug(params.kategoria ?? "") ?? "";
+              const subjects = visibleSubjects(c.slug, result.offeredSubjects);
+              // A direct URL to a subject with no public pro stays selected and shows empty results.
+              const listed = subjects.some((x) => x.slug === selected) ? subjects
+                : (serviceSubject(selected)?.parent === c.slug && serviceSubject(selected) ? [...subjects, serviceSubject(selected)!] : subjects);
+              return listed.length ? (
                 <optgroup key={c.id} label={t.tx(c.name)}>
                   <option value={c.slug}>{t("search.allSubjects", { name: t.tx(c.name) })}</option>
-                  {subjects.map((x) => <option key={x.slug} value={x.slug}>{t.tx(x.name)}</option>)}
+                  {listed.map((x) => <option key={x.slug} value={x.slug}>{t.tx(x.name)}</option>)}
                 </optgroup>
               ) : (
                 <option key={c.id} value={c.slug}>
@@ -93,7 +96,13 @@ export default async function Page({
       </form>
       {serviceCategory(params.kategoria ?? "")?.slug === "kurse" && (
         <nav aria-label={t("search.subjects")} data-testid="kurse-subjects" className="-mt-2 mb-5 flex flex-wrap gap-2">
-          {subjectsOf("kurse").map((x) => (
+          {(() => {
+            const selected = professionSlug(params.kategoria ?? "") ?? "";
+            const chips = visibleSubjects("kurse", result.offeredSubjects);
+            const listed = chips.some((x) => x.slug === selected) ? chips
+              : (serviceSubject(selected) && serviceSubject(selected)!.parent === "kurse" ? [...chips, serviceSubject(selected)!] : chips);
+            return listed;
+          })().map((x) => (
             <Link key={x.slug} href={`/kerko?${new URLSearchParams({ ...params, kategoria: x.slug, page: "1" })}`}
               aria-current={professionSlug(params.kategoria ?? "") === x.slug ? "true" : undefined}
               className={`min-h-9 rounded-full border px-3 py-1.5 text-sm font-medium ${professionSlug(params.kategoria ?? "") === x.slug ? "border-gold bg-gold" : "border-line bg-white hover:border-gold"}`}>

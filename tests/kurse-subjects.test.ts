@@ -2,8 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
-  categorySlugs, kurseSubjects, professionLabel, professionOptions, professionSlug, sameProfession,
-  serviceCategories, serviceCategory, serviceSubject, subjectsOf,
+  categorySlugs, kurseSubjects, professionLabel, professionOptions, professionSlug, retiredKurseSubjects,
+  sameProfession, serviceCategories, serviceCategory, serviceSubject, subjectsOf, visibleSubjects,
 } from "../lib/service-categories";
 import { MAX_PRO_CATEGORIES, categoryCount, displayRate, normalizeCategorySlugs, offersCategory, pickCategory, publicCategories } from "../lib/pro-categories";
 import { hiringFlow } from "../lib/book-now";
@@ -23,8 +23,10 @@ test("Valle is no longer a category of its own; Kurse has the subjects", () => {
   assert.equal(subjectsOf("kurse").length, kurseSubjects.length);
   assert.equal(new Set(kurseSubjects.map((s) => s.slug)).size, kurseSubjects.length, "subject slugs are unique");
   for (const s of kurseSubjects) assert(s.slug.startsWith("kurse-") && s.parent === "kurse");
-  for (const slug of ["kurse-anglisht", "kurse-matematike", "kurse-balet", "kurse-valle-popullore", "kurse-vallezim", "kurse-patente"])
+  for (const slug of ["kurse-anglisht", "kurse-matematike", "kurse-balet", "kurse-valle-popullore", "kurse-vallezim", "kurse-patente", "kurse-piano", "kurse-kitare", "kurse-violin"])
     assert(kurseSubjects.some((s) => s.slug === slug), slug);
+  assert(!kurseSubjects.some((s) => (s.slug as string) === "kurse-muzike"), "combined music subject was split");
+  assert.equal(retiredKurseSubjects[0].slug, "kurse-muzike");
   assert(!Object.values(DEFAULT_SERVICES).includes("valle"), "no honeycomb cell points at Valle");
 });
 
@@ -86,10 +88,38 @@ test("subjects have Albanian and English names and a readable profession label",
   assert.equal(professionLabel("kurse"), "Kurse");
   assert.equal(professionLabel("frizer"), "Frizer");
   const options = professionOptions(serviceCategories.map(({ slug, name, icon }) => ({ slug, name, icon })), (x) => x);
-  assert.equal(options.filter((o) => o.group === "Kurse").length, kurseSubjects.length);
+  assert.equal(options.filter((o) => o.group === "Kurse" && !o.hidden).length, kurseSubjects.length);
   assert.equal(options.find((o) => o.slug === "kurse")?.hidden, true, "plain Kurse is never offered for new picks");
+  assert.equal(options.find((o) => o.slug === "kurse-muzike")?.hidden, true, "retired combined music is not a new pick");
   assert.equal(options.filter((o) => !o.hidden).length, 12 + kurseSubjects.length);
   assert(serviceSubject("kurse-balet") && !serviceSubject("kurse"));
+});
+
+test("the old combined music slug still works and is not a public subject of its own", () => {
+  assert.equal(professionSlug("kurse-muzike"), "kurse-muzike");
+  assert.equal(professionLabel("kurse-muzike"), "Kurse · Muzikë");
+  assert.equal(serviceCategory("kurse-muzike")?.slug, "kurse");
+  for (const inst of ["kurse-piano", "kurse-kitare", "kurse-violin"])
+    assert(categorySlugs("kurse-muzike").includes(inst), inst);
+  assert(categorySlugs("kurse-muzike").includes("kurse-muzike"));
+  assert.equal(sameProfession("kurse-piano", "kurse-muzike"), true);
+  assert.equal(sameProfession("kurse-anglisht", "kurse-muzike"), false);
+  assert.equal(sameProfession("kurse-muzike", "kurse-piano"), false, "an instrument search does not also pull the retired row under a different name");
+  assert(!subjectsOf("kurse").some((x) => (x.slug as string) === "kurse-muzike"));
+});
+
+test("public menus only list Kurse subjects that a visible pro offers", () => {
+  assert.deepEqual(visibleSubjects("kurse", []).map((s) => s.slug), []);
+  assert.deepEqual(visibleSubjects("kurse", ["kurse", "pastrim", "trainer-personal"]).map((s) => s.slug), [],
+    "plain Kurse or another category does not unlock every subject");
+  assert.deepEqual(visibleSubjects("kurse", ["kurse-anglisht", "kurse-piano", "kurse-anglisht"]).map((s) => s.slug),
+    ["kurse-anglisht", "kurse-piano"]);
+  // A leftover Valle row still unlocks Traditional dance; an unmapped slug is ignored.
+  assert.deepEqual(visibleSubjects("kurse", ["valle", "balet", "unknown"]).map((s) => s.slug),
+    ["kurse-balet", "kurse-valle-popullore"]);
+  // The retired combined music slug does not appear as its own public chip, and does not invent the three instruments.
+  assert.deepEqual(visibleSubjects("kurse", ["kurse-muzike"]).map((s) => s.slug), []);
+  assert.deepEqual(visibleSubjects("pastrim", ["kurse-anglisht"]).map((s) => s.slug), []);
 });
 
 test("pickers show Kurse as a dropdown of subjects", () => {
