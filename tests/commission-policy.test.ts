@@ -5,9 +5,9 @@ import { commissionMonth, eliteWinners, commissionRate } from "../lib/commission
 import { nextRecurringDate, readRecurrence } from "../lib/recurring-bookings";
 import { splitAmount } from "../lib/server/settings";
 
-test("approved catalogue has exactly the 14 blueprint services, with safe legacy aliases", () => {
-  assert.deepEqual(serviceCategories.map(c => c.name), ["Pastrim", "Dado", "Përkthim profesional", "Grim", "Frizer", "Kurse", "Valle", "Korrier", "Elektricist", "Mjeshtër i Ujit", "Ngrohje & Klimatizim", "Shtëpiak", "Moler", "Kopshtar"]);
-  assert.equal(new Set(serviceCategories.map(c => c.slug)).size, 14);
+test("approved catalogue has exactly the 13 blueprint services, with safe legacy aliases", () => {
+  assert.deepEqual(serviceCategories.map(c => c.name), ["Pastrim", "Dado", "Përkthim profesional", "Grim", "Frizer", "Kurse", "Korrier", "Elektricist", "Mjeshtër i Ujit", "Ngrohje & Klimatizim", "Shtëpiak", "Moler", "Kopshtar"]);
+  assert.equal(new Set(serviceCategories.map(c => c.slug)).size, 13);
   assert.equal(serviceCategory("hidraulik")?.slug, "mjeshter-i-ujit");
   assert(categorySlugs("frizer").includes("berber"));
   for (const slug of ["marketing", "kontabilist", "transport", "trainer-personal", "__proto__"])

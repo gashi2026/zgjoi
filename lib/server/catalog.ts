@@ -1,4 +1,4 @@
-import { categorySlugs, serviceCategory } from "../service-categories";
+import { categorySlugs, kurseSubjects, professionSlug, sameProfession, serviceCategory, serviceSubject } from "../service-categories";
 import { activeServiceCategories } from "./service-catalog";
 import "server-only";
 import { proUserWhere } from "./id-verification";
@@ -39,6 +39,7 @@ export const publicProSelect = {
 } satisfies Prisma.ProProfileSelect;
 
 export const activeCategories = activeServiceCategories;
+const searchable = (text: string) => text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
 export async function searchPros(input: Record<string, unknown> = {}) {
   const p = z
@@ -55,12 +56,14 @@ export async function searchPros(input: Record<string, unknown> = {}) {
   const categories = await activeCategories();
   const active = categories.map((c) => c.slug);
   const wanted = categories.filter((c) => !p.kategoria || c.slug === serviceCategory(p.kategoria)?.slug).map((c) => c.slug);
+  // A Kurse subject (or a legacy Valle slug) narrows the search to that subject.
+  const wantedSlugs = serviceSubject(p.kategoria) && wanted.length ? categorySlugs(p.kategoria) : wanted.flatMap((c) => categorySlugs(c));
   // A pro matches through any of their approved professions; the price filter applies to the
   // profession searched for (pros without a price are left out when a maximum price is set).
   const where: Prisma.ProProfileWhereInput = {
     verification: "APPROVED",
     user: proUserWhere(),
-    categories: { some: { categorySlug: { in: wanted.flatMap((c) => categorySlugs(c)) }, approvedAt: { not: null },
+    categories: { some: { categorySlug: { in: wantedSlugs }, approvedAt: { not: null },
       ...(p.maxPrice ? { priceFromCents: { lte: Math.round(p.maxPrice * 100) } } : {}) } },
     ratingAvg: { gte: p.minRating },
     AND: [
@@ -83,20 +86,15 @@ export async function searchPros(input: Record<string, unknown> = {}) {
                 },
                 {
                   categories: { some: { approvedAt: { not: null }, categorySlug: {
-                    in: categories
-                      .filter((c) =>
-                        `${c.name} ${translateText(c.name, "en")} ${c.slug}`
-                          .toLowerCase()
-                          .normalize("NFD")
-                          .replace(/[\u0300-\u036f]/g, "")
-                          .includes(
-                            p.q
-                              .toLowerCase()
-                              .normalize("NFD")
-                              .replace(/[\u0300-\u036f]/g, ""),
-                          ),
-                      )
-                      .flatMap((c) => categorySlugs(c.slug)),
+                    in: [
+                      ...categories.filter((c) => searchable(`${c.name} ${translateText(c.name, "en")} ${c.slug}`).includes(searchable(p.q)))
+                        .flatMap((c) => categorySlugs(c.slug)),
+                      // Kurse subjects too: typing "Anglisht" or "ballet" finds those teachers.
+                      ...(categories.some((c) => c.slug === "kurse")
+                        ? kurseSubjects.filter((x) => searchable(`${x.name} ${translateText(x.name, "en")}`).includes(searchable(p.q)))
+                          .flatMap((x) => categorySlugs(x.slug))
+                        : []),
+                    ],
                   } } },
                 },
               ],
@@ -150,8 +148,9 @@ type WithCategories = { categorySlug: string; priceFrom: number | null; hourlyRa
  * profession to show on a card (the one searched for, else the first), `priceFrom` its price,
  * `displayRateCents` its hourly rate (else the lowest). */
 export function withDisplayCategory<T extends WithCategories>(pro: T, active: readonly string[], wanted?: string) {
-  const rows = publicCategories(pro.categories, active).map((r) => ({ ...r, categorySlug: serviceCategory(r.categorySlug)!.slug }));
-  const show = rows.find((r) => r.categorySlug === serviceCategory(wanted ?? "")?.slug) ?? rows[0];
+  // A Kurse row keeps its subject (Kurse · Anglisht); every other row is its top-level category.
+  const rows = publicCategories(pro.categories, active).map((r) => ({ ...r, categorySlug: professionSlug(r.categorySlug)! }));
+  const show = (wanted ? rows.find((r) => sameProfession(r.categorySlug, wanted)) : undefined) ?? rows[0];
   return { ...pro, categories: rows, categorySlug: show?.categorySlug ?? pro.categorySlug, priceFrom: show ? show.priceFromCents : pro.priceFrom,
     // Card rate: the searched profession's rate, else the lowest of the pro's professions.
     displayRateCents: displayRate(rows, pro.hourlyRateCents, wanted || null) };

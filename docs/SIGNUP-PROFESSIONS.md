@@ -84,3 +84,21 @@ Rollback note: once a pro has signed up without a price, `priceFrom` is NULL; ol
 - Public profile: each profession card shows minimum price (or "Ask for a price"), hourly rate and minimum hours.
   Search cards show the searched profession's rate, else the pro's lowest.
 - Accepted defaults: no price or rate needed for approval; a newly added profession needs its own approval; max 5.
+
+## Kurse subjects (Valle is under Kurse)
+- 13 categories. Valle is no longer a category: it is a Kurse subject. Kurse opens into subjects
+  (`kurseSubjects` in `lib/service-categories.ts`): Anglisht, Gjermanisht, Frëngjisht, Italisht, Matematikë,
+  Fizikë & Kimi, Programim, Përgatitje për provime (Matura), Muzikë, Këndim, Vallëzim, Balet, Valle popullore,
+  Art & vizatim, Teori për patentë shoferi, Lëndë tjetër.
+- Code only, no schema change: a subject is a profession row with the slug `kurse-<subject>` (a string in
+  `ProCategory.categorySlug`). Each subject has its own price, rate and minimum hours and its own approval.
+  Requests, hiring paths and commission still resolve to the parent `kurse` (`serviceCategory()`); the
+  subject is only used to match and label the pro (`professionSlug()`, `professionLabel()`).
+- A pro may pick up to 5 categories; every Kurse subject counts as the one category Kurse (at most 12 rows in all).
+- Old slugs keep working: `valle` becomes Kurse · Valle popullore, `balet` Kurse · Balet, `vallezim` and `vallzim`
+  Kurse · Vallëzim, `tutor` plain Kurse. Rows stored with an old slug are matched and shown correctly and are
+  rewritten to the subject slug (approval kept) the next time the pro saves their professions. `/kerko?kategoria=valle`
+  opens the Traditional dance results.
+- Where the dropdown appears: the search filter (grouped `<optgroup>` plus subject chips), `/kategorite`
+  (Kurse expands), the home search suggestions, pro sign-up (tap Kurse, then pick subjects), the profile
+  "Professions and prices" panel and the admin professions form.

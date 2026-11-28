@@ -21,7 +21,7 @@ export const DEFAULT_SERVICES: Record<string, string> = {
   "2.5,6": "mjeshter-i-ujit",
   "3.5,2": "kopshtar",
   "3.5,4": "pastrim",
-  "4.5,0": "valle",
+  "4.5,0": "frizer",
   "4.5,2": "perkthyes",
   "5.5,0": "ngrohje-klimatizim",
   "5.5,2": "kurse"

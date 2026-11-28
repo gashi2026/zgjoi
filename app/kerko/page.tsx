@@ -3,6 +3,7 @@ import { searchPros } from "@/lib/server/catalog";
 import CatalogCard from "@/components/marketplace/CatalogCard";
 import MunicipalitySelect from "@/components/marketplace/MunicipalitySelect";
 import { getT, pageMetadata } from "@/lib/i18n/server";
+import { professionSlug, serviceCategory, subjectsOf } from "@/lib/service-categories";
 export const dynamic = "force-dynamic";
 export const generateMetadata = () => pageMetadata({ title: "meta.searchTitle", canonical: "/kerko" });
 export default async function Page({
@@ -52,15 +53,24 @@ export default async function Page({
         <label className="text-sm">
           {t("search.category")}<select
             name="kategoria"
-            defaultValue={params.kategoria ?? ""}
+            defaultValue={professionSlug(params.kategoria ?? "") ?? params.kategoria ?? ""}
             className="mt-1 h-11 w-full rounded-xl border border-line px-3 text-base sm:h-auto sm:p-3"
           >
             <option value="">{t("search.all")}</option>
-            {result.categories.map((c) => (
-              <option key={c.id} value={c.slug}>
-                {t.tx(c.name)}
-              </option>
-            ))}
+            {result.categories.map((c) => {
+              const subjects = subjectsOf(c.slug);
+              // Kurse opens into its subjects (English, Math, Ballet...): one dropdown, grouped.
+              return subjects.length ? (
+                <optgroup key={c.id} label={t.tx(c.name)}>
+                  <option value={c.slug}>{t("search.allSubjects", { name: t.tx(c.name) })}</option>
+                  {subjects.map((x) => <option key={x.slug} value={x.slug}>{t.tx(x.name)}</option>)}
+                </optgroup>
+              ) : (
+                <option key={c.id} value={c.slug}>
+                  {t.tx(c.name)}
+                </option>
+              );
+            })}
           </select>
         </label>
         <div className="text-sm">
@@ -81,6 +91,17 @@ export default async function Page({
         <button className="h-11 self-end rounded-full bg-gold px-3 text-base font-semibold sm:h-auto sm:p-3">
           {t("search.search")}</button>
       </form>
+      {serviceCategory(params.kategoria ?? "")?.slug === "kurse" && (
+        <nav aria-label={t("search.subjects")} data-testid="kurse-subjects" className="-mt-2 mb-5 flex flex-wrap gap-2">
+          {subjectsOf("kurse").map((x) => (
+            <Link key={x.slug} href={`/kerko?${new URLSearchParams({ ...params, kategoria: x.slug, page: "1" })}`}
+              aria-current={professionSlug(params.kategoria ?? "") === x.slug ? "true" : undefined}
+              className={`min-h-9 rounded-full border px-3 py-1.5 text-sm font-medium ${professionSlug(params.kategoria ?? "") === x.slug ? "border-gold bg-gold" : "border-line bg-white hover:border-gold"}`}>
+              {t.tx(x.name)}
+            </Link>
+          ))}
+        </nav>
+      )}
       <p role="status" className="mb-4 text-muted">
         {t("search.approvedPros", { count: result.count })}</p>
       {result.pros.length ? (

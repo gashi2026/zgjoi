@@ -12,6 +12,7 @@ import { proTrust } from "@/lib/server/trust";
 import { TRUST_PUBLIC } from "@/lib/trust";
 import TrustDonut from "@/components/marketplace/TrustDonut";
 import CategoryIcon from "@/components/CategoryIcon";
+import { professionLabel, serviceCategory } from "@/lib/service-categories";
 import { getT, pageMetadata } from "@/lib/i18n/server";
 export const dynamic = "force-dynamic";
 export async function generateMetadata({
@@ -48,7 +49,7 @@ export default async function Page({
   const professions = pro.categories.map((c, i) => ({
     slug: c.categorySlug, priceFromCents: c.priceFromCents, flow: flows[i], terms: bookableTerms(pro, flows[i], c), minMinutes: bookingMinimum(c.minMinutes, null),
     rateCents: professionRate(c, flows[i].bookNow ? pro.hourlyRateCents : null),
-    category: categories.find((x) => x.slug === c.categorySlug),
+    category: categories.find((x) => x.slug === serviceCategory(c.categorySlug)?.slug),
   }));
   const main = professions[0];
   const { flow, terms } = main;
@@ -83,7 +84,7 @@ export default async function Page({
       <section className="rounded-2xl border border-line bg-cream p-6">
         <h1 className="text-3xl font-bold">{pro.user.name}</h1>
         <p className="mt-2 text-muted">
-          {professions.map((p) => t.tx(p.category?.name)).join(" · ")} ·{" "}
+          {professions.map((p) => professionLabel(p.slug, t.tx)).join(", ")} ·{" "}
           {pro.user.city}
         </p>
         <p className="mt-4 whitespace-pre-wrap">{pro.about}</p>
@@ -151,7 +152,7 @@ export default async function Page({
                   <CategoryIcon name={p.category?.icon ?? "grid"} size={22} />
                 </span>
                 <div>
-                  <p className="font-bold">{t.tx(p.category?.name)}</p>
+                  <p className="font-bold">{professionLabel(p.slug, t.tx)}</p>
                   <p className="text-sm">{p.priceFromCents ? t("proProfile.minimumPrice", { amount: money(p.priceFromCents, t.locale) }) : <span className="text-muted">{t("proProfile.askForPrice")}</span>}</p>
                   {p.rateCents ? <p className="text-sm font-semibold" data-testid={`rate-${p.slug}`}>{t("proProfile.ratePerHour", { amount: t("proProfile.hr", { amount: money(p.rateCents, t.locale) }) })}</p> : null}
                   {(p.terms?.minMinutes ?? p.minMinutes) && (

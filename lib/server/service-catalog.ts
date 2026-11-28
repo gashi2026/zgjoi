@@ -2,7 +2,7 @@ import "server-only";
 import type { Prisma } from "@prisma/client";
 import { db } from "./db";
 import { invariant } from "./errors";
-import { allowedCategorySlugs, serviceCategories, serviceCategory, categorySlugs } from "../service-categories";
+import { allowedCategorySlugs, serviceCategories, serviceCategory } from "../service-categories";
 
 type CatalogDB = Pick<Prisma.TransactionClient, "category">;
 
@@ -22,7 +22,7 @@ export async function activeServiceCategories(tx: CatalogDB = db) {
 export async function requireActiveCategory(slug: string, tx: CatalogDB = db) {
   const category = serviceCategory(slug);
   invariant(category, "CATEGORY", 400, "Zgjidhni një nga kategoritë e Zgjoi.");
-  const rows = await tx.category.findMany({ where: { slug: { in: categorySlugs(slug) } } });
+  const rows = await tx.category.findMany({ where: { slug: { in: [category.slug, ...category.aliases] } } });
   const saved = rows.find(r => r.slug === category.slug);
   invariant(saved ? saved.active : !rows.length || rows.some(r => r.active),
     "CATEGORY", 409, "Kategoria nuk është aktive.");

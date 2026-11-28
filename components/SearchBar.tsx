@@ -6,6 +6,7 @@ import { Search, type LucideIcon } from "lucide-react";
 import { categories } from "@/lib/data";
 import { useT } from "@/lib/i18n/client";
 import MunicipalitySelect from "@/components/marketplace/MunicipalitySelect";
+import { kurseSubjects } from "@/lib/service-categories";
 
 const normalize = (text: string) => text.trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 
@@ -80,7 +81,7 @@ export default function SearchBar({ initialQuery = "", initialCity = "", compact
           if (city.trim()) params.set("qyteti", city.trim());
           router.push(`/kerko${params.size ? `?${params}` : ""}`);
         }}>
-        <SearchField value={query} onChange={setQuery} label={t("searchBar.whatServiceDoNeed")} options={categories.map((category) => t.tx(category.name))} icon={Search} />
+        <SearchField value={query} onChange={setQuery} label={t("searchBar.whatServiceDoNeed")} options={[...categories.map((category) => t.tx(category.name)), ...kurseSubjects.map((subject) => t.tx(subject.name))]} icon={Search} />
         <MunicipalitySelect variant="plain" name="qyteti" value={city} onChange={setCity} />
         <button type="submit" className="h-11 min-h-11 rounded-xl bg-gold px-6 text-base font-semibold text-ink transition-colors hover:bg-gold-dark sm:h-auto sm:min-h-12 sm:py-3">{t("searchBar.search")}</button>
       </form>
