@@ -7,10 +7,10 @@ import { invariant } from "./errors";
 import { serializable } from "./transaction";
 import { notify } from "./notifications";
 import { activeServiceCategories, requireActiveCategory } from "./service-catalog";
-import { categorySlugs, serviceCategory } from "../service-categories";
+import { categorySlugs, professionSlug, serviceCategory } from "../service-categories";
 import { cleanText, euroAmount } from "../marketplace-validation";
 import { validMinMinutes, MIN_RATE_CENTS, MAX_RATE_CENTS } from "../book-now";
-import { MAX_PRO_CATEGORIES, lowestPrice, normalizeCategorySlugs, offersCategory, pickCategory, publicCategories } from "../pro-categories";
+import { MAX_PRO_CATEGORIES, MAX_PRO_PROFESSIONS, categoryCount, lowestPrice, normalizeCategorySlugs, offersCategory, pickCategory, publicCategories } from "../pro-categories";
 
 type Tx = Prisma.TransactionClient;
 type CatalogTx = Pick<Tx, "category" | "proCategory">;
@@ -58,7 +58,7 @@ export async function createProCategories(tx: Tx, profileId: string, slugs: read
 export async function requireActiveCategories(raw: readonly string[], tx: CatalogTx) {
   const slugs = normalizeCategorySlugs(raw);
   invariant(slugs.length >= 1, "CATEGORY", 400, "Zgjidhni të paktën një profesion.");
-  invariant(slugs.length <= MAX_PRO_CATEGORIES, "CATEGORY", 400, `Mund të zgjidhni deri në ${MAX_PRO_CATEGORIES} profesione.`);
+  invariant(categoryCount(slugs) <= MAX_PRO_CATEGORIES && slugs.length <= MAX_PRO_PROFESSIONS, "CATEGORY", 400, `Mund të zgjidhni deri në ${MAX_PRO_CATEGORIES} profesione.`);
   for (const slug of slugs) await requireActiveCategory(slug, tx);
   return slugs;
 }
@@ -69,7 +69,7 @@ const optionalMinMinutes = z.preprocess((v) => (v === "" || v === null || v === 
 const optionalRate = z.preprocess((v) => (v === "" || v === null ? undefined : v),
   euroAmount.refine((c) => c >= MIN_RATE_CENTS && c <= MAX_RATE_CENTS, "Tarifa për orë duhet të jetë nga 1 € deri në 1.000 €.").optional());
 export const professionsInput = z.object({
-  categories: z.array(z.object({ slug: cleanText(1, 80), priceFrom: optionalPrice, minMinutes: optionalMinMinutes, hourlyRate: optionalRate })).min(1, "Zgjidhni të paktën një profesion.").max(MAX_PRO_CATEGORIES),
+  categories: z.array(z.object({ slug: cleanText(1, 80), priceFrom: optionalPrice, minMinutes: optionalMinMinutes, hourlyRate: optionalRate })).min(1, "Zgjidhni të paktën një profesion.").max(MAX_PRO_PROFESSIONS),
 });
 
 /** Profile panel, any time (pending or approved): the pro's professions (order = order shown; first = main),
@@ -82,16 +82,16 @@ export async function saveProfessions(actor: Actor, input: unknown) {
   const profileId = actor.proProfile.id;
   return serializable(async (tx) => {
     const slugs = await requireActiveCategories(data.categories.map((c) => c.slug), tx);
-    const price = new Map<string, number | null>(data.categories.map((c) => [serviceCategory(c.slug)?.slug ?? c.slug, c.priceFrom ?? null]));
-    const minimum = new Map<string, number | null>(data.categories.map((c) => [serviceCategory(c.slug)?.slug ?? c.slug, c.minMinutes ?? null]));
-    const rate = new Map<string, number | null>(data.categories.map((c) => [serviceCategory(c.slug)?.slug ?? c.slug, c.hourlyRate ?? null]));
+    const price = new Map<string, number | null>(data.categories.map((c) => [professionSlug(c.slug) ?? c.slug, c.priceFrom ?? null]));
+    const minimum = new Map<string, number | null>(data.categories.map((c) => [professionSlug(c.slug) ?? c.slug, c.minMinutes ?? null]));
+    const rate = new Map<string, number | null>(data.categories.map((c) => [professionSlug(c.slug) ?? c.slug, c.hourlyRate ?? null]));
     const before = await tx.proCategory.findMany({ where: { profileId } });
     const profile = await tx.proProfile.findUniqueOrThrow({ where: { id: profileId }, select: { verification: true, hourlyRateCents: true, bookNowEnabled: true } });
-    const removed = before.filter((r) => !slugs.includes(serviceCategory(r.categorySlug)?.slug ?? ""));
+    const removed = before.filter((r) => !slugs.includes(professionSlug(r.categorySlug) ?? ""));
     if (removed.length) await tx.proCategory.deleteMany({ where: { id: { in: removed.map((r) => r.id) } } });
     const added: string[] = [];
     for (const [position, slug] of slugs.entries()) {
-      const existing = before.find((r) => serviceCategory(r.categorySlug)?.slug === slug);
+      const existing = before.find((r) => professionSlug(r.categorySlug) === slug);
       const priceFromCents = price.get(slug) ?? null;
       const minMinutes = minimum.get(slug) ?? null;
       const hourlyRateCents = rate.get(slug) ?? null;

@@ -1,4 +1,4 @@
-import { serviceCategory } from "@/lib/service-categories";
+import { professionOptions, professionSlug, serviceCategory } from "@/lib/service-categories";
 import ProfessionsEditor from "./ProfessionsEditor";
 import { MAX_PRO_CATEGORIES, professionRate } from "@/lib/pro-categories";
 import { pageGuard } from "@/lib/server/guard";
@@ -116,13 +116,14 @@ export default async function ProfileEditor({ pro }: { pro: boolean }) {
           <h2 className="mb-1 text-lg font-bold">{t("profileEditor.professionsPrices")}</h2>
           <p className="mb-4 text-sm text-muted">{t("profileEditor.professionsPricesIntro")}</p>
           <ProfessionsEditor max={MAX_PRO_CATEGORIES} profileApproved={profile.verification === "APPROVED"}
-            options={categories.map((c) => ({ slug: c.slug, label: t.tx(c.name), icon: c.icon }))}
+            options={professionOptions(categories, t.tx)}
             initial={profile.categories.flatMap((c) => {
-              const slug = serviceCategory(c.categorySlug)?.slug;
-              return slug && categories.some((x) => x.slug === slug) ? [{ slug, priceFrom: euros(c.priceFromCents),
-                minMinutes: c.minMinutes ? String(c.minMinutes) : bookNowSlugs.includes(slug) ? defaultMin : "",
+              const slug = professionSlug(c.categorySlug);
+              const parent = serviceCategory(c.categorySlug)?.slug;
+              return slug && categories.some((x) => x.slug === parent) ? [{ slug, priceFrom: euros(c.priceFromCents),
+                minMinutes: c.minMinutes ? String(c.minMinutes) : bookNowSlugs.includes(parent!) ? defaultMin : "",
                 // Rates live per profession; a pro who had the old single rate sees it pre-filled on their Book now professions.
-                hourlyRate: euros(c.hourlyRateCents ?? (bookNowSlugs.includes(slug) ? profile.hourlyRateCents : null)),
+                hourlyRate: euros(c.hourlyRateCents ?? (bookNowSlugs.includes(parent!) ? profile.hourlyRateCents : null)),
                 approved: Boolean(c.approvedAt) }] : [];
             })}
             bookNowSlugs={bookNowSlugs} defaultMin={defaultMin}

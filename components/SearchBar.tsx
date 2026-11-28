@@ -62,8 +62,8 @@ function SearchField({ value, onChange, label, options, icon: Icon }: {
   );
 }
 
-export default function SearchBar({ initialQuery = "", initialCity = "", compact = false }: {
-  initialQuery?: string; initialCity?: string; compact?: boolean;
+export default function SearchBar({ initialQuery = "", initialCity = "", compact = false, subjectNames = [] }: {
+  initialQuery?: string; initialCity?: string; compact?: boolean; subjectNames?: string[];
 }) {
   const t = useT();
   const router = useRouter();
@@ -80,7 +80,7 @@ export default function SearchBar({ initialQuery = "", initialCity = "", compact
           if (city.trim()) params.set("qyteti", city.trim());
           router.push(`/kerko${params.size ? `?${params}` : ""}`);
         }}>
-        <SearchField value={query} onChange={setQuery} label={t("searchBar.whatServiceDoNeed")} options={categories.map((category) => t.tx(category.name))} icon={Search} />
+        <SearchField value={query} onChange={setQuery} label={t("searchBar.whatServiceDoNeed")} options={[...categories.map((category) => t.tx(category.name)), ...subjectNames]} icon={Search} />
         <MunicipalitySelect variant="plain" name="qyteti" value={city} onChange={setCity} />
         <button type="submit" className="h-11 min-h-11 rounded-xl bg-gold px-6 text-base font-semibold text-ink transition-colors hover:bg-gold-dark sm:h-auto sm:min-h-12 sm:py-3">{t("searchBar.search")}</button>
       </form>

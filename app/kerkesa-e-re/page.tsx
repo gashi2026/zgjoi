@@ -9,8 +9,7 @@ import Frame, { Panel } from "@/components/marketplace/Frame";
 import ApiForm from "@/components/marketplace/ApiForm";
 import { IdGate } from "@/components/verification/IdNotice";
 import { getT } from "@/lib/i18n/server";
-import { activeCategories } from "@/lib/server/catalog";
-import { serviceCategory } from "@/lib/service-categories";
+import { professionLabel, sameProfession } from "@/lib/service-categories";
 /** Chat-then-hire: the customer opens a private chat with one chosen pro and
  * describes the job as the first message. There is no public job posting. */
 export default async function Page({
@@ -25,9 +24,8 @@ export default async function Page({
   const pro = await publicProfile(id);
   if (!pro) notFound();
   // A pro with several professions: the customer says which one the chat is about.
-  const names = await activeCategories();
-  const wanted = pro.categories.find((c) => c.categorySlug === serviceCategory(kategoria ?? "")?.slug)?.categorySlug ?? pro.categories[0]?.categorySlug;
-  const label = (slug: string) => t.tx(names.find((c) => c.slug === slug)?.name ?? slug);
+  const wanted = (kategoria ? pro.categories.find((c) => sameProfession(c.categorySlug, kategoria))?.categorySlug : undefined) ?? pro.categories[0]?.categorySlug;
+  const label = (slug: string) => professionLabel(slug, t.tx);
   const open = await db.serviceRequest.findMany({
     where: {
       clientId: actor.id,

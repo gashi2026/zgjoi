@@ -7,7 +7,7 @@ import { db } from "@/lib/server/db";
 import { categoryFlow } from "@/lib/server/bookings";
 import { money } from "@/lib/format";
 import { ESTIMATE_PRO_SHARE_CENTS, ESTIMATE_PLATFORM_SHARE_CENTS } from "@/lib/book-now";
-import { serviceCategory } from "@/lib/service-categories";
+import { professionLabel, sameProfession } from "@/lib/service-categories";
 import Frame, { Panel } from "@/components/marketplace/Frame";
 import ApiForm from "@/components/marketplace/ApiForm";
 import { IdGate } from "@/components/verification/IdNotice";
@@ -25,12 +25,12 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ p
   // The estimate visit is per profession: the one asked for when it offers one, else the first that does.
   const flows = await Promise.all(pro.categories.map(async (c) => ({ slug: c.categorySlug, flow: await categoryFlow(db, c.categorySlug) })));
   const offered = flows.filter((f) => f.flow.estimate && f.flow.estimatePriceCents);
-  const chosen = offered.find((f) => f.slug === serviceCategory(kategoria ?? "")?.slug) ?? offered[0];
+  const chosen = offered.find((f) => kategoria && sameProfession(f.slug, kategoria)) ?? offered[0];
   if (!chosen) return localRedirect(`/kerkesa-e-re?pro=${pro.id}${kategoria ? `&kategoria=${encodeURIComponent(kategoria)}` : ""}`);
   const flow = chosen.flow as typeof chosen.flow & { estimatePriceCents: number };
   const price = money(flow.estimatePriceCents, t.locale);
   const open = await db.estimate.findFirst({ where: { clientId: actor.id, profileId: pro.id, state: { in: ["PENDING", "PAID"] } } });
-  const category = t.tx(serviceCategory(chosen.slug)?.name ?? chosen.slug);
+  const category = professionLabel(chosen.slug, t.tx);
   return (
     <Frame actor={actor} title={t("estimate.estimateVisit", { name: pro.user.name })}
       subtitle={t("estimate.proComesOverLooks", { category: category, price: price })}>

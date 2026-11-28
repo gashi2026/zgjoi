@@ -1,16 +1,23 @@
-import { serviceCategory } from "./service-categories";
+import { professionSlug, sameProfession, serviceCategory } from "./service-categories";
 
-/** Most professions one pro can offer at once (sign-up and profile panel). */
+/** Most categories one pro can offer at once (sign-up and profile panel). Kurse subjects
+ * (English, Math, Ballet...) all count as the one category Kurse, up to MAX_PRO_PROFESSIONS rows in all. */
 export const MAX_PRO_CATEGORIES = 5;
+export const MAX_PRO_PROFESSIONS = 12;
+/** Number of distinct top-level categories among profession slugs. */
+export function categoryCount(slugs: readonly string[]): number {
+  return new Set(slugs.map((s) => serviceCategory(s)?.slug ?? s)).size;
+}
 
 export type ProCategoryRow = { categorySlug: string; priceFromCents: number | null; position: number; approvedAt: Date | null; minMinutes?: number | null; hourlyRateCents?: number | null };
 
-/** Canonical, de-duplicated, catalogue-only list of slugs in the order chosen. Unknown slugs
+/** Canonical, de-duplicated, catalogue-only list of professions in the order chosen: a Kurse subject
+ * keeps its subject slug (legacy Valle slugs become Kurse subjects). Unknown slugs
  * (e.g. the legacy "trainer-personal") are dropped. */
 export function normalizeCategorySlugs(slugs: readonly string[]): string[] {
   const out: string[] = [];
   for (const raw of slugs) {
-    const slug = serviceCategory(String(raw).trim())?.slug;
+    const slug = professionSlug(String(raw).trim());
     if (slug && !out.includes(slug)) out.push(slug);
   }
   return out;
@@ -51,8 +58,7 @@ export function professionRate(row: { hourlyRateCents?: number | null } | null |
 }
 /** Rate to show on a search card: the searched profession's, else the lowest across professions. */
 export function displayRate(rows: readonly { categorySlug: string; hourlyRateCents?: number | null }[], legacy: number | null | undefined, wanted?: string | null): number | null {
-  const want = wanted ? serviceCategory(wanted)?.slug : undefined;
-  const match = want ? rows.find((r) => serviceCategory(r.categorySlug)?.slug === want) : undefined;
+  const match = wanted && serviceCategory(wanted) ? rows.find((r) => sameProfession(r.categorySlug, wanted)) : undefined;
   if (match) return professionRate(match, legacy);
   const rates = rows.map((r) => professionRate(r, legacy)).filter((r): r is number => typeof r === "number" && r > 0);
   return rates.length ? Math.min(...rates) : null;

@@ -4,6 +4,7 @@ import SignupWizard from "@/components/signup/SignupWizard";
 import { activeCategories } from "@/lib/server/catalog";
 import { MAX_PRO_CATEGORIES } from "@/lib/pro-categories";
 import { getT } from "@/lib/i18n/server";
+import { subjectsOf } from "@/lib/service-categories";
 export const dynamic = "force-dynamic";
 /** Pro sign-up: step 1 account → step 2 professions (one or more, no prices) → step 3 ID. */
 export default async function Page() {
@@ -13,7 +14,8 @@ export default async function Page() {
   return (
     <SignupShell title={t("auth.becomeProZgjoi")} text={idStep ? t("signupWizard.proIntroWithId") : t("signupWizard.proIntro")}>
       <SignupWizard role="PRO" idStep={idStep} maxCategories={MAX_PRO_CATEGORIES}
-        categories={categories.map((c) => ({ slug: c.slug, label: t.tx(c.name), icon: c.icon }))} />
+        categories={categories.map((c) => ({ slug: c.slug, label: t.tx(c.name), icon: c.icon,
+          subjects: subjectsOf(c.slug).map((x) => ({ slug: x.slug, label: t.tx(x.name) })) }))} />
     </SignupShell>
   );
 }

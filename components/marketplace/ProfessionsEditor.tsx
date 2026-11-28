@@ -3,8 +3,10 @@ import { useState } from "react";
 import { useRouter, useT } from "@/lib/i18n/client";
 import { buttonClass, inputClass } from "./ApiForm";
 import CategoryIcon from "@/components/CategoryIcon";
+import { serviceCategory, type ProfessionOption as Option } from "@/lib/service-categories";
+import { MAX_PRO_PROFESSIONS, categoryCount } from "@/lib/pro-categories";
 
-export type ProfessionOption = { slug: string; label: string; icon: string };
+export type ProfessionOption = Option;
 export type ProfessionRow = { slug: string; priceFrom: string; hourlyRate: string; minMinutes: string; approved: boolean };
 
 /** Profile panel, editable any time: the pro's professions (first = main) and, for each, an optional
@@ -21,7 +23,12 @@ export default function ProfessionsEditor({ options, initial, max, profileApprov
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState<{ text: string; error: boolean } | null>(null);
   const option = (slug: string) => options.find((o) => o.slug === slug);
-  const left = options.filter((o) => !rows.some((r) => r.slug === o.slug));
+  const left = options.filter((o) => !o.hidden && !rows.some((r) => r.slug === o.slug));
+  // Book now / minimum-hours rules belong to the top-level category (a Kurse subject uses Kurse's).
+  const flow = (slug: string) => bookNowSlugs.includes(serviceCategory(slug)?.slug ?? slug);
+  const full = categoryCount(rows.map((r) => r.slug)) >= max;
+  // Once the category limit is reached, only subjects of a category already chosen can still be added.
+  const addable = left.filter((o) => !full || rows.some((r) => serviceCategory(r.slug)?.slug === serviceCategory(o.slug)?.slug));
   const update = (i: number, patch: Partial<ProfessionRow>) => setRows((list) => list.map((r, j) => (j === i ? { ...r, ...patch } : r)));
   const move = (i: number, by: number) => setRows((list) => {
     const next = [...list]; const [row] = next.splice(i, 1); next.splice(i + by, 0, row); return next;
@@ -86,33 +93,39 @@ export default function ProfessionsEditor({ options, initial, max, profileApprov
                 <input inputMode="decimal" value={row.hourlyRate} onChange={(e) => update(i, { hourlyRate: e.target.value })} placeholder={t("professionsEditor.hourlyRatePlaceholder")}
                   className={`${inputClass} mt-1`} aria-label={t("professionsEditor.hourlyRateFor", { name: o?.label ?? row.slug })} data-testid={`rate-${row.slug}`} />
                 <span className="mt-1 block text-xs font-normal text-muted">
-                  {bookNowSlugs.includes(row.slug) ? t("professionsEditor.hourlyRateBookNowHint") : t("professionsEditor.hourlyRateHint")}</span>
+                  {flow(row.slug) ? t("professionsEditor.hourlyRateBookNowHint") : t("professionsEditor.hourlyRateHint")}</span>
               </label>
               <label className="block text-sm font-semibold">
-                {bookNowSlugs.includes(row.slug) ? t("professionsEditor.minimumHours") : t("professionsEditor.minimumHoursOptional")}
+                {flow(row.slug) ? t("professionsEditor.minimumHours") : t("professionsEditor.minimumHoursOptional")}
                 <select value={row.minMinutes} onChange={(e) => update(i, { minMinutes: e.target.value })} data-testid={`min-hours-${row.slug}`}
                   className={`${inputClass} mt-1`} aria-label={t("professionsEditor.minimumHoursFor", { name: o?.label ?? row.slug })}>
-                  {!bookNowSlugs.includes(row.slug) && <option value="">{t("professionsEditor.noMinimum")}</option>}
+                  {!flow(row.slug) && <option value="">{t("professionsEditor.noMinimum")}</option>}
                   {hours.map((h) => <option key={h.value} value={h.value}>{h.label}</option>)}
                 </select>
                 <span className="mt-1 block text-xs font-normal text-muted">
-                  {bookNowSlugs.includes(row.slug) ? t("professionsEditor.minimumHoursBookNowHint") : t("professionsEditor.minimumHoursHint")}</span>
+                  {flow(row.slug) ? t("professionsEditor.minimumHoursBookNowHint") : t("professionsEditor.minimumHoursHint")}</span>
               </label>
               </div>
             </li>
           );
         })}
       </ul>
-      {rows.length < max && left.length > 0 && (
+      {rows.length < MAX_PRO_PROFESSIONS && addable.length > 0 && (
         <div className="flex flex-wrap items-end gap-2">
           <label className="min-w-0 flex-1 text-sm font-semibold">
             {t("professionsEditor.addProfession")}
             <select value={adding} onChange={(e) => setAdding(e.target.value)} className={`${inputClass} mt-1`}>
               <option value="">{t("professionsEditor.choose")}</option>
-              {left.map((o) => <option key={o.slug} value={o.slug}>{o.label}</option>)}
+              {/* Kurse opens into its subjects (English, Math, Ballet...). */}
+              {[...new Set(addable.map((o) => o.group ?? ""))].map((group) => {
+                const items = addable.filter((o) => (o.group ?? "") === group);
+                return group
+                  ? <optgroup key={group} label={group}>{items.map((o) => <option key={o.slug} value={o.slug}>{o.short}</option>)}</optgroup>
+                  : items.map((o) => <option key={o.slug} value={o.slug}>{o.label}</option>);
+              })}
             </select>
           </label>
-          <button type="button" disabled={!adding} onClick={() => { setRows((list) => [...list, { slug: adding, priceFrom: "", hourlyRate: "", minMinutes: bookNowSlugs.includes(adding) ? defaultMin : "", approved: false }]); setAdding(""); }}
+          <button type="button" disabled={!adding} onClick={() => { setRows((list) => [...list, { slug: adding, priceFrom: "", hourlyRate: "", minMinutes: flow(adding) ? defaultMin : "", approved: false }]); setAdding(""); }}
             className="min-h-11 rounded-full border border-gold px-5 font-semibold disabled:opacity-40">{t("professionsEditor.add")}</button>
         </div>
       )}

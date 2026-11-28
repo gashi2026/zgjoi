@@ -11,7 +11,7 @@ import AdminSuspendForm from "@/components/admin/AdminSuspendForm";
 import AdminDeleteForm from "@/components/admin/AdminDeleteForm";
 import { suspensionIsActive } from "@/lib/suspension";
 import { MAX_PRO_CATEGORIES } from "@/lib/pro-categories";
-import { serviceCategory } from "@/lib/service-categories";
+import { professionLabel, professionOptions, professionSlug, serviceCategory } from "@/lib/service-categories";
 export default async function Page({
   searchParams,
 }: {
@@ -120,9 +120,9 @@ export default async function Page({
                   name: "categorySlug",
                   label: t("admin.categoryRequiredPros"),
                   type: "select",
-                  options: categories.map((c) => ({
-                    value: c.slug,
-                    label: t.tx(c.name),
+                  options: professionOptions(categories, t.tx).filter((o) => !o.hidden).map((o) => ({
+                    value: o.slug,
+                    label: o.label,
                   })),
                 },
               ]}
@@ -191,7 +191,7 @@ export default async function Page({
               <ul className="mt-2 flex flex-wrap gap-2" data-testid="admin-pro-categories">
                 {user.proProfile.categories.map((c) => (
                   <li key={c.categorySlug} className={`rounded-full border px-3 py-1 text-sm ${c.approvedAt ? "border-gold bg-honey" : "border-dashed border-gold-dark"}`}>
-                    {t.tx(categories.find((x) => x.slug === c.categorySlug)?.name ?? c.categorySlug)} ·{" "}
+                    {professionLabel(c.categorySlug, t.tx)} ·{" "}
                     {c.priceFromCents ? money(c.priceFromCents, t.locale) : t("admin.noPriceYet")} ·{" "}
                     {c.approvedAt ? t("admin.professionApproved") : t("admin.professionPending")}
                   </li>
@@ -203,10 +203,10 @@ export default async function Page({
               <AdminProfessionsForm
                 userId={user.id}
                 max={MAX_PRO_CATEGORIES}
-                options={categories.map((c) => ({ slug: c.slug, label: t.tx(c.name) }))}
+                options={professionOptions(categories, t.tx)}
                 selected={user.proProfile.categories.flatMap((c) => {
-                  const slug = serviceCategory(c.categorySlug)?.slug;
-                  return slug && categories.some((x) => x.slug === slug) ? [slug] : [];
+                  const slug = professionSlug(c.categorySlug);
+                  return slug && categories.some((x) => x.slug === serviceCategory(slug)?.slug) ? [slug] : [];
                 })}
               />
               <p className="my-3 whitespace-pre-wrap text-sm">

@@ -5,6 +5,7 @@ import { money } from "@/lib/format";
 import { displayRate } from "@/lib/pro-categories";
 import { Avatar } from "@/components/Brand";
 import { getT } from "@/lib/i18n/server";
+import { professionLabel, serviceCategory } from "@/lib/service-categories";
 export type CatalogPro = Prisma.ProProfileGetPayload<{
   select: typeof publicProSelect;
 }>;
@@ -27,7 +28,7 @@ export default async function CatalogCard({
             <Link href={`/profesionisti/${pro.slug}`}>{pro.user.name}</Link>
           </h2>
           <p className="text-sm text-muted">
-            {category ? t.tx(category) : pro.categorySlug}
+            {serviceCategory(pro.categorySlug) ? professionLabel(pro.categorySlug, t.tx) : category ? t.tx(category) : pro.categorySlug}
             {pro.categories.length > 1 && <span title={t("catalogCard.moreProfessions", { count: pro.categories.length - 1 })}> +{pro.categories.length - 1}</span>}
             {" "}· {pro.user.city}
           </p>

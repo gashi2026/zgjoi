@@ -32,7 +32,7 @@ type FlowDB = Pick<Prisma.TransactionClient, "category">;
 /** Per-category hiring paths: code default, overridden by the Category row. */
 export async function categoryFlow(tx: FlowDB, slug: string) {
   const category = serviceCategory(slug);
-  const rows = category ? await tx.category.findMany({ where: { slug: { in: categorySlugs(slug) } } }) : [];
+  const rows = category ? await tx.category.findMany({ where: { slug: { in: [category.slug, ...category.aliases] } } }) : [];
   const row = rows.find(r => r.slug === category?.slug) ?? rows[0];
   return hiringFlow(slug, row ?? {});
 }
@@ -104,7 +104,7 @@ export async function bookingTermsFor(tx: Pick<Prisma.TransactionClient, "catego
   profile: { id: string; hourlyRateCents: number | null; bookingMinMinutes: number | null; bookNowEnabled?: boolean | null }, slug: string) {
   const [flow, row] = await Promise.all([
     categoryFlow(tx, slug),
-    tx.proCategory.findFirst({ where: { profileId: profile.id, categorySlug: { in: categorySlugs(slug) } }, select: { minMinutes: true, hourlyRateCents: true } }),
+    tx.proCategory.findFirst({ where: { profileId: profile.id, categorySlug: { in: categorySlugs(slug) } }, orderBy: { position: "asc" }, select: { minMinutes: true, hourlyRateCents: true } }),
   ]);
   return bookableTerms(profile, flow, row);
 }

@@ -2,6 +2,7 @@
 import { useRef, useState, type FormEvent } from "react";
 import { useRouter, useT } from "@/lib/i18n/client";
 import { buttonClass } from "@/components/marketplace/ApiForm";
+import { MAX_PRO_PROFESSIONS, categoryCount } from "@/lib/pro-categories";
 
 export default function AdminProfessionsForm({
   userId,
@@ -11,7 +12,7 @@ export default function AdminProfessionsForm({
 }: {
   userId: string;
   max: number;
-  options: { slug: string; label: string }[];
+  options: { slug: string; label: string; short?: string; group?: string; hidden?: boolean }[];
   selected: string[];
 }) {
   const t = useT();
@@ -26,7 +27,7 @@ export default function AdminProfessionsForm({
     setMessage("");
     setPicked((list) => {
       if (list.includes(slug)) return list.filter((s) => s !== slug);
-      if (list.length >= max) {
+      if (categoryCount([...list, slug]) > max || list.length >= MAX_PRO_PROFESSIONS) {
         setMessage(t("adminPros.upTo", { max }));
         return list;
       }
@@ -66,7 +67,7 @@ export default function AdminProfessionsForm({
       <h3 className="font-bold">{t("adminPros.setProfessions")}</h3>
       <p className="text-sm text-muted">{t("adminPros.setProfessionsIntro", { max })}</p>
       <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
-        {options.map((o) => {
+        {options.filter((o) => !o.hidden || picked.includes(o.slug)).map((o) => {
           const on = picked.includes(o.slug);
           return (
             <label key={o.slug} className={`flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm ${on ? "bg-honey" : "hover:bg-cream"}`}>
@@ -76,7 +77,7 @@ export default function AdminProfessionsForm({
           );
         })}
       </div>
-      <p className="text-sm" role="status">{t("signupWizard.selectedCount", { count: picked.length, max })}</p>
+      <p className="text-sm" role="status">{t("signupWizard.selectedCount", { count: categoryCount(picked), max })}</p>
       {message && <p role={ok ? "status" : "alert"} className={`rounded-xl p-3 text-sm ${ok ? "bg-green-50 text-green-900" : "bg-red-50 text-red-900"}`}>{message}</p>}
       <button type="submit" disabled={pending} className={buttonClass}>{pending ? t("apiForm.processing") : t("adminPros.saveProfessions")}</button>
     </form>
